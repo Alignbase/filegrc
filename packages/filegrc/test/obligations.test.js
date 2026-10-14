@@ -218,6 +218,10 @@ test("direct-file validation rejects reconciliation on the population cutoff day
   context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
   await makeComprehensiveWorkspace(root, "9");
   const loaded = await loadWorkspace(root);
+  const ruleEntry = loaded.entries.find(({ record }) => record.type === "obligation-rule");
+  await writeFile(ruleEntry.path, JSON.stringify({ ...ruleEntry.record,
+    selector: { resourceType: "system", membershipMode: "as-of", cutoff: "window-start", statuses: ["active"] }
+  }));
   const occurrenceEntry = loaded.entries.find(({ record }) => record.type === "obligation-occurrence");
   await writeFile(occurrenceEntry.path, `${JSON.stringify({
     ...occurrenceEntry.record,

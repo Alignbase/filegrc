@@ -1,3 +1,4 @@
+import { historicalAttachmentPaths, historicalJsonRecordPath } from "./historical-paths.js";
 import { loadModel } from "../model/index.js";
 import { getDataCommitHistory, getDataFilesAtRevision, getDataRecordHistoryIndex, getFileAtRevision } from "./git.js";
 import { performance } from "node:perf_hooks";
@@ -26,6 +27,7 @@ export function reviewHistoryContext(root, owner) {
 
 export function reviewHistoryCommits(context) {
   if (context.index?.available) return context.index.commits;
+  if (context.index?.error?.code === "FILEGRC_INVALID_HISTORY_RECORD") return [];
   context.fallbackCommits ||= getDataCommitHistory(context.root);
   return context.fallbackCommits;
 }
@@ -43,6 +45,7 @@ export function reviewCommitsChangingTypes(index, types) {
 
 export function reviewHistoricalWorkspace(context, commit) {
   if (context.index?.available) return indexedHistoricalWorkspace(context, commit);
+  if (context.index?.error?.code === "FILEGRC_INVALID_HISTORY_RECORD") return null;
   if (context.workspacesByCommit.has(commit)) return context.workspacesByCommit.get(commit);
   const loaded = historicalWorkspace(context, commit);
   if (loaded) loaded.historicalCommit = commit;
@@ -55,9 +58,12 @@ export function reviewHistoricalWorkspace(context, commit) {
 // It is slower, but still requires the same substantive comparison.
 function historicalWorkspace(context, commit) {
   const { root } = context;
+  const state = new Map(getDataFilesAtRevision(root, commit).filter(historicalJsonRecordPath)
+    .map((path) => [path, getFileAtRevision(root, commit, path)]));
+  const attachments = historicalAttachmentPaths(state);
   const entries = [];
-  for (const path of getDataFilesAtRevision(root, commit).filter(authoritativeJsonPath)) {
-    const source = getFileAtRevision(root, commit, path);
+  for (const [path, source] of state) {
+    if (attachments.has(path)) continue;
     if (!source) return null;
     try {
       entries.push({ record: historicalRecord(context, source), source, relativePath: path.slice("data/".length) });
@@ -107,9 +113,10 @@ export function indexedHistoricalWorkspace(context, commit) {
       state = next;
     }
   }
+  const attachments = historicalAttachmentPaths(state);
   const entries = [];
   for (const [path, source] of state) {
-    if (!authoritativeJsonPath(path)) continue;
+    if (!historicalJsonRecordPath(path) || attachments.has(path)) continue;
     try {
       entries.push({ record: historicalRecord(context, source), source, relativePath: path.slice("data/".length) });
     } catch {
@@ -130,13 +137,6 @@ export function indexedHistoricalWorkspace(context, commit) {
   } catch {
     return null;
   }
-}
-
-function authoritativeJsonPath(path) {
-  const parts = path.split("/");
-  if (parts[0] !== "data" || !path.endsWith(".json")) return false;
-  if (parts.slice(1).some((part) => part.startsWith(".") || part === "content")) return false;
-  return !(parts[1] === "evidence" && parts.length > 3 && parts.at(-1) !== "evidence.json");
 }
 
 function historicalRecord(context, source) {

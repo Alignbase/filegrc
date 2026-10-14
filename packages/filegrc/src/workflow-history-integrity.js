@@ -48,7 +48,7 @@ export async function validateWorkflowHistoryIntegrity(loaded, diagnostics) {
       severity: "error",
       code: "workflow-history-unavailable",
       path: "data/workspace.json",
-      message: "Complete Git history is required to verify finalized workflow records. Restore Git history access, unshallow the repository if needed, and validate again."
+      message: historical.error?.message || "Complete Git history is required to verify finalized workflow records. Restore Git history access, unshallow the repository if needed, and validate again."
     });
     return;
   }
@@ -319,7 +319,7 @@ function legacyCollectionReviewTransition(loaded, previous, current) {
 
 function historicalState(loaded) {
   const index = getDataRecordHistoryIndex(loaded.root);
-  if (!index.available) return { available: false };
+  if (!index.available) return { available: false, error: index.error };
   const firstV9 = index.commits.findIndex((commit) => {
     try {
       const workspace = JSON.parse(getFileAtRevision(loaded.root, commit, "data/workspace.json"));

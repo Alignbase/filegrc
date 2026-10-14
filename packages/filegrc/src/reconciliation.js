@@ -531,7 +531,7 @@ function recordStateAtCommit(index, model, commit) {
 }
 
 function extendRecordState(index, model, commit, parentState) {
-  const changes = index.changesByCommit.get(commit) || [];
+  const changes = index.domainChangesByCommit?.get(commit) || index.changesByCommit.get(commit) || [];
   if (!changes.length) return parentState;
   const state = {
     parent: parentState,
@@ -608,6 +608,7 @@ function extendRecordState(index, model, commit, parentState) {
     }
     if (change.afterPath?.endsWith(".json")) {
       const current = changedRecordsByPath.get(change.afterPath) || null;
+      if (!current && !previous) continue; // Owned attachments and ignored non-record files.
       if (!current || (historicalModel && !historicalModel.resources[current.record.type])) {
         throw new Error(`Git history contains an unsupported data record at ${commit.slice(0, 12)}:${change.afterPath}.`);
       }

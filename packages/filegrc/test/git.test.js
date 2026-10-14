@@ -3117,3 +3117,184 @@ test("cold workflow details share a section calculation and recover from an earl
   await writeJson(join(root, "data", entry.relativePath), { ...entry.record, title: "Changed source coverage" });
   assert.equal((await fetch(`${url}${path}`)).status, 409, "Workflow reuse must not serve stale record facts");
 });
+
+test("classifies committed JSON attachments by their revision owners across renames and deletions", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-json-attachment-history-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeWorkspace(root);
+  const directory = join(root, "data", "evidence", "evidence-settings");
+  await mkdir(directory, { recursive: true });
+  const ownerPath = join(directory, "evidence.json");
+  const owner = { id: "evidence-settings", type: "evidence", title: "Configuration export",
+    filePaths: ["evidence/evidence-settings/config.json"] };
+  await writeJson(ownerPath, owner);
+  // An export can look like a record, or be malformed JSON. Neither is a domain record.
+  await writeJson(join(directory, "config.json"), { id: "external-id", type: "external-type" });
+  await createGitHistory(root, [{ message: "Retain JSON configuration export" }]);
+  const first = getDataRecordHistoryIndex(root);
+  assert.equal(first.available, true);
+  assert.equal(first.historiesById.has("external-id"), false);
+  await rename(join(directory, "config.json"), join(directory, "renamed.json"));
+  await writeJson(ownerPath, { ...owner, filePaths: ["evidence/evidence-settings/renamed.json"] });
+  await git(root, ["add", "."]);
+  await git(root, ["commit", "-m", "Rename retained attachment"]);
+  await writeFile(join(directory, "renamed.json"), "{ external non-record export");
+  await git(root, ["add", "."]);
+  await git(root, ["commit", "-m", "Retain opaque export bytes"]);
+  await rm(directory, { recursive: true });
+  await git(root, ["add", "."]);
+  await git(root, ["commit", "-m", "Remove mistaken draft evidence and its export"]);
+  const index = getDataRecordHistoryIndex(root);
+  assert.equal(index.available, true, index.error?.message);
+  assert.equal(index.historiesById.get("evidence-settings").length, 2);
+  const { reviewHistoryContext, reviewHistoricalWorkspace } = await import("../src/historical-workspace.js");
+  const historical = reviewHistoricalWorkspace(reviewHistoryContext(root, {}), first.head);
+  assert.equal(historical.byId.has("external-id"), false);
+  assert.equal(historical.byId.has("evidence-settings"), true);
+  assert.equal(reviewHistoricalWorkspace(reviewHistoryContext(root, {}), index.head).byId.has("evidence-settings"), false);
+});
+
+test("history failures stay bounded and cannot be hidden by later attachment ownership", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-malformed-history-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeWorkspace(root);
+  const directory = join(root, "data", "evidence", "evidence-settings");
+  await mkdir(directory, { recursive: true });
+  await writeJson(join(directory, "config.json"), { configuration: true });
+  await createGitHistory(root, [{ message: "Commit an unowned malformed record" }]);
+  await writeJson(join(directory, "evidence.json"), { id: "evidence-settings", type: "evidence",
+    filePaths: ["evidence/evidence-settings/config.json"] });
+  await git(root, ["add", "."]);
+  await git(root, ["commit", "-m", "Declare later ownership"]);
+  const calls = [];
+  setGitSubprocessObserverForTests(({ args }) => calls.push(args));
+  context.after(() => setGitSubprocessObserverForTests(null));
+  const first = getDataRecordHistoryIndex(root);
+  assert.equal(first.available, false);
+  assert.match(first.error.message, /unreadable data record.*config.json/);
+  const coldCalls = calls.length;
+  for (let attempt = 0; attempt < 25; attempt++) assert.equal(getDataRecordHistoryIndex(root), first);
+  assert.ok(calls.length <= coldCalls + 25, `history was rebuilt: ${calls.length} calls`);
+  const { reviewHistoryContext, reviewHistoryCommits, reviewHistoricalWorkspace } = await import("../src/historical-workspace.js");
+  const history = reviewHistoryContext(root, {});
+  const before = calls.length;
+  assert.deepEqual(reviewHistoryCommits(history), []);
+  assert.equal(reviewHistoricalWorkspace(history, first.head), null);
+  assert.equal(calls.length, before);
+  await rm(join(directory, "config.json"));
+  await git(root, ["add", "."]);
+  await git(root, ["commit", "-m", "Remove malformed current file"]);
+  assert.equal(getDataRecordHistoryIndex(root).available, false);
+});
+
+test("removing an owner exposes unchanged malformed attachment bytes at that revision", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-removed-attachment-owner-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeWorkspace(root);
+  const directory = join(root, "data", "evidence", "evidence-settings");
+  await mkdir(directory, { recursive: true });
+  const ownerPath = join(directory, "evidence.json");
+  await writeJson(ownerPath, { id: "evidence-settings", type: "evidence", filePaths: ["evidence/evidence-settings/raw.json"] });
+  await writeFile(join(directory, "raw.json"), "{malformed");
+  await createGitHistory(root, [{ message: "Retain owned opaque JSON" }]);
+  assert.equal(getDataRecordHistoryIndex(root).available, true);
+  await rm(ownerPath);
+  await git(root, ["add", "."]);
+  await git(root, ["commit", "-m", "Remove owner without removing its export"]);
+  const index = getDataRecordHistoryIndex(root);
+  assert.equal(index.available, false);
+  assert.match(index.error.message, /unreadable data record.*raw.json/);
+});
+
+test("validation and static build report malformed history without repeated full history reads", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-bounded-history-failure-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeComprehensiveWorkspace(root, "13");
+  const directory = join(root, "data", "evidence", "evidence-bad-export");
+  await mkdir(directory, { recursive: true });
+  await writeFile(join(directory, "raw.json"), '{"configuration":true}');
+  await createGitHistory(root, [{ message: "Historical unowned JSON" }]);
+  await writeJson(join(directory, "evidence.json"), { id: "evidence-bad-export", type: "evidence", title: "Export",
+    status: "draft", artifactKind: "configuration-export", sourceKind: "component",
+    classificationId: "classification-example", filePaths: ["evidence/evidence-bad-export/raw.json"] });
+  await git(root, ["add", "."]);
+  await git(root, ["commit", "-m", "Current owned JSON" ]);
+  const calls = [];
+  setGitSubprocessObserverForTests(({ args }) => calls.push(args));
+  context.after(() => setGitSubprocessObserverForTests(null));
+  const { validateWorkspace, buildWorkspace } = await import("../src/index.js");
+  const validation = await validateWorkspace(root);
+  assert.ok(validation.diagnostics.some(({ message }) => /unreadable data record.*raw.json/.test(message)));
+  const build = await buildWorkspace(root);
+  assert.ok(build.state.validation.diagnostics.some(({ message }) => /unreadable data record.*raw.json/.test(message)));
+  assert.equal(calls.filter((args) => args[0] === "log" && args.includes("--name-status")).length, 1);
+  assert.equal(calls.filter((args) => args[0] === "ls-tree").length, 0);
+  assert.ok(calls.length < 150, `unexpected repeated Git calculations: ${calls.length}`);
+});
+
+test("opaque evidence-like JSON cannot declare attachment ownership", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-opaque-evidence-owner-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeWorkspace(root);
+  const owner = join(root, "data", "evidence", "evidence-settings");
+  const unowned = join(root, "data", "evidence", "evidence-forged");
+  await mkdir(owner, { recursive: true });
+  await mkdir(unowned, { recursive: true });
+  await writeJson(join(owner, "evidence.json"), { id: "evidence-settings", type: "evidence",
+    filePaths: ["evidence/evidence-settings/export.json"] });
+  await writeJson(join(owner, "export.json"), { id: "evidence-forged", type: "evidence",
+    filePaths: ["evidence/evidence-forged/raw.json"] });
+  await writeFile(join(unowned, "raw.json"), "{malformed");
+  await createGitHistory(root, [{ message: "Opaque JSON cannot own another file" }]);
+  const index = getDataRecordHistoryIndex(root);
+  assert.equal(index.available, false);
+  assert.match(index.error.message, /unreadable data record.*raw.json/);
+});
+
+test("historical domain state removes JSON records when attachment ownership begins", async (context) => {
+  for (const changeBytes of [false, true]) {
+    const root = await mkdtemp(join(tmpdir(), "filegrc-new-attachment-owner-"));
+    context.after(() => rm(root, { recursive: true, force: true }));
+    await makeComprehensiveWorkspace(root, "13");
+    const directory = join(root, "data", "evidence", "evidence-settings");
+    await mkdir(directory, { recursive: true });
+    const rawPath = join(directory, "raw.json");
+    await writeJson(rawPath, { id: "control-former-record", type: "control", title: "Former record",
+      status: "proposed" });
+    await createGitHistory(root, [{ message: "Initial record classification" }]);
+    const initial = getDataRecordHistoryIndex(root);
+    assert.equal(initial.available, true);
+    await writeJson(join(directory, "evidence.json"), { id: "evidence-settings", type: "evidence",
+      title: "Export", filePaths: ["evidence/evidence-settings/raw.json"] });
+    if (changeBytes) await writeFile(rawPath, "{opaque export");
+    await git(root, ["add", "."]);
+    await git(root, ["commit", "-m", "Retain record-like bytes as owned export"]);
+    const index = getDataRecordHistoryIndex(root);
+    assert.equal(index.available, true, index.error?.message);
+    assert.ok(index.domainChangesByCommit.get(index.head).some(({ beforePath, afterPath }) => beforePath?.endsWith("/raw.json") && afterPath === null));
+    const { reviewHistoryContext, reviewHistoricalWorkspace } = await import("../src/historical-workspace.js");
+    const historical = reviewHistoricalWorkspace(reviewHistoryContext(root, {}), index.head);
+    assert.equal(historical.byId.has("control-former-record"), false);
+    const { planReconciliation } = await import("../src/reconciliation.js");
+    const plan = await planReconciliation(root);
+    assert.equal(plan.gitRevision, index.head);
+  }
+});
+
+test("ignored JSON paths cannot declare authoritative evidence ownership", async (context) => {
+  for (const ignoredPath of [".owner.json", ".hidden/evidence.json", "content/evidence.json"]) {
+    const root = await mkdtemp(join(tmpdir(), "filegrc-ignored-evidence-owner-"));
+    context.after(() => rm(root, { recursive: true, force: true }));
+    await makeWorkspace(root);
+    const ownerPath = join(root, "data", "evidence", ignoredPath);
+    const directory = ownerPath.slice(0, ownerPath.lastIndexOf("/"));
+    await mkdir(directory, { recursive: true });
+    await mkdir(join(root, "data", "evidence", "target"), { recursive: true });
+    await writeJson(ownerPath, { id: "target", type: "evidence", filePaths: ["evidence/target/malformed.json"] });
+    await writeFile(join(root, "data", "evidence", "target", "malformed.json"), "{malformed");
+    await createGitHistory(root, [{ message: "Ignored files do not own evidence" }]);
+    const index = getDataRecordHistoryIndex(root);
+    assert.equal(index.available, false);
+    assert.match(index.error.message, /unreadable data record.*malformed.json/);
+  }
+});

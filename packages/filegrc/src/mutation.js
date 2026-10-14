@@ -57,6 +57,7 @@ export function normalizeResourceMutation(value, options = {}) {
     record: value.record,
     content: value.content,
     revision: value.revision,
-    contentRevisions: value.contentRevisions
+    contentRevisions: value.contentRevisions,
+    completionContext: value.completionContext
   };
 }
