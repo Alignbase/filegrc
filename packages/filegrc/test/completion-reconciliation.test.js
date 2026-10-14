@@ -248,3 +248,53 @@ test("committed partial windows survive later content activation without duplica
   assert.equal(items.length, 1);
   assert.equal(items[0].dueWindowStart, "2026-07-05");
 });
+
+test("CLI and browser retain the selected Program when multiple Programs are active", async (context) => {
+  const cli = await fixture(context);
+  const browser = await fixture(context);
+  for (const f of [cli, browser]) {
+    const loaded = await loadWorkspace(f.root);
+    const primary = loaded.resources.find(({ type }) => type === "program");
+    await writeJson(join(f.root, "data", loaded.model.resources.program.collection, "program-other.json"), {
+      ...primary, id: "program-other", title: "Other SOC 2 Program"
+    });
+  }
+  const payload = join(cli.root, "completion.json");
+  await writeFile(payload, JSON.stringify({ record: cli.record, revision: cli.revision }));
+  const output = await executeCli(runCli, process.execPath, [new URL("../bin/filegrc.js", import.meta.url).pathname,
+    "complete", cli.obligation.id, payload, "--root", cli.root, "--program", "program-example", "--json"]);
+  const cliResult = JSON.parse(output.stdout);
+  assert.equal(cliResult.linked.programId, "program-example");
+  const served = await serveWorkspace(browser.root, { port: 0, allowNonAuthoritativeWrites: true });
+  context.after(() => new Promise((resolve, reject) => served.server.close((error) => error ? reject(error) : resolve())));
+  const response = await fetch(`${served.url}/api/obligation-completions?programId=program-example`, { method: "POST",
+    headers: { "content-type": "application/json", origin: served.url },
+    body: JSON.stringify({ obligationId: browser.obligation.id, record: browser.record, revision: browser.revision }) });
+  const browserResult = await response.json();
+  assert.equal(response.status, 201, JSON.stringify(browserResult));
+  assert.equal(browserResult.linked.programId, cliResult.linked.programId);
+  assert.deepEqual(browserResult.linked.members, cliResult.linked.members);
+});
+
+test("completion preserves exclusions and the authoritative expected-member count", async (context) => {
+  const f = await fixture(context);
+  await writeJson(f.obligationEntry.path, { ...f.obligation, scopeResourceIds: ["system-example", "asset-example"] });
+  const revision = contentRevision(await readFile(f.obligationEntry.path, "utf8"));
+  const first = await completeObligationOccurrence(f.root, { obligationId: f.obligation.id,
+    expectedRevision: revision, record: f.record });
+  const loaded = await loadWorkspace(f.root);
+  const occurrence = loaded.entries.find(({ record }) => record.id === first.linked.id);
+  await writeJson(occurrence.path, { ...occurrence.record,
+    expectedCount: 1,
+    members: occurrence.record.members.map((member) => member.resourceId === "asset-example"
+      ? { ...member, disposition: "not-applicable", rationale: "The documented review excludes this asset from the operating check." }
+      : member)
+  });
+  const result = await completeObligationOccurrence(f.root, { obligationId: f.obligation.id,
+    expectedRevision: revision, record: { ...f.record, id: "control-activity-confirmation", completedAt: "2026-07-08T15:30:00Z", reviewedOn: "2026-07-08" } });
+  assert.equal(result.linked.status, "open");
+  assert.equal(result.linked.expectedCount, 1);
+  assert.equal(result.linked.completedCount, 1);
+  assert.equal(result.linked.members.find(({ resourceId }) => resourceId === "asset-example").disposition, "not-applicable");
+  assert.equal(result.linked.reviewedByIds, undefined);
+});

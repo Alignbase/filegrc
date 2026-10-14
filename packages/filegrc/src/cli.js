@@ -1030,12 +1030,13 @@ export async function runCli(argv = process.argv.slice(2)) {
     const mutation = await readMutation(file);
     const result = await withWorkflowDelta(root, () => completeObligationOccurrence(root, {
       obligationId,
+      programId: flags.program,
       windowStart: flags["window-start"] || mutation.completionContext?.windowStart,
       completionContext: mutation.completionContext,
       record: mutation.record,
       content: mutation.content,
       expectedRevision: expectedRevision(flags, mutation, `obligation/${obligationId}`)
-    }));
+    }), { programId: flags.program });
     if (flags.json) console.log(JSON.stringify(result, null, 2));
     else console.log(`Created ${result.created.type}/${result.created.id} and linked it to obligation/${obligationId}`);
     return result;
@@ -1274,10 +1275,10 @@ function parseArgs(args) {
   return { positionals, flags };
 }
 
-async function withWorkflowDelta(root, task) {
-  const before = await assessWorkflow(root);
+async function withWorkflowDelta(root, task, options = {}) {
+  const before = await assessWorkflow(root, options);
   const result = await task();
-  const after = await assessWorkflow(root);
+  const after = await assessWorkflow(root, options);
   return {
     ...result,
     workflowDelta: buildWorkflowDelta(before, after)
