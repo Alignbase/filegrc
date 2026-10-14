@@ -1082,7 +1082,9 @@ export async function runCli(argv = process.argv.slice(2)) {
       record: mutation.record,
       programId: flags.program || mutation.record.programId,
       content: mutation.content,
-      expectedRevision: expectedRevision(flags, mutation, `obligation-occurrence/${mutation.record.supersedesId || mutation.record.id}`)
+      expectedRevision: existing || mutation.record.supersedesId
+        ? expectedRevision(flags, mutation, `obligation-occurrence/${mutation.record.supersedesId || mutation.record.id}`)
+        : undefined
     }));
     if (flags.json) console.log(JSON.stringify(result, null, 2));
     else console.log(`${existing ? "Updated" : "Created"} obligation-occurrence/${mutation.record.id}`);
