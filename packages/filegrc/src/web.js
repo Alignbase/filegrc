@@ -2535,7 +2535,7 @@ function obligationCard(item, collapsed = false) {
       : item.actionItemId
         ? '<button class="obligation-action" type="button" data-complete-action="' + esc(item.key) + '">Complete task</button>'
         : item.ruleId
-          ? '<button class="obligation-action" type="button" data-reconcile-obligation="' + esc(item.key) + '">' + (item.reconciliationStatus === "reconciled" ? "Correct result" : "Review population") + '</button>'
+          ? (item.reconciliationStatus !== "reconciled" ? '<button class="obligation-action" type="button" data-record-obligation="' + esc(item.key) + '">Record work</button>' : '') + '<button class="obligation-action" type="button" data-reconcile-obligation="' + esc(item.key) + '">' + (item.reconciliationStatus === "reconciled" ? "Correct result" : "Review population") + '</button>'
           : '<button class="obligation-action" type="button" data-record-obligation="' + esc(item.key) + '">Record work</button>'
     : "");
   const kind = item.kind === "event" ? "Policy Event Task" : item.kind === "action" ? "Assigned Follow-up" : properCase(item.activityType || "Recurring");
@@ -2622,7 +2622,14 @@ function openObligationCompletion(item) {
     seed: obligationCompletionSeed(completion.type, item, obligation.record),
     obligationCompletion: {
       obligationId: item.obligationId,
-      revision: obligation.revision
+      revision: obligation.revision,
+      completionContext: item.ruleId ? {
+        windowStart: item.dueWindowStart,
+        ruleId: item.ruleId,
+        ruleRevision: state.resources.find(({ record }) => record.id === item.ruleId)?.revision || null,
+        occurrenceId: item.occurrenceId || null,
+        occurrenceRevision: state.resources.find(({ record }) => record.id === item.occurrenceId)?.revision || null
+      } : undefined
     },
     description: "Record the work performed during this occurrence. Saving creates the dated record and links it to the obligation. Add supporting evidence on this record or as a linked evidence record." + (item.status === "overdue" ? " The missed occurrence remains overdue when work is performed after its policy cutoff." : ""),
     saveLabel: "Save and link"
@@ -2787,7 +2794,7 @@ function obligationCompletionSeed(type, item, obligation) {
       completedAt: timestamp,
       method: "",
       result: "",
-      reviewerIds: reviewerPeople,
+      reviewerIds: [],
       reviewedOn: date,
       ownerIds: item.ownerIds || obligation.ownerIds || []
     };
@@ -5247,6 +5254,7 @@ function openEditor(type, entry = null, options = {}) {
           revision: entry?.revision || options.actionCompletion?.revision || options.obligationCompletion?.revision || options.occurrenceReconciliation?.revision || options.auditPopulationCorrection?.revision,
           contentRevisions,
           obligationId: options.obligationCompletion?.obligationId,
+          completionContext: options.obligationCompletion?.completionContext,
           actionItemId: options.actionCompletion?.actionItemId,
           completedOn: options.actionCompletion?.completedOn,
           prefetchToken: prefetch?.token

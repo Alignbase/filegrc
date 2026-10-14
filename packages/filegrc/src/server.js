@@ -417,6 +417,8 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
           message: () => `Complete ${resourceTypeLabel(payload.record?.type)}: ${payload.record?.title || payload.obligationId}`
         }, () => completeObligationOccurrence(input, {
           obligationId: payload.obligationId,
+          windowStart: payload.completionContext?.windowStart,
+          completionContext: payload.completionContext,
           record: payload.record,
           content: payload.content,
           expectedRevision: requireRevision(payload.revision, `obligation/${payload.obligationId}`)

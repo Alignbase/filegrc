@@ -1030,6 +1030,8 @@ export async function runCli(argv = process.argv.slice(2)) {
     const mutation = await readMutation(file);
     const result = await withWorkflowDelta(root, () => completeObligationOccurrence(root, {
       obligationId,
+      windowStart: flags["window-start"] || mutation.completionContext?.windowStart,
+      completionContext: mutation.completionContext,
       record: mutation.record,
       content: mutation.content,
       expectedRevision: expectedRevision(flags, mutation, `obligation/${obligationId}`)

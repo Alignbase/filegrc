@@ -331,7 +331,7 @@ export async function previewWorkflowMutation(input, mutation) {
     } else if (operation === "batch") {
       result = await applyResourceBatch(previewRoot, mutation.changes);
     } else if (operation === "complete-obligation") {
-      result = await completeObligationOccurrence(previewRoot, mutation);
+      result = await completeObligationOccurrence(previewRoot, { ...mutation, windowStart: mutation.completionContext?.windowStart });
     } else if (operation === "complete-action") {
       result = await completeObligationAction(previewRoot, mutation);
     } else if (operation === "complete-event") {

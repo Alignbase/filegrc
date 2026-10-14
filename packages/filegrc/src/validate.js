@@ -1,3 +1,4 @@
+import { completionMatchesMember, assessCompletionForObligation, obligationActivationDate } from "./obligations.js";
 import { reportingCutoverIssues, scheduleCutoverIssues, historicalContentCutover } from "./activation-readiness.js";
 import { scheduleSetIssues, scheduleReviewerConflicts } from "./schedule-set.js";
 import { createHash } from "node:crypto";
@@ -656,7 +657,7 @@ function validateObligationOccurrence(record, model, resources, entries, root, w
   if (rule?.type === "obligation-rule" && rule.obligationId !== record.obligationId) {
     diagnostics.push(error("wrong-obligation-rule", path, "The occurrence rule must belong to the same Obligation."));
   }
-  validateOccurrenceScheduleBinding(record, obligation, rule, resources, path, diagnostics);
+  validateOccurrenceScheduleBinding(record, obligation, rule, resources, model, path, diagnostics);
   for (const member of members) {
     if (!byId.has(member.resourceId)) continue;
     const validCompletions = [];
@@ -676,7 +677,7 @@ function validateObligationOccurrence(record, model, resources, entries, root, w
       }
       const memberField = activity.aggregate?.completionMemberField;
       const memberValue = memberField ? completion[memberField] : null;
-      if (!memberField || (Array.isArray(memberValue) ? !memberValue.includes(member.resourceId) : memberValue !== member.resourceId)) {
+      if (!completionMatchesMember(completion, memberField, member.resourceId, model, byId, obligation)) {
         diagnostics.push(error(
           "wrong-member-completion",
           path,
@@ -692,7 +693,11 @@ function validateObligationOccurrence(record, model, resources, entries, root, w
         ));
         continue;
       }
-      if (completionPassesObligationActivity(completion, activity)) validCompletions.push(completion);
+      if (completionPassesObligationActivity(completion, activity)
+        && (!modelSupports(model, "operating-preparation") || assessCompletionForObligation(completion, obligation,
+          { model, resources, workspace: { timezone: workspaceTimezone } },
+          { asOf: record.status === "reconciled" && record.reconciledAt
+            ? currentCalendarDate(workspaceTimezone, new Date(record.reconciledAt)) : asOf, window: { dueWindowStart: record.coverage.startsOn || record.coverage.on, dueWindowEnd: record.coverage.endsOn || record.coverage.on } }).complete)) validCompletions.push(completion);
     }
     if (member.result === "passed" && validCompletions.length === 0) {
       diagnostics.push(error(
@@ -734,7 +739,7 @@ function validateObligationOccurrence(record, model, resources, entries, root, w
       "An occurrence reconciliation time cannot be in the future."
     ));
   }
-  const populationStillOpen = reconciledOn <= record.membershipCutoffAt;
+  const populationStillOpen = Boolean(rule?.selector) && reconciledOn <= record.membershipCutoffAt;
   if (reconciledOn && populationStillOpen) {
     diagnostics.push(error(
       "obligation-population-still-open",
@@ -759,7 +764,7 @@ function validateObligationOccurrence(record, model, resources, entries, root, w
   }
 }
 
-function validateOccurrenceScheduleBinding(record, obligation, rule, resources, path, diagnostics) {
+function validateOccurrenceScheduleBinding(record, obligation, rule, resources, model, path, diagnostics) {
   if (obligation?.type !== "obligation" || rule?.type !== "obligation-rule") return;
   const start = record.coverage?.kind === "range" ? record.coverage.startsOn : null;
   const recurrence = obligationRuleRecurrence(rule);
@@ -770,10 +775,14 @@ function validateOccurrenceScheduleBinding(record, obligation, rule, resources, 
   const startOffset = rule.window?.precision === "date" && Number.isInteger(rule.window.startsAfter)
     ? rule.window.startsAfter
     : 0;
-  const expectedStart = occurrence ? addCalendarDays(occurrence, startOffset) : null;
+  let expectedStart = occurrence ? addCalendarDays(occurrence, startOffset) : null;
   const expectedEnd = rule.window?.precision === "date" && Number.isInteger(rule.window.dueAfter)
     ? addCalendarDays(occurrence, rule.window.dueAfter)
     : next ? addCalendarDays(next, -1) : null;
+  const byId = new Map(resources.map((candidate) => [candidate.id, candidate]));
+  const cutover = [obligationActivationDate(obligation, byId, rule, rule.timezone || "UTC"),
+    obligationActivationDate(obligation, byId, model, rule.timezone || "UTC")].filter(Boolean).sort().at(-1);
+  if (modelSupports(model, "operating-preparation") && cutover && expectedStart < cutover && expectedEnd >= cutover) expectedStart = cutover;
   const expectedCutoff = rule.selector?.cutoff === "window-end" ? expectedEnd : expectedStart;
   const program = resources.find(({ type, id }) => type === "program" && id === record.programId);
   const expectedKey = `${program?.id || "program"}:${obligation.id}:${expectedStart}`;

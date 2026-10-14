@@ -1,3 +1,4 @@
+import { historicalAttachmentPaths, historicalJsonRecordPath } from "./historical-paths.js";
 import { calculationMemo, hasCalculationCache } from "./calculation-cache.js";
 import { execFileSync, spawn } from "node:child_process";
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -380,7 +381,7 @@ export function getDataRecordHistoryIndex(input, options = {}) {
     suppliedHead &&
     cached?.head === suppliedHead &&
     !cached.available &&
-    cached.failureExpiresAt > performance.now()
+    (cached.error?.code === "FILEGRC_INVALID_HISTORY_RECORD" || cached.failureExpiresAt > performance.now())
   )
     return cached;
   if (suppliedHead && cached?.head === suppliedHead && cached.available)
@@ -422,7 +423,7 @@ export function getDataRecordHistoryIndex(input, options = {}) {
       discoveryError = cause;
     }
   }
-  if (cached?.head === head && cached.available) return cached;
+  if (cached?.head === head && (cached.available || (cached.error?.code === "FILEGRC_INVALID_HISTORY_RECORD" || cached.failureExpiresAt > performance.now()))) return cached;
   if (cached) {
     dataRecordHistoryIndexCache.delete(root);
     dataRecordHistoryIndexCacheBytes -= cached.cacheBytes || 0;
@@ -544,46 +545,10 @@ export function getDataRecordHistoryIndex(input, options = {}) {
     }
     fileChangesByCommit.set(commit, fileChanges);
   }
-  for (let index = 0; index < changes.length; index += 1) {
-    const { summary, path } = changes[index];
-    try {
-      const record = JSON.parse(
-        sourceByCommitAndPath.get(`${summary.commit}\0${path}`),
-      );
-      if (
-        !record ||
-        Array.isArray(record) ||
-        typeof record.id !== "string" ||
-        typeof record.type !== "string"
-      ) {
-        throw new Error(
-          "Historical data records require string IDs and types.",
-        );
-      }
-      if (!recordsByCommit.has(summary.commit))
-        recordsByCommit.set(summary.commit, new Map());
-      if (recordsByCommit.get(summary.commit).has(record.id)) {
-        throw new Error(
-          `Historical data records reuse ID "${record.id}" in one commit.`,
-        );
-      }
-      recordsByCommit.get(summary.commit).set(record.id, { record, path });
-      if (!historiesById.has(record.id)) historiesById.set(record.id, []);
-      historiesById.get(record.id).push({ ...summary, path });
-    } catch (cause) {
-      rethrowGitDeadline(cause);
-      available = false;
-      error = new Error(
-        `Git history contains an unreadable data record at ${summary.commit.slice(0, 12)}:${path}.`,
-        { cause },
-      );
-      break;
-    }
-  }
   const parentsByCommit = new Map();
   if (available) {
     try {
-      for (const line of lines(historyGit(["rev-list", "--parents", head]))) {
+      for (const line of lines(historyGit(["rev-list", "--topo-order", "--reverse", "--parents", head]))) {
         const [commit, ...parents] = line.split(" ");
         if (
           !/^[a-f0-9]{40}$/i.test(commit) ||
@@ -612,6 +577,100 @@ export function getDataRecordHistoryIndex(input, options = {}) {
       error = cause;
     }
   }
+  // Classify files against the complete owning state at each revision. A
+  // current attachment declaration must never hide an earlier malformed record.
+  const states = new Map();
+  const remainingChildren = new Map();
+  for (const parents of parentsByCommit.values()) {
+    const parent = parents[0];
+    if (parent) remainingChildren.set(parent, (remainingChildren.get(parent) || 0) + 1);
+  }
+  const domainChangesByCommit = new Map();
+  const recordChangesByCommit = new Map();
+  for (const change of changes) {
+    const commit = change.summary.commit;
+    if (!recordChangesByCommit.has(commit)) recordChangesByCommit.set(commit, []);
+    recordChangesByCommit.get(commit).push(change);
+  }
+  for (const [commit] of parentsByCommit) {
+    if (!available) break;
+    const parent = parentsByCommit.get(commit)?.[0];
+    const parentState = states.get(parent) || new Map();
+    const previousAttachments = historicalAttachmentPaths(parentState);
+    const state = new Map(parentState);
+    for (const [path, source] of fileChangesByCommit.get(commit) || []) {
+      if (source === null) state.delete(path);
+      else state.set(path, source);
+    }
+    states.set(commit, state);
+    if (parent) {
+      remainingChildren.set(parent, remainingChildren.get(parent) - 1);
+      if (!remainingChildren.get(parent)) states.delete(parent);
+    }
+    const attachments = historicalAttachmentPaths(state);
+    const domainChanges = (changesByCommit.get(commit) || []).map((change) => ({
+      ...change,
+      beforePath: change.beforePath?.endsWith(".json")
+        && (!historicalJsonRecordPath(change.beforePath) || previousAttachments.has(change.beforePath)) ? null : change.beforePath,
+      afterPath: change.afterPath?.endsWith(".json")
+        && (!historicalJsonRecordPath(change.afterPath) || attachments.has(change.afterPath)) ? null : change.afterPath
+    })).filter((change) => change.beforePath || change.afterPath);
+    const candidates = new Map((recordChangesByCommit.get(commit) || []).map((change) => [change.path, change]));
+    for (const path of previousAttachments) {
+      if (!attachments.has(path) && state.has(path) && !candidates.has(path)) {
+        const summary = changesByCommit.get(commit)?.[0]?.summary;
+        if (summary) {
+          candidates.set(path, { summary, path });
+          domainChanges.push({ summary, status: "A", beforePath: null, afterPath: path, classificationOnly: true });
+        }
+      }
+    }
+    for (const path of attachments) {
+      if (!previousAttachments.has(path) && parentState.has(path)
+        && !domainChanges.some((change) => change.beforePath === path)) {
+        const summary = changesByCommit.get(commit)?.[0]?.summary;
+        if (summary) domainChanges.push({ summary, status: "D", beforePath: path, afterPath: null, classificationOnly: true });
+      }
+    }
+    domainChangesByCommit.set(commit, domainChanges);
+    for (const { summary, path } of candidates.values()) {
+      if (!historicalJsonRecordPath(path) || attachments.has(path)) continue;
+      try {
+        const record = JSON.parse(
+          state.get(path),
+        );
+        if (
+          !record ||
+          Array.isArray(record) ||
+          typeof record.id !== "string" ||
+          typeof record.type !== "string"
+        ) {
+          throw new Error(
+            "Historical data records require string IDs and types.",
+          );
+        }
+        if (!recordsByCommit.has(summary.commit))
+          recordsByCommit.set(summary.commit, new Map());
+        if (recordsByCommit.get(summary.commit).has(record.id)) {
+          throw new Error(
+            `Historical data records reuse ID "${record.id}" in one commit.`,
+          );
+        }
+        recordsByCommit.get(summary.commit).set(record.id, { record, path });
+        if (!historiesById.has(record.id)) historiesById.set(record.id, []);
+        historiesById.get(record.id).push({ ...summary, path });
+      } catch (cause) {
+        rethrowGitDeadline(cause);
+        available = false;
+        error = new Error(
+          `Git history contains an unreadable data record at ${summary.commit.slice(0, 12)}:${path}.`,
+          { cause },
+        );
+        error.code = "FILEGRC_INVALID_HISTORY_RECORD";
+        break;
+      }
+    }
+  }
   for (const [id, history] of historiesById) {
     history.reverse();
     const seen = new Set();
@@ -631,6 +690,7 @@ export function getDataRecordHistoryIndex(input, options = {}) {
     error,
     commits: available ? [...changesByCommit.keys()] : [],
     changesByCommit: available ? changesByCommit : new Map(),
+    domainChangesByCommit: available ? domainChangesByCommit : new Map(),
     parentsByCommit: available ? parentsByCommit : new Map(),
     fileChangesByCommit: available ? fileChangesByCommit : new Map(),
     historicalRecordPaths: available ? historicalRecordPaths : new Set(),
