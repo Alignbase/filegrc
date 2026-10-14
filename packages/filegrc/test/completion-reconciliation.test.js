@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { makeComprehensiveWorkspace } from "./fixtures.js";
-import { executeCli, writeJson } from "./helpers.js";
+import { executeCli, initializeGitWorkspace, writeJson } from "./helpers.js";
 import { runCli } from "../src/cli.js";
 import { contentRevision } from "../src/files.js";
 import { completeObligationOccurrence, scaffoldObligationOccurrence, scaffoldObligationCompletion,
@@ -162,13 +162,89 @@ test("separate fixed-member completions do not invent a whole-population review"
   const f = await fixture(context);
   await writeJson(f.obligationEntry.path, { ...f.obligation, scopeResourceIds: ["system-example", "asset-example"] });
   const revision = contentRevision(await readFile(f.obligationEntry.path, "utf8"));
-  const first = await completeObligationOccurrence(f.root, { obligationId: f.obligation.id,
-    expectedRevision: revision, record: f.record });
+  const scaffold = await scaffoldObligationCompletion(f.root, { obligationId: f.obligation.id,
+    windowStart: "2026-07-05", completedOn: "2026-07-07" });
+  const options = { obligationId: f.obligation.id, expectedRevision: revision,
+    completionContext: scaffold.completionContext, record: f.record };
+  const first = await completeObligationOccurrence(f.root, options);
   assert.equal(first.linked.status, "open");
+  assert.deepEqual(await completeObligationOccurrence(f.root, options), first);
   const second = await completeObligationOccurrence(f.root, { obligationId: f.obligation.id,
     expectedRevision: revision, record: { ...f.record, id: "control-activity-second-member", scopeResourceIds: ["asset-example"] } });
   assert.equal(second.linked.completedCount, 2);
   assert.equal(second.linked.status, "open");
   assert.equal(second.linked.reviewedByIds, undefined);
   assert.equal(second.linked.reconciledAt, undefined);
+});
+
+
+test("a completion outside the fixed population creates no orphan proof record", async (context) => {
+  const f = await fixture(context);
+  await writeJson(f.obligationEntry.path, { ...f.obligation, scopeResourceIds: ["asset-example"] });
+  const revision = contentRevision(await readFile(f.obligationEntry.path, "utf8"));
+  await assert.rejects(completeObligationOccurrence(f.root, { obligationId: f.obligation.id,
+    expectedRevision: revision, record: { ...f.record, evidenceIds: [] } }), /does not cover any member/);
+  const loaded = await loadWorkspace(f.root);
+  assert.equal(loaded.resources.some(({ id }) => id === f.record.id), false);
+  assert.equal(loaded.resources.some(({ type }) => type === "obligation-occurrence"), false);
+});
+
+test("dynamic membership stays open and identical retries preserve its pending reconciliation", async (context) => {
+  const f = await fixture(context);
+  const loaded = await loadWorkspace(f.root);
+  const { currentCalendarDate } = await import("../src/time.js");
+  const now = new Date();
+  const date = currentCalendarDate(loaded.workspace.timezone, now);
+  await writeJson(f.ruleEntry.path, { ...f.rule,
+    recurrence: { mode: "calendar", unit: "month", interval: 1, anchorMode: "activation" },
+    window: { precision: "date", startsAfter: 0, dueAfter: 5 }, effectiveAt: now.toISOString(),
+    selector: { resourceType: "asset", membershipMode: "as-of", cutoff: "window-end", statuses: ["active"] }
+  });
+  const scaffold = await scaffoldObligationCompletion(f.root, { obligationId: f.obligation.id,
+    windowStart: date, completedOn: date });
+  const record = { ...f.record, scopeResourceIds: ["asset-example"], completedAt: now.toISOString(), reviewedOn: date };
+  const options = { obligationId: f.obligation.id, expectedRevision: f.revision,
+    completionContext: scaffold.completionContext, record };
+  const result = await completeObligationOccurrence(f.root, options);
+  assert.equal(result.linked.status, "open");
+  assert.equal(result.linked.completedCount, 1);
+  assert.equal(result.linked.reviewedByIds, undefined);
+  assert.deepEqual(await completeObligationOccurrence(f.root, options), result);
+});
+
+
+test("frozen original windows survive later governed-content cutover dates", async (context) => {
+  const f = await fixture(context);
+  await writeJson(f.ruleEntry.path, { ...f.rule, effectiveAt: "2026-07-01T00:00:00-05:00" });
+  const result = await completeObligationOccurrence(f.root, { obligationId: f.obligation.id,
+    expectedRevision: f.revision, record: f.record });
+  assert.equal(result.linked.coverage.startsOn, "2026-07-01");
+  const loaded = await loadWorkspace(f.root);
+  const policy = loaded.entries.find(({ record }) => record.id === f.obligation.policyIds[0]);
+  await writeJson(policy.path, { ...policy.record, effectiveOn: "2026-07-05" });
+  const validation = await validateWorkspace(f.root);
+  assert.equal(validation.diagnostics.some(({ code }) => code === "invalid-obligation-occurrence-schedule-binding"), false);
+  const current = await loadWorkspace(f.root);
+  const items = planObligations(current.resources, { model: current.model, asOf: "2026-07-07",
+    through: "2026-07-07", includeComplete: true }).calendarItems;
+  assert.equal(items.length, 1);
+  assert.equal(items[0].dueWindowStart, "2026-07-01");
+});
+
+test("committed partial windows survive later content activation without duplicating their cycle", async (context) => {
+  const f = await fixture(context);
+  const result = await completeObligationOccurrence(f.root, { obligationId: f.obligation.id,
+    expectedRevision: f.revision, record: f.record });
+  assert.equal(result.linked.coverage.startsOn, "2026-07-05");
+  await initializeGitWorkspace(f.root, "Retain the frozen initial partial window");
+  const loaded = await loadWorkspace(f.root);
+  const policy = loaded.entries.find(({ record }) => record.id === f.obligation.policyIds[0]);
+  await writeJson(policy.path, { ...policy.record, effectiveOn: "2026-07-10" });
+  const validation = await validateWorkspace(f.root);
+  assert.equal(validation.diagnostics.some(({ code }) => code === "invalid-obligation-occurrence-schedule-binding"), false);
+  const current = await loadWorkspace(f.root);
+  const items = planObligations(current.resources, { model: current.model, asOf: "2026-07-12",
+    through: "2026-07-12", includeComplete: true }).calendarItems;
+  assert.equal(items.length, 1);
+  assert.equal(items[0].dueWindowStart, "2026-07-05");
 });

@@ -13,7 +13,7 @@ import {
   reviewedControlConflictIds
 } from "./collection-revision.js";
 import { isSafeGitName } from "./git-name.js";
-import { getFileBufferAtRevision, getFileObjectIdAtRevision, getFilePathAtRevision, getGitSummary, getWorkingFileObjectId, hasGitRevision, isDataHistoryAncestor } from "./git.js";
+import { getDataRecordHistoryIndex, getFileAtRevision, getFileBufferAtRevision, getFileObjectIdAtRevision, getFilePathAtRevision, getGitSummary, getWorkingFileObjectId, hasGitRevision, isDataHistoryAncestor } from "./git.js";
 import { isCanonicalDataPath, resolveDataPath } from "./paths.js";
 import {
   addCalendarDays,
@@ -657,7 +657,7 @@ function validateObligationOccurrence(record, model, resources, entries, root, w
   if (rule?.type === "obligation-rule" && rule.obligationId !== record.obligationId) {
     diagnostics.push(error("wrong-obligation-rule", path, "The occurrence rule must belong to the same Obligation."));
   }
-  validateOccurrenceScheduleBinding(record, obligation, rule, resources, model, path, diagnostics);
+  validateOccurrenceScheduleBinding(record, obligation, rule, resources, model, root, path, diagnostics);
   for (const member of members) {
     if (!byId.has(member.resourceId)) continue;
     const validCompletions = [];
@@ -764,7 +764,7 @@ function validateObligationOccurrence(record, model, resources, entries, root, w
   }
 }
 
-function validateOccurrenceScheduleBinding(record, obligation, rule, resources, model, path, diagnostics) {
+function validateOccurrenceScheduleBinding(record, obligation, rule, resources, model, root, path, diagnostics) {
   if (obligation?.type !== "obligation" || rule?.type !== "obligation-rule") return;
   const start = record.coverage?.kind === "range" ? record.coverage.startsOn : null;
   const recurrence = obligationRuleRecurrence(rule);
@@ -782,7 +782,13 @@ function validateOccurrenceScheduleBinding(record, obligation, rule, resources, 
   const byId = new Map(resources.map((candidate) => [candidate.id, candidate]));
   const cutover = [obligationActivationDate(obligation, byId, rule, rule.timezone || "UTC"),
     obligationActivationDate(obligation, byId, model, rule.timezone || "UTC")].filter(Boolean).sort().at(-1);
-  if (modelSupports(model, "operating-preparation") && cutover && expectedStart < cutover && expectedEnd >= cutover) expectedStart = cutover;
+  if (modelSupports(model, "operating-preparation") && cutover && expectedStart < cutover && expectedEnd >= cutover
+    && start !== expectedStart) {
+    // Original full windows retain their published binding. A previously
+    // committed partial window also survives later governed-content cutovers.
+    expectedStart = start > expectedStart && start < cutover
+      && committedOccurrenceWindowMatches(root, record, resources) ? start : cutover;
+  }
   const expectedCutoff = rule.selector?.cutoff === "window-end" ? expectedEnd : expectedStart;
   const program = resources.find(({ type, id }) => type === "program" && id === record.programId);
   const expectedKey = `${program?.id || "program"}:${obligation.id}:${expectedStart}`;
@@ -811,6 +817,21 @@ function validateOccurrenceScheduleBinding(record, obligation, rule, resources, 
       "The occurrence must bind the exact governing rule, Program, schedule window, population cutoff, key, and owners."
     ));
   }
+}
+
+function committedOccurrenceWindowMatches(root, record, resources) {
+  const basis = record.supersedesId ? resources.find(({ id }) => id === record.supersedesId) : record;
+  if (!basis || JSON.stringify(basis.coverage) !== JSON.stringify(record.coverage)) return false;
+  const index = getDataRecordHistoryIndex(root);
+  if (!index.available) return false;
+  return (index.historiesById.get(basis.id) || []).some(({ commit, path }) => {
+    let historical;
+    try { historical = JSON.parse(getFileAtRevision(root, commit, path)); }
+    catch (error) { if (error.code === "FILEGRC_GIT_DEADLINE" || error.code === "FILEGRC_HISTORY_DEADLINE") throw error; return false; }
+    return historical?.type === "obligation-occurrence" && historical.id === basis.id
+      && ["programId", "obligationId", "ruleId", "occurrenceKey"].every((name) => historical[name] === record[name])
+      && JSON.stringify(historical.coverage) === JSON.stringify(record.coverage);
+  });
 }
 
 function completionPassesObligationActivity(record, activity) {

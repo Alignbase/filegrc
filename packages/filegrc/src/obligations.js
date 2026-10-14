@@ -209,10 +209,17 @@ export function planObligations(resources, options = {}) {
       if (schedule.endsOn && window.dueWindowStart > schedule.endsOn) break;
       if (rule && activationDate && window.dueWindowStart < activationDate) {
         if (!modelSupports(model, "operating-preparation")) continue;
-        const originalKey = `${program?.id || workspace?.id || "workspace"}:${obligation.id}:${window.dueWindowStart}`;
-        // A frozen occurrence remains authoritative. The historical-occurrence
-        // pass below preserves it instead of creating a second initial cycle.
-        if (currentOccurrence(records, originalKey, obligation.id, rule?.id, window)) continue;
+        // A frozen full or partial cycle remains authoritative after later
+        // content activation. The historical pass preserves its original key.
+        if (records.some((record) => record.type === "obligation-occurrence"
+          && record.programId === (program?.id || workspace?.id || "workspace")
+          && record.obligationId === obligation.id && record.ruleId === rule.id
+          && record.status !== "superseded" && record.coverage?.kind === "range"
+          && parseCalendarDate(record.coverage.startsOn)
+          && record.coverage.startsOn >= window.dueWindowStart && record.coverage.startsOn <= activationDate
+          && record.coverage.startsOn <= window.dueWindowEnd
+          && record.occurrenceKey === `${program?.id || workspace?.id || "workspace"}:${obligation.id}:${record.coverage.startsOn}`
+          && record.coverage.endsOn === window.dueWindowEnd)) continue;
         // Preserve the eligible remainder of an initial cycle at cutover.
         // Never allow pre-activation proof to satisfy that partial cycle.
         if (window.dueWindowEnd < activationDate) continue;
@@ -671,10 +678,10 @@ async function completeObligationOccurrenceUnlocked(input, options) {
       throw new Error(`Completion "${completionRecord.id}" already exists with different content. Use the normal record update workflow.`);
     }
     const existingOccurrence = loaded.resources.find(({ id }) => id === item.occurrenceId);
+    if (previous && existingOccurrence?.members.some((member) => member.completionResourceIds?.includes(completionRecord.id))) {
+      return { created: previous.record, linked: existingOccurrence };
+    }
     if (existingOccurrence?.status === "reconciled") {
-      if (previous && existingOccurrence.members.some((member) => member.completionResourceIds?.includes(completionRecord.id))) {
-        return { created: previous.record, linked: existingOccurrence };
-      }
       throw new Error("This occurrence is finalized. Use a superseding reconciliation to correct it.");
     }
     const completionContext = obligationCompletionContext(loaded, item);
@@ -691,6 +698,9 @@ async function completeObligationOccurrenceUnlocked(input, options) {
       completionRecord
     });
     const occurrence = scaffold.record;
+    if (!occurrence.members.some((member) => member.completionResourceIds.includes(completionRecord.id))) {
+      throw new Error("This completion does not cover any member of the occurrence population.");
+    }
     const rule = loaded.resources.find(({ id }) => id === item.ruleId);
     if (!rule?.selector && scaffold.membershipFinal && occurrence.members.length
       && occurrence.members.every((member) => member.disposition === "expected" && member.result === "passed"

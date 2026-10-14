@@ -11,7 +11,7 @@ export function historicalAttachmentPaths(state) {
   for (const [path, source] of state) {
     // Evidence metadata uses a reserved record location. Opaque attachment
     // contents cannot declare ownership, even when they resemble a record.
-    if (!/^data\/evidence\/(?:[^/]+\.json|[^/]+\/evidence\.json)$/.test(path)) continue;
+    if (!historicalJsonRecordPath(path) || !/^data\/evidence\/(?:[^/]+\.json|[^/]+\/evidence\.json)$/.test(path)) continue;
     let record;
     try { record = JSON.parse(source); } catch { continue; }
     if (record?.type !== "evidence" || typeof record.id !== "string"

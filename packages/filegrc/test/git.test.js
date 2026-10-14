@@ -3280,3 +3280,21 @@ test("historical domain state removes JSON records when attachment ownership beg
     assert.equal(plan.gitRevision, index.head);
   }
 });
+
+test("ignored JSON paths cannot declare authoritative evidence ownership", async (context) => {
+  for (const ignoredPath of [".owner.json", ".hidden/evidence.json", "content/evidence.json"]) {
+    const root = await mkdtemp(join(tmpdir(), "filegrc-ignored-evidence-owner-"));
+    context.after(() => rm(root, { recursive: true, force: true }));
+    await makeWorkspace(root);
+    const ownerPath = join(root, "data", "evidence", ignoredPath);
+    const directory = ownerPath.slice(0, ownerPath.lastIndexOf("/"));
+    await mkdir(directory, { recursive: true });
+    await mkdir(join(root, "data", "evidence", "target"), { recursive: true });
+    await writeJson(ownerPath, { id: "target", type: "evidence", filePaths: ["evidence/target/malformed.json"] });
+    await writeFile(join(root, "data", "evidence", "target", "malformed.json"), "{malformed");
+    await createGitHistory(root, [{ message: "Ignored files do not own evidence" }]);
+    const index = getDataRecordHistoryIndex(root);
+    assert.equal(index.available, false);
+    assert.match(index.error.message, /unreadable data record.*malformed.json/);
+  }
+});
