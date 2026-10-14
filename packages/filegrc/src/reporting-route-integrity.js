@@ -103,6 +103,10 @@ export function reportingRouteAssertionTiming(loaded, routeSet, eventName) {
 }
 
 export function reportingRouteFixedEvidence(records, subjectId, evidenceIds, at, timezone = "UTC", options = {}) {
+  return fixedEvidence(records, subjectId, evidenceIds, at, timezone, options);
+}
+
+function fixedEvidence(records, subjectId, evidenceIds, at, timezone, options, configurationSupport = false) {
   let date;
   let availableDate;
   try {
@@ -121,13 +125,20 @@ export function reportingRouteFixedEvidence(records, subjectId, evidenceIds, at,
     if (
       !selected.has(evidence.id)
       || evidence.type !== "evidence"
+      || (options.eventProof && ["configuration-export", "population-export"].includes(evidence.artifactKind))
       || evidence.status !== "verified"
       || !arrayValue(evidence.sourceResourceIds).includes(subjectId)
       || !verifiedEvidenceComplete(evidence, personIds)
       || (availableDate && (evidence.collectedOn > availableDate || evidence.verifiedOn > availableDate))
     ) return false;
+    if (options.eventProof) {
+      const today = localDateTimeValue(new Date(), timezone).slice(0, 10);
+      if (evidence.collectedOn > today || evidence.verifiedOn > today) return false;
+      if ([evidence.collectedAt, evidence.verifiedAt, evidence.businessEventAt, evidence.sourceGeneratedAt, evidence.generatedAt]
+        .filter(Boolean).some((value) => !isRfc3339Timestamp(value) || new Date(value) > new Date())) return false;
+    }
     const coversDate = coverageContains(evidence.coverage, date)
-      || [evidence.businessEventAt, evidence.sourceGeneratedAt].filter(Boolean).some((value) => {
+      || (options.eventProof ? [evidence.businessEventAt] : [evidence.businessEventAt, evidence.sourceGeneratedAt]).filter(Boolean).some((value) => {
         try { return localDateTimeValue(new Date(value), timezone).slice(0, 10) === date; } catch { return false; }
       });
     const filePaths = arrayValue(evidence.filePaths);
@@ -149,8 +160,62 @@ export function reportingRouteFixedEvidence(records, subjectId, evidenceIds, at,
         && authoritativeCommit
         && isDataHistoryAncestor(options.root, evidence.sourceCommit, authoritativeCommit)
       );
-    return coversDate && Boolean(hasFixedMaterial);
+    return (coversDate || configurationSupport) && Boolean(hasFixedMaterial);
   });
+}
+
+// Configuration support is a review input, not an assertion that an approval
+// event or an operating interval occurred on the capture date.
+export function reportingRouteApprovalEvidence(loaded, routeSet, evidenceIds, approvedAt, timezone) {
+  try { timezoneName(timezone); } catch { return []; }
+  if (approvedAt instanceof Date) approvedAt = approvedAt.toISOString();
+  if (!isRfc3339Timestamp(approvedAt)) return [];
+  const commit = reportingRouteEventCommit(loaded, routeSet, "approval");
+  const records = commit ? recordsAtRevision(loaded, commit).filter((record) => record.type !== "evidence"
+    || loaded.resources.some((current) => current.id === record.id && JSON.stringify(current) === JSON.stringify(record))) : loaded.resources;
+  const eventEvidence = reportingRouteFixedEvidence(
+    records.filter(({ artifactKind }) => artifactKind !== "configuration-export"),
+    routeSet.id, evidenceIds, approvedAt, timezone, { root: loaded.root, eventProof: true }
+  );
+  const proposalAt = reportingRouteCommitTimestamp(loaded, routeSet.id, routeSet.proposalCommit);
+  const decision = new Date(approvedAt);
+  if (!proposalAt || Number.isNaN(decision.getTime()) || new Date(proposalAt) > decision) return [];
+  const decisionDate = localDateTimeValue(decision, timezone).slice(0, 10);
+  const proposalDate = localDateTimeValue(new Date(proposalAt), timezone).slice(0, 10);
+  const authorityIds = new Set([records, loaded.resources].flatMap((state) => reportingRouteOngoingAuthorities(
+    state, { ...routeSet, approval: { ...routeSet.approval, timezone } }, decision, loaded.workspace.id
+  )).map(({ holderId }) => holderId));
+  const configuration = records.filter((evidence) => {
+    if (evidence.artifactKind !== "configuration-export" || evidence.sourceKind !== "file") return false;
+    const materialCommit = commit || getGitSummary(loaded.root).commit;
+    if (!materialCommit || !arrayValue(evidence.filePaths).every((path) => {
+      const committed = getFileObjectIdAtRevision(loaded.root, materialCommit, `data/${path}`);
+      return committed && committed === getWorkingFileObjectId(loaded.root, `data/${path}`);
+    })) return false;
+    // Review must concern an existing proposal and be independent of collection
+    // and ongoing channel responsibility. Date-only records retain day precision.
+    if (evidence.verifiedOn < proposalDate
+      || arrayValue(evidence.verifierIds).some((id) => authorityIds.has(id) || arrayValue(evidence.collectorIds).includes(id))) return false;
+    for (const field of ["collectedAt", "verifiedAt", "sourceGeneratedAt", "businessEventAt", "generatedAt"]) {
+      if (evidence[field] && (!isRfc3339Timestamp(evidence[field]) || new Date(evidence[field]) > decision)) return false;
+    }
+    if (evidence.verifiedAt && new Date(evidence.verifiedAt) < new Date(proposalAt)) return false;
+    for (const [timestamp, date] of [["collectedAt", "collectedOn"], ["verifiedAt", "verifiedOn"]]) {
+      if (evidence[timestamp] && localDateTimeValue(new Date(evidence[timestamp]), timezone).slice(0, 10) !== evidence[date]) return false;
+    }
+    if (evidence.collectedAt && evidence.verifiedAt && new Date(evidence.verifiedAt) < new Date(evidence.collectedAt)) return false;
+    // A fixed observation has a truthful as-of date. A period export, missing
+    // observation, or future observation cannot become configuration support.
+    if (evidence.coverage?.kind !== "as-of" || !validCalendarDate(evidence.coverage.on)
+      || evidence.coverage.on > evidence.collectedOn || evidence.coverage.on > decisionDate) return false;
+    return true;
+  });
+  const supported = fixedEvidence(
+    configuration, routeSet.id, evidenceIds, approvedAt, timezone,
+    { root: loaded.root, commit, availableAt: approvedAt,
+      personIds: records.filter(({ type }) => type === "person").map(({ id }) => id) }, true
+  );
+  return [...eventEvidence, ...supported];
 }
 
 function verifiedEvidenceComplete(evidence, personIds) {

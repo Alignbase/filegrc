@@ -40,6 +40,7 @@ import {
   reportingRouteEventAuthorityIssueAtCommit,
   reportingRouteExactHistoryEntry,
   reportingRouteFixedEvidence,
+  reportingRouteApprovalEvidence,
   reportingRouteProposalIssues,
   reportingRouteProposalAssessmentTime,
   reportingRouteRecordAtRevision,
@@ -1110,16 +1111,9 @@ function validateReportingRouteSets(loaded, byId, pathById, diagnostics) {
       diagnostics.push(error("invalid-reporting-route-order", path, "Effective time cannot precede approval time."));
     }
     if (
-      !reportingRouteFixedEvidence(
-        loaded.resources,
-        route.id,
-        approval.evidenceIds,
-        approval.approvedAt,
-        approval.timezone,
-        { root: loaded.root }
-      ).length
+      !reportingRouteApprovalEvidence(loaded, route, approval.evidenceIds, approval.approvedAt, approval.timezone).length
     ) {
-      diagnostics.push(error("missing-reporting-route-event-evidence", path, "Reporting Route approval needs linked verified, fixed Evidence covering the approval event."));
+      diagnostics.push(error("missing-reporting-route-event-evidence", path, "Reporting Route approval needs linked verified, fixed approval-event Evidence or independently reviewed configuration proof available at approval."));
     }
     const approvalCommit = reportingRouteEventCommit(loaded, route, "approval");
     if (approvalCommit && (
@@ -1154,7 +1148,7 @@ function validateReportingRouteSets(loaded, byId, pathById, diagnostics) {
           route.cancellation?.evidenceIds,
           route.cancellation?.canceledAt,
           approval.timezone,
-          { root: loaded.root }
+          { root: loaded.root, eventProof: true }
         ).length
       ) {
         diagnostics.push(error("missing-reporting-route-event-evidence", path, "Reporting Route cancellation needs linked verified, fixed Evidence covering the cancellation event."));

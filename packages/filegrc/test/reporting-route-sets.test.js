@@ -22,6 +22,7 @@ import {
   reportingRouteLanesIndependent,
   reportingRouteBindingExpectation,
   scaffoldReportingRouteSet,
+  serveWorkspace,
   scaffoldResourceMutation,
   validateWorkspace,
   writeEvidencePacket
@@ -29,6 +30,7 @@ import {
 import {
   assertionTimingAt,
   reportingRouteFixedEvidence,
+  reportingRouteApprovalEvidence,
   reportingRouteProposalIssues,
   reportingRouteRequirementsForProposal,
   reportingRouteSourceMayBecomeEffective
@@ -891,6 +893,110 @@ test("commits an exact Route Set proposal before managed approval becomes effect
   assert.ok(missingApprovalEvidence.diagnostics.some(({ code }) => code === "missing-reporting-route-event-evidence"));
   assert.ok(missingApprovalEvidence.diagnostics.some(({ code }) => code === "rewritten-finalized-attachment"));
   await writeFile(approvalEvidenceAttachment, "Retained reporting-route decision record.\n");
+});
+
+test("reviews earlier fixed configuration against an unchanged proposal without moving proof dates", async (context) => {
+  const { root, route, proposalCommit } = await cloneApprovedRouteWorkspace(context, "filegrc-configuration-review-");
+  await git(root, "reset", "--hard", proposalCommit);
+  const loaded = await loadWorkspace(root);
+  const proposed = loaded.resources.find(({ id }) => id === route.id);
+  const source = loaded.resources.find(({ id }) => id === "evidence-route-approval");
+  const evidence = {
+    ...source, artifactKind: "configuration-export",
+    collectedOn: "2021-07-31", verifiedOn: "2021-08-01",
+    collectedAt: "2021-07-31T14:00:00Z", verifiedAt: "2021-08-01T15:00:00Z",
+    collectorIds: ["person-example"], verifierIds: ["person-independent-approver-example"],
+    coverage: { kind: "as-of", on: "2021-07-31" }
+  };
+  for (const field of ["generatedAt", "timezone", "queryDescription", "populationCount", "completenessValidation", "accuracyValidation"]) delete evidence[field];
+  const evidencePath = join(root, "data/evidence/evidence-route-approval/evidence.json");
+  await writeJson(evidencePath, evidence);
+  await git(root, "add", ".");
+  await gitCommitAt(root, "2021-08-01T16:00:00Z", "Verify configuration capture");
+  await git(root, "mv", "data/reporting-route-sets/legacy-security-reporting-channels.json", `data/reporting-route-sets/${route.id}.json`);
+  const decision = "2021-08-01T17:00:00Z";
+  const candidate = { ...proposed, proposalCommit };
+  const support = async (patch = {}) => {
+    const current = await loadWorkspace(root);
+    current.resources = current.resources.map((record) => record.id === evidence.id ? { ...evidence, ...patch } : record);
+    return reportingRouteApprovalEvidence(current, candidate, [evidence.id], decision, "UTC");
+  };
+  assert.equal((await support()).length, 1);
+  for (const patch of [
+    { status: "collected" }, { verifierIds: ["person-example"] },
+    { collectorIds: ["person-route-authority-successor"], verifierIds: ["person-example"] },
+    { verifiedOn: "2021-08-02" }, { verifiedAt: "2021-08-01T18:00:00Z" },
+    { collectedAt: "2021-08-01T18:00:00Z" }, { verifiedOn: "2021-07-30" },
+    { verifiedAt: "2021-07-31T15:00:00Z" }, { collectedAt: "2021-08-01T14:00:00Z" },
+    { generatedAt: "2021-08-02T12:00:00Z" }, { sourceGeneratedAt: "2021-08-02T12:00:00Z" },
+    { sourceResourceIds: ["unrelated-route"] }, { sourceKind: "external-reference" },
+    { coverage: { kind: "as-of", on: "2021-08-02" } },
+    { coverage: { kind: "range", startsOn: "2021-07-31", endsOn: "2021-08-02" } },
+    { artifactKind: "business-record" }, { artifactKind: "population-export" }
+  ]) assert.equal((await support(patch)).length, 0, JSON.stringify(patch));
+  const attachment = join(root, "data", evidence.filePaths[0]);
+  const originalBytes = await readFile(attachment);
+  await writeFile(attachment, "Changed configuration capture.\n");
+  assert.equal((await support()).length, 0);
+  await writeFile(attachment, originalBytes);
+  // This configuration input never creates event or operating-day coverage.
+  assert.equal(reportingRouteFixedEvidence([evidence], route.id, [evidence.id], decision, "UTC",
+    { personIds: ["person-example", "person-independent-approver-example"] }).length, 0);
+  assert.equal(reportingRouteFixedEvidence([evidence], route.id, [evidence.id], "2021-07-31", "UTC",
+    { eventProof: true, personIds: ["person-example", "person-independent-approver-example"] }).length, 0);
+  const retrospective = await assessReportingRouteSets(root, { at: "2021-07-29T12:00:00Z" });
+  assert.ok(retrospective.issues.some(({ code }) => code === "uncovered-reporting-route-interval"));
+  assert.ok(!retrospective.issues.some(({ code }) => code === "invalid-reporting-route-proposal-time"));
+  const payload = {
+    routeSetId: route.id, proposalCommit, approvalAppointmentId: "appointment-route-approver",
+    approvedAt: decision, effectiveAt: decision, timezone: "UTC", evidenceIds: [evidence.id]
+  };
+  await git(root, "commit", "-m", "Restore proposal record path");
+  for (const surface of ["cli", "http"]) {
+    const copy = await mkdtemp(join(tmpdir(), `filegrc-configuration-${surface}-`));
+    context.after(() => rm(copy, { recursive: true, force: true }));
+    await execute("git", ["clone", "--local", root, copy]);
+    if (surface === "cli") {
+      const payloadPath = join(copy, "approval.json");
+      await writeJson(payloadPath, payload);
+      const cli = new URL("../bin/filegrc.js", import.meta.url).pathname;
+      const output = await execute(process.execPath, [cli, "reporting-route-set", "approve", payloadPath, "--root", copy, "--json"]);
+      assert.equal(JSON.parse(output.stdout).record.approval.approvedAt, decision);
+    } else {
+      const served = await serveWorkspace(copy, { port: 0, allowNonAuthoritativeWrites: true });
+      try {
+        const unavailable = await fetch(`${served.url}/api/reporting-route-sets/approve`, {
+          method: "POST", headers: { "content-type": "application/json", prefer: "return=minimal" },
+          body: JSON.stringify({ ...payload, approvedAt: "2021-08-01T14:00:00Z" })
+        });
+        assert.equal(unavailable.status, 400);
+        assert.match((await unavailable.json()).error, /configuration proof available at approval/);
+        const response = await fetch(`${served.url}/api/reporting-route-sets/approve`, {
+          method: "POST", headers: { "content-type": "application/json", prefer: "return=minimal" }, body: JSON.stringify(payload)
+        });
+        assert.equal(response.status, 200, await response.clone().text());
+        assert.equal((await response.json()).record.approval.approvedAt, decision);
+      } finally {
+        served.server.closeAllConnections();
+        await new Promise((resolve) => served.server.close(resolve));
+      }
+    }
+  }
+  const result = await approveReportingRouteSet(root, payload);
+  assert.equal(result.record.approval.approvedAt, decision);
+  assert.deepEqual(JSON.parse(await readFile(evidencePath, "utf8")), evidence);
+  await git(root, "add", ".");
+  await gitCommitAt(root, "2021-08-01T18:00:00Z", "Approve unchanged reporting proposal");
+  const validation = await validateWorkspace(root);
+  assert.ok(!validation.diagnostics.some(({ code }) => code === "missing-reporting-route-event-evidence"), JSON.stringify(validation.diagnostics));
+  const historical = await assessReportingRouteSets(root, { at: "2021-07-29T12:00:00Z" });
+  assert.ok(historical.issues.some(({ code }) => code === "uncovered-reporting-route-interval"));
+  assert.ok(!historical.issues.some(({ code }) => code === "invalid-reporting-route-proposal-time"));
+  const later = await assessReportingRouteSets(root, { at: "2021-08-02T12:00:00Z" });
+  assert.ok(!later.issues.some(({ code }) => code === "missing-reporting-route-event-evidence"));
+  await writeJson(evidencePath, { ...evidence, verifiedOn: "2021-08-02" });
+  const rewritten = await assessReportingRouteSets(root, { at: "2021-08-03T12:00:00Z" });
+  assert.ok(rewritten.issues.some(({ code }) => code === "missing-reporting-route-event-evidence"));
 });
 
 test("cutover requires the exact committed approval effective at the intended date", async (context) => {
@@ -1756,6 +1862,22 @@ test("approves a successor and cancels its live predecessor in one gap-free cuto
     predecessor.id,
     cutoverDate
   );
+  const cancellationPath = join(root, "data/evidence/evidence-predecessor-route-cancellation/evidence.json");
+  const cancellationProof = JSON.parse(await readFile(cancellationPath, "utf8"));
+  await writeJson(cancellationPath, { ...cancellationProof, artifactKind: "configuration-export" });
+  const successorPayload = {
+    routeSetId: successor.id, proposalCommit: successorProposal,
+    approvalAppointmentId: "appointment-route-approver", approvedAt: cutoverAt, effectiveAt: cutoverAt,
+    timezone: "UTC", evidenceIds: ["evidence-successor-route-approval"],
+    predecessorCancellationEvidenceIds: [cancellationProof.id]
+  };
+  await assert.rejects(() => approveReportingRouteSet(root, successorPayload), /predecessor cancellation event/);
+  await assert.rejects(() => cancelReportingRouteSet(root, {
+    routeSetId: predecessor.id, approvalAppointmentId: "appointment-route-approver",
+    canceledAt: cutoverAt, timezone: "UTC", evidenceIds: [cancellationProof.id], reason: "Stop channel revision."
+  }), /cancellation event/);
+  assert.equal((await loadWorkspace(root)).resources.find(({ id }) => id === successor.id).status, "proposed");
+  await writeJson(cancellationPath, cancellationProof);
   const result = await approveReportingRouteSet(root, {
     routeSetId: successor.id,
     proposalCommit: successorProposal,
