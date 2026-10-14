@@ -944,7 +944,7 @@ export async function scaffoldObligationOccurrence(input, options = {}) {
       "scopeRevision"
     ].filter((field) => predecessor.record[field] !== undefined).map((field) => [field, predecessor.record[field]])) : {}),
     members,
-    expectedCount: members.length,
+    expectedCount: members.filter(({ disposition }) => disposition === "expected").length,
     completedCount: members.filter(({ disposition, result }) => disposition === "expected" && result === "passed").length,
     ...(predecessor ? { supersedesId: predecessor.record.id } : {}),
     ownerIds: obligation.ownerIds || []
