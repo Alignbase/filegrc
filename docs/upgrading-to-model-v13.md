@@ -1,39 +1,42 @@
 # Upgrade to model v13
 
-Model v13 adds concrete operating preparation checks before activation and before FileGRC recommends observation start. It introduces optional Program operating ownership facts, an explicit schedule preparation purpose, and source-method and external-test proof facts. Existing v12 workspaces remain supported with their v12 rules until management explicitly migrates.
+Model v13 strengthens Step 3 baseline readiness and lets operating ownership reuse existing Control procedures. Published models v2 through v12 remain supported. The 0.18.1 refinement strengthens the existing v13 workflow without another model migration.
 
-Commit the current v12 workspace, inspect the preview, then apply it:
+Existing v13 repositories update the installed engine within the 0.18 release line, then inspect current readiness:
+
+```sh
+npm update filegrc
+npx filegrc program-readiness --json
+npx filegrc validate
+```
+
+From a clean, committed v12 repository, inspect the migration:
 
 ```sh
 npx filegrc migrate --to-model 13 --preview --json
 npx filegrc migrate --to-model 13 --yes --json
 npx filegrc program-readiness --json
+npx filegrc validate
 ```
 
-The migration changes only `Workspace.dataModelVersion`. It preserves IDs, Markdown, policies, approvals, schedules, candidate dates, activation dates, completed operating work and frozen occurrences. It does not fill ownership, claim a rehearsal happened, approve content or backdate evidence. The readiness output names missing facts, related records, tangible checks and CLI commands for each Program.
+Older repositories migrate one version at a time to v12, then preview and apply the v13 migration. Migration changes only `data/workspace.json`. Review that diff and commit it. It preserves Policies, Documents, Controls, reviews, operating records, proof, activation and candidate dates. It creates no compliance facts or approvals.
 
-For a Program that already operates, keep running adopted work. Perform missing checks now and use actual collection and completion dates. Existing Control collection oversight remains historical proof; the upgrade alone does not require another launch review or content activation. Current readiness can show gaps until those facts are present. New or changed content cannot activate while current preparation remains incomplete.
+Active programs keep operating on their recorded dates. Complete missing work now and reconcile each scheduled occurrence separately using its allowed date and scope. Do not repeat activation, backdate completion or replace historical results.
 
-## Prepare baseline and evidence collection
+The grouped baseline derives work from selected Controls and adopted schedules:
 
-For each scoped source, use its actual query or export instructions to retrieve a safe example or a checked zero-result report. Confirm the collector can access the source, the query covers the intended Systems or Controls, and the owner can check filters, counts and failed collection. Record the actual retrieval result through the normal Evidence lifecycle and link it from Source Coverage. Keep a named method key on Source Coverage and its rehearsal when management uses that key to distinguish extraction methods.
+- Complete a full program Risk Assessment covering all scoped Systems, active Components, material providers, active Commitments and current Risks. Retain actual results and use the existing independent risk reviewer. A narrow assessment does not cover the program.
+- Compare the current workforce roster with current approved training and policies. Keep role-specific training scoped to its adopted audience. Finish training and collect each applicable person's acknowledgement of the exact subject revision. Signed or external completions retain actual proof. Existing content bindings stay historical; record a new Attestation when new completion is needed.
+- Obtain actual human and service-account lists from scoped providers. Reconcile exports, counts, permissions and every Access Grant decision; investigate orphan accounts and missing access. Finish the existing Access Review and its normal approval. A successful retrieval rehearsal does not complete access reconciliation. Resolve removal and change decisions, or use the existing approved Exception workflow with owned remediation and a deadline.
 
-Choose collection cadence before source or artifact expiry. Reuse the authoritative preservation row when its scope and source bindings still match. Change a row only when the proof, cutoff, period or disposition needs a different decision, then use the existing whole-schedule independent approval. Preserve necessary Control proof, such as settings, approvals, results, event metadata or scoped exports. Do not retain all logs or deleted customer content by default.
+The CLI and browser show the same gaps, existing records, acceptance conditions and mutation commands. Reuse unchanged valid results when their date, scope and content meet the current obligation. Do not create generic completion checkboxes or fictional operating events.
 
-An adopted test-execution rule needs a real completed result for its actual population. An applicability or cadence review only decides whether and when a test is needed. Reuse operating results through their normal model-required actors, result, date, scope and review facts. Use a source report as Evidence when the fixed representation is the actual proof; an internally recorded result does not need an extra wrapper unless its model requires Evidence. For an external test report, name the activity in `artifactSubtype`, its actual `businessEventAt` and its reported `operatingResult`. A retrieval rehearsal does not count as executing that test.
+For ownership, inspect existing implemented Control procedures and approved program Documents for discovery, triggering, reconciliation, queue checks and escalation. Link the procedures actually used in handoff Evidence, or select `operatingOwnership.procedureResourceIds`. The legacy `procedureDocumentId` still works. Rehearse manual operation and retain dated proof covering the adopted event rules and sources.
 
-Keep baseline preparation separate from recurring completion. A result completes an occurrence only when the normal occurrence reconciliation accepts its actual date, scope, result and population. Reconcile supported empty populations instead of creating fictional subjects or tests.
+No new independent approval is required solely for either group. Risk Assessments, Access Reviews, Documents, schedule decisions and preservation changes keep their normal reviews. Material changes to approved content require that content's existing review; unchanged approvals and historical Control oversight remain valid.
 
-## Confirm operating ownership
+Retrieval and preservation still require safe proof. Retain necessary control proof under approved retention rules; these checks do not require blanket log retention or retention of deleted customer content.
 
-Record `Program.operatingOwnership` using existing People, Appointments, Teams, source Components, program Documents and Evidence:
+For each authoritative source, follow the Component's extraction instructions, confirm access and query filters, and retrieve a safe sample or checked zero export. Link dated rehearsal Evidence from Source Coverage and reuse a current approved preservation rule covering the necessary proof. Change the preservation schedule only when the proof, cutoff, period or disposition needs a new decision, then use its normal whole-schedule review.
 
-- Name who discovers real source changes and triggers the matching adopted event rules. Keep each task's queue owner on its existing Obligation.
-- Name who checks due, overdue, blocked and failed-collection work, and record the actual queue-check cadence.
-- Set the cadence for comparing source changes with recorded events and generated tasks. Document missing events, duplicates, late triggers and failed-query handling in the procedure.
-- Link the existing program procedure that describes retrieval, matching triggers, reconciliation, queue checks and escalation conditions. Reuse its unchanged exact independent approval. New or changed text follows the existing Document approval workflow.
-- Have the assigned people rehearse retrieval, compare a safe example or zero result with existing real events and task previews, open the queue and walk through an escalation condition. Do not create a fictional Policy Event. Link the dated rehearsal Evidence to the procedure, the relevant Obligation IDs and the discovery Components.
-
-Manual operation is supported. This workflow adds no blanket handoff approval or universal independent Evidence verification. Existing Evidence collection/verification and operating-record review rules still apply. Changed governed content, schedules and preservation decisions retain their existing independent approval requirements.
-
-This is a breaking model and workflow change. Before 1.0 it belongs in a minor release, with this explicit preview/apply migration. Package versions stay unchanged until release preparation.
+Inspect the first eligible work in the schedule review and activation preview: owner, population, proof, allowed completion window and justified deadline. Keep existing effective dates and frozen initial cycles. An applicability or cadence review decides whether a test is needed; a named adopted test activity still requires execution. Use a separate review workflow for applicability decisions. Reconcile each occurrence independently before reusing a baseline result. For fixed external test reports, name the activity in `artifactSubtype`, its actual `businessEventAt` and reported `operatingResult`. An export rehearsal does not execute the test.

@@ -757,7 +757,9 @@ async function sourceCoverageFindings(loaded, program) {
         message: complete
           ? "The source family has a reviewed authoritative path, valid coverage dates, retrieval ownership, and reconciliation method."
           : record
-            ? record.status === "active"
+            ? modelSupports(loaded.model, "operating-preparation")
+              ? `Inspect ${loaded.resources.find((source) => source.id === record.componentId)?.title || (record.coverageKind === "filegrc" ? "the FileGRC records" : "the actual source")} for ${family.title.toLowerCase()}. Check access, export filters and counts, collect a safe sample or checked zero result, and link the dated retrieval Evidence and approved proof-preservation rule. Finish before activation or observation start; active programs repair current gaps with actual dates.`
+              : record.status === "active"
               ? "Add missing source details and link a passed retrieval test after setting a candidate period."
               : "Finish the source decision, retrieval method, retention, validity dates, and pre-period dry run after setting a candidate period."
             : "Create a Source Coverage record and choose FileGRC, an external authoritative System, \"Zero Population\", or \"Not Applicable\".",

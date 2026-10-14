@@ -686,6 +686,7 @@ Key format: `namespace`.
 | `reconciliationCadence` | string | No | Source event reconciliation cadence |
 | `procedureDocumentId` | id | No | Discovery, triggering, reconciliation and escalation procedure References: `document` |
 | `rehearsalEvidenceIds` | array of id | No | Operating handoff rehearsal proof References: `evidence` |
+| `procedureResourceIds` | array of id | No | Existing operating procedures References: `control`, `document` |
 
 ## Common fields
 
@@ -1058,6 +1059,7 @@ When reviewing:
 - Select only the bounded Systems governed or examined by this Program.
 - Record Requirement applicability against this Program's current scope.
 - Keep unrelated inventory outside the Program. Assign source-event discovery, triggering, reconciliation, queue checks and escalation; link existing procedures and dated rehearsal proof without backdating activation.
+- Reuse substantive implemented Control procedures and unchanged approved program Documents for operating ownership. Link the procedures used by dated rehearsal Evidence, or select procedureResourceIds. Do not create a second Document or duplicate approval just for the readiness group.
 
 Path: `data/programs/<id>.json`
 
@@ -1280,6 +1282,11 @@ Policy basis: The information security policy requires people to complete assign
 
 Timing: Assign on the approved onboarding and recurring schedules and after material content changes that require acknowledgement.
 
+When reviewing:
+
+- Compare the current workforce roster with every applicable current Training, Policy and required Document. Record real completion for each person and subject; old content and pending assignments do not complete the baseline.
+- Completing an Attestation binds the current subject content, including signed and external methods. Retain actual external completion Evidence and confirm it refers to that content. Existing historical bindings are preserved; use a new Attestation for a new acknowledgement or training completion.
+
 Default sources: `policy-information-security`
 
 Path: `data/attestations/<id>.json`
@@ -1300,7 +1307,7 @@ Markdown companions:
 | `dueOn` | date | No |  |
 | `completedOn` | date | Conditional | Required when `status` is `completed`. Allowed when `status` is `completed`. |
 | `attestationMethod` | enum | Conditional | Values: `git-approval`, `signed-document`, `external-record` Required when `status` is `completed`. Allowed when `status` is `completed`. |
-| `contentRevisions` | object (`content-revisions`) | Conditional | Managed by filegrc. Required when `status` is `completed` and `attestationMethod` is `git-approval`. Allowed when `status` is `completed` and `attestationMethod` is `git-approval`. |
+| `contentRevisions` | object (`content-revisions`) | Conditional | Managed by filegrc. Required when `status` is `completed` and `attestationMethod` is `git-approval`. Allowed when `status` is `completed`. |
 | `expiresOn` | date | No |  |
 | `waivedByIds` | array of id | Conditional | References: `person` Required when `status` is `waived`. Allowed when `status` is `waived`. |
 | `waiverReason` | string | Conditional | Required when `status` is `waived`. Allowed when `status` is `waived`. |
@@ -1626,6 +1633,7 @@ When reviewing:
 - Confirm the assessment covered the real service, material dependencies, data, commitments, and recent changes.
 - Confirm the ratings and responses match management's current view of each risk.
 - Confirm no material risk was left out.
+- For the selected risk Control baseline, explicitly cover every Program System, active Component, material provider, active Commitment and current Risk. A narrow or vendor-only assessment and a retrieval rehearsal do not complete the full program assessment.
 
 Default sources: `policy-information-security`
 
@@ -1778,6 +1786,7 @@ When reviewing:
 - Confirm the review population is complete for every System and exact date or period in scope.
 - Decide whether each person and service account still needs its exact access and privilege level.
 - Confirm every removal, change, or exception has follow-up.
+- For the selected access Control baseline, reconcile actual provider human and service-account exports with Access Grants. Retain a checked population export per source, including zero counts, record every grant decision and resolve count differences before completion.
 
 Default sources: `policy-information-security`
 

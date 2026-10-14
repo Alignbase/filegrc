@@ -66,7 +66,7 @@ test("active model exposes the complete resource registry", () => {
     "source-coverage",
     "control-activity"
   ]) {
-    assert.equal(model.resources[type].guidance.reviewPoints.length, 3);
+    assert.equal(model.resources[type].guidance.reviewPoints.length, ["risk-assessment", "access-review"].includes(type) ? 4 : 3);
   }
   assert.deepEqual(model.resources.control.guidance.reviewPoints, [
     "Confirm the Control is needed for the applicable Requirements, Commitments, and service boundary.",

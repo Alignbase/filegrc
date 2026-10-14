@@ -176,7 +176,7 @@ test("v12 migration preserves operating records and leaves schedule decisions pe
   for (const entry of reviewed.entries.filter(({ record }) => ["control", "commitment", "complementary-control"].includes(record.type))) {
     entry.record.applicabilityReview = {
       decision: "applicable", rationale: "Required in the selected scope.",
-      reviewedByIds: ["person-independent-approver-example"], reviewedOn: currentCalendarDate("UTC"),
+      reviewedByIds: ["person-independent-approver-example"], reviewedOn: currentCalendarDate(reviewed.workspace.timezone),
       scopeRevision: applicabilityScopeRevision(entry.record, reviewedProgram, reviewed.resources, reviewed.model)
     };
     reviewBindings.set(entry.record.id, entry.record.applicabilityReview);

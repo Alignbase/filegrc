@@ -1,3 +1,4 @@
+import { assessProgramBaseline, currentProcedureContent } from "./operating-baseline.js";
 import { selectScopedCollectionRecords } from "./collection-scope.js";
 import { readFile } from "node:fs/promises";
 import { modelSupports } from "../model/index.js";
@@ -144,19 +145,44 @@ export async function assessOperatingPreparation(loaded, program, selectedContro
           `npx filegrc reconcile-obligation ${shell(obligation.id)} --program ${shell(program.id)} --window-start ${task.dueWindowStart} --scaffold > OCCURRENCE.json`,
           `npx filegrc reconcile-obligation ${shell(obligation.id)} OCCURRENCE.json --program ${shell(program.id)} --json`] }, program));
   }
+  if (modelSupports(loaded.model, "complete-operating-baseline")) {
+    baseline.push(...await assessProgramBaseline(loaded, program, controls, asOf, check));
+  }
   const owner = program.operatingOwnership || {};
   const obligations = loaded.resources.filter((record) => record.type === "obligation" && record.status === "active"
     && recordBelongsToProgram(record, program, byId, loaded.model));
   const events = obligations.filter((record) => (byId.get(record.activeRuleId)?.recurrence || record.recurrence)?.mode === "event");
   const eventNames = unique(events.map((record) => (byId.get(record.activeRuleId)?.recurrence || record.recurrence)?.eventType));
   const eventSources = (owner.eventSourceComponentIds || []).map((id) => byId.get(id));
-  const procedure = byId.get(owner.procedureDocumentId);
-  const procedureReady = await approvedProcedure(loaded, procedure, asOf, byId);
+  const reuseControls = modelSupports(loaded.model, "complete-operating-baseline");
+  const eventControlIds = unique(events.flatMap((event) => [...event.controlIds || [], ...byId.get(event.activeRuleId)?.controlIds || []])).filter((id) => controls.some((control) => control.id === id));
+  const validProcedureSelection = owner.procedureResourceIds === undefined || Array.isArray(owner.procedureResourceIds);
+  const procedureIds = unique([owner.procedureDocumentId, ...(reuseControls && validProcedureSelection ? owner.procedureResourceIds || [] : [])]);
+  const procedureCandidates = reuseControls ? loaded.resources.filter((record) => controls.includes(record)
+    || record.type === "document" && record.workflowScope === "program" && recordBelongsToProgram(record, program, byId, loaded.model)) : [];
+  const assessedProcedures = await Promise.all(procedureCandidates.map(async (record) => ({ record, ready: record.type === "control"
+    ? record.status === "implemented" && Boolean(record.procedureRevision) && record.procedureEffectiveOn && record.procedureEffectiveOn <= asOf
+      && currentPartyPeople(record.ownerIds || [], byId).size > 0 && await currentProcedureContent(loaded, record)
+    : await approvedProcedure(loaded, record, asOf, byId) })));
+  // Evidence selects the actual procedures used, so existing substantive work
+  // can be reused without creating another governed Document.
+  const referenced = unique((owner.rehearsalEvidenceIds || []).flatMap((id) => byId.get(id)?.sourceResourceIds || []));
+  const selectedProcedureIds = procedureIds.length ? procedureIds : referenced.filter((id) => procedureCandidates.some((record) => record.id === id));
+  const procedures = reuseControls ? selectedProcedureIds.map((id) => byId.get(id)).filter(Boolean) : [byId.get(owner.procedureDocumentId)].filter(Boolean);
+  const procedure = procedures[0];
+  const procedureReady = reuseControls ? validProcedureSelection && selectedProcedureIds.length > 0 && procedures.length === selectedProcedureIds.length
+    && procedures.every((record) => assessedProcedures.some((candidate) => candidate.record.id === record.id && candidate.ready))
+    && eventControlIds.every((id) => procedures.some((record) => record.id === id || record.type === "document"
+      && (!record.controlIds?.length || record.controlIds.includes(id))))
+    : await approvedProcedure(loaded, procedure, asOf, byId);
   const documentCandidates = loaded.resources.filter((record) => record.type === "document" && record.workflowScope === "program" && !["retired", "superseded"].includes(record.status)
     && (record.controlIds?.some((id) => controls.some((control) => control.id === id)) || record.id === owner.procedureDocumentId));
   const handoffProof = (owner.rehearsalEvidenceIds || []).map((id) => byId.get(id)).filter((record) =>
     !preparationEvidenceIssues(record, byId, asOf).length && record.readinessTest === true && record.retrievalResult === "passed"
-    && record.sourceResourceIds?.includes(procedure?.id) && record.collectedOn >= procedure.approvedOn);
+    && procedureReady && procedures.some((procedure) => record.sourceResourceIds?.includes(procedure.id)
+      && record.collectedOn >= (procedure.type === "control" ? procedure.procedureEffectiveOn : procedure.approvedOn)));
+  const procedureProof = procedures.every((procedure) => handoffProof.some((proof) => proof.sourceResourceIds?.includes(procedure.id)
+    && proof.collectedOn >= (procedure.type === "control" ? procedure.procedureEffectiveOn : procedure.approvedOn)));
   const sourceProof = eventSources.every((source) => source && handoffProof.some((record) => record.sourceComponentId === source.id || record.componentIds?.includes(source.id)));
   const eventProof = events.every((event) => handoffProof.some((record) => record.sourceResourceIds?.includes(event.id)));
   const ownershipChecks = [
@@ -172,18 +198,26 @@ export async function assessOperatingPreparation(loaded, program, selectedContro
       events.length ? `Agree when the owner compares ${eventSources.map((source) => source?.title || "the source").join(", ") || "the event-source exports"} with recorded ${eventNames.join(", ")} events and their generated tasks. Describe how missing events, duplicates, late triggers and failed queries are investigated; record the check cadence on the Program and the method in the procedure.` : "No event reconciliation is needed until an event rule is adopted.",
       "The source reconciliation has a recorded cadence and a documented method for investigating missing, duplicate or failed items.", program, "program", { fields: ["operatingOwnership.reconciliationCadence"] }, program),
     check("operating-procedure", "Review the discovery, reconciliation and escalation procedure", procedureReady,
-      `Inspect ${procedure?.title || "the existing program procedures"} for the actual source queries, matching event triggers, queue checks and escalation conditions. Reuse the listed Document if its approved text covers this work. If text is missing or changes, update its Markdown and use its normal independent Document approval; link it on ${program.title}.`,
-      "The linked program Document has substantive unchanged Markdown, no open placeholders and an existing valid independent approval of that exact revision.", procedure, "document",
-      { candidateIds: documentCandidates.map(({ id }) => id), approval: "Only new or changed Document content requires independent approval. Unchanged approvals and historical Control oversight remain valid.", fields: ["operatingOwnership.procedureDocumentId"] }, program),
-    check("handoff-rehearsal", "Rehearse manual discovery, reconciliation and queue handling", handoffProof.length > 0 && (!events.length || sourceProof && eventProof),
+      reuseControls ? `Inspect the existing Control procedures and approved program Documents listed below for actual source queries, matching event triggers, reconciliation, queue checks and escalation conditions. Reuse the procedures used in the handoff Evidence, or select their IDs in operatingOwnership.procedureResourceIds. Complete missing procedures using normal Control oversight or the Document content review. Record material changes through their existing review workflow.` : `Inspect ${procedure?.title || "the existing program procedures"} for the actual source queries, matching event triggers, queue checks and escalation conditions. Reuse the listed Document if its approved text covers this work. If text is missing or changes, update its Markdown and use its normal independent Document approval; link it on ${program.title}.`,
+      reuseControls ? "Existing implemented Control procedures have substantive Markdown and current procedure revision/effective dates; approved program Documents retain valid approval of their exact content. Procedures cover the adopted event Controls and the handoff proves their use. No separate Document or duplicate independent approval is required." : "The linked program Document has substantive unchanged Markdown, no open placeholders and an existing valid independent approval of that exact revision.", procedure, "document",
+      { candidateIds: reuseControls ? procedureCandidates.map(({ id }) => id) : documentCandidates.map(({ id }) => id), procedureIds: procedures.map(({ id }) => id),
+        candidateResults: assessedProcedures.map(({ record, ready }) => ({ resourceId: record.id, complete: Boolean(ready) })), approval: "Only new or changed Document content requires independent approval. Unchanged approvals and historical Control oversight remain valid.", fields: [reuseControls ? "operatingOwnership.procedureResourceIds" : "operatingOwnership.procedureDocumentId"] }, program),
+    check("handoff-rehearsal", "Rehearse manual discovery, reconciliation and queue handling", handoffProof.length > 0 && procedureProof && (!events.length || sourceProof && eventProof),
       `Have the assigned people retrieve a safe example or a checked zero-result export, match existing real events to their generated task preview, compare source counts with recorded events, open the Work Queue and walk through one escalation condition in ${procedure?.title || "the procedure"}. Do not create a fictional Policy Event. Retain a dated rehearsal result as Evidence, link the procedure, relevant Obligation IDs and source Components, then link that proof on the Program.`,
-      "Collected rehearsal Evidence links the approved procedure and covers each adopted event rule and discovery source. Actual collection actors and dates are recorded through the normal Evidence lifecycle.", program, "program",
+      "Collected rehearsal Evidence links the existing procedures used and covers each adopted event rule and discovery source. Actual collection actors and dates are recorded through the normal Evidence lifecycle.", program, "program",
       { fields: ["operatingOwnership.rehearsalEvidenceIds"], candidateIds: loaded.resources.filter((record) => record.type === "evidence" && record.readinessTest === true).map(({ id }) => id), evidenceIds: handoffProof.map(({ id }) => id),
         commands: [...mutationCommands("program", program, program.title, program), "npx filegrc obligations --json", "npx filegrc reconcile --preview --json", ...mutationCommands("evidence", null, `${program.title} operating handoff rehearsal`, program)],
-        approval: "No separate handoff approval is introduced. Use existing Evidence verification and the procedure's independent content approval." }, program)
+        approval: "No separate handoff approval is introduced. Use existing Evidence verification, normal Control oversight and existing independent Document content approvals." }, program)
   ];
   return { baseline, ownership: { ...owner, preparationChecks: ownershipChecks, complete: ownershipChecks.every(({ complete }) => complete),
     eventObligationIds: events.map(({ id }) => id) }, active: controls.some((control) => control.policyIds?.some((id) => byId.get(id)?.status === "active")) };
+}
+
+function schedulePreparationPurpose(model, activityType, declaredPurpose) {
+  const activityPurpose = model.obligationActivities[activityType]?.preparationPurpose;
+  // A named test activity still requires execution. Applicability decisions
+  // belong in their own review workflow, not in an execution-only queue.
+  return activityPurpose === "test-execution" ? activityPurpose : declaredPurpose || activityPurpose || "operation";
 }
 
 export function firstOperatingTasks(loaded, program, options = {}) {
@@ -206,7 +240,7 @@ export function firstOperatingTasks(loaded, program, options = {}) {
   for (const task of [...plan.calendarItems].filter((task) => task.occurrenceKey === `${program.id}:${task.obligationId}:${task.dueWindowStart}`).sort((a, b) => a.dueWindowStart.localeCompare(b.dueWindowStart))) {
     if (first.has(task.obligationId)) continue;
     const obligation = byId.get(task.obligationId); const rule = byId.get(task.ruleId);
-    const purpose = rule?.preparationPurpose || obligation?.preparationPurpose || loaded.model.obligationActivities[task.activityType]?.preparationPurpose || "operation";
+    const purpose = schedulePreparationPurpose(loaded.model, task.activityType, rule?.preparationPurpose || obligation?.preparationPurpose);
     const ruleAdopted = obligation?.status === "active" && (!rule || ["active", "retired"].includes(rule.status));
     first.set(task.obligationId, { ...task, preparationPurpose: purpose,
       adopted: ruleAdopted, requiredTest: purpose === "test-execution", executionRequired: purpose === "test-execution",
@@ -220,7 +254,7 @@ export function firstOperatingTasks(loaded, program, options = {}) {
         const rule = byId.get(step.ruleId); const obligation = byId.get(step.obligationId);
         return { ...step, population: { kind: "event-subject", subjectRules: loaded.model.policyEvents?.[event.eventType]?.subjectRules || [],
           scopeResourceIds: step.scopeResourceIds, riskLevels: step.eventRiskLevels, selector: rule?.selector || null },
-          preparationPurpose: rule?.preparationPurpose || obligation?.preparationPurpose || loaded.model.obligationActivities[step.activityType]?.preparationPurpose || "operation",
+          preparationPurpose: schedulePreparationPurpose(loaded.model, step.activityType, rule?.preparationPurpose || obligation?.preparationPurpose),
           deadlineBasis: rule?.rationale || "The governing legacy event rule defines this relative deadline.", sourceResourceIds: rule?.sourceResourceIds || step.policyIds,
           ruleApproval: rule ? { status: rule.status, approvedOn: rule.approvedOn || null, approvedByIds: rule.approvedByIds || [] } : null };
       }) })),

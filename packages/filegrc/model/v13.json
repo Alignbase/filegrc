@@ -779,7 +779,7 @@
       "pluralTitle": "People",
       "group": "people-access",
       "collection": "people",
-      "description": "People who own, approve, review, or perform program work, or receive access and training. Record each person’s actual organization job title here and keep named program authority in dated Appointments. Keep detailed personnel records in the HR system.",
+      "description": "People who own, approve, review, or perform program work, or receive access and training. Record each person\u2019s actual organization job title here and keep named program authority in dated Appointments. Keep detailed personnel records in the HR system.",
       "guidance": {
         "policyBasis": "The information security policy assigns work to named people and requires onboarding, training, role-change, and offboarding records.",
         "cadence": "Create before assigning work or access, update the job title after organizational changes, review Appointments separately, and mark inactive only after active Appointments are ended or transferred. Training follows the approved onboarding and recurring schedules.",
@@ -878,7 +878,7 @@
       "pluralTitle": "Appointments",
       "group": "governance",
       "collection": "appointments",
-      "description": "One person’s dated appointment to a named organizational or program responsibility, such as CISO, DPO, Policy Owner, or team chair. Use the Person job title for the person’s ordinary organizational position.",
+      "description": "One person\u2019s dated appointment to a named organizational or program responsibility, such as CISO, DPO, Policy Owner, or team chair. Use the Person job title for the person\u2019s ordinary organizational position.",
       "guidance": {
         "policyBasis": "The information security policy assigns named authority and accountability, while workforce procedures require responsibility changes and departures to be reviewed and transferred.",
         "cadence": "Create when management assigns a named responsibility. End the Appointment and create a new one when the holder changes. Reassign every linked responsibility before a holder departs.",
@@ -998,7 +998,7 @@
       "pluralTitle": "Service accounts",
       "group": "people-access",
       "collection": "service-accounts",
-      "description": "Non-human identities that need separate tracking. Record the account’s purpose, owner, Systems, authentication, privilege, review, and expiry here. A separate register is not required for SOC 2.",
+      "description": "Non-human identities that need separate tracking. Record the account\u2019s purpose, owner, Systems, authentication, privilege, review, and expiry here. A separate register is not required for SOC 2.",
       "guidance": {
         "policyBasis": "The information security policy requires important human and non-human identities to have an owner, protection, periodic review, and prompt removal when no longer needed.",
         "cadence": "Create before use. Review privileged, production, and other important access on the approved risk-based schedules; retire or expire unused accounts.",
@@ -2511,7 +2511,7 @@
       "collection": "frameworks",
       "description": "Published criteria sets and versions used to define the program and audit scope.",
       "guidance": {
-        "policyBasis": "The CPA examination uses the selected Framework. filegrc’s starter references provide orientation but do not replace the publisher’s official criteria.",
+        "policyBasis": "The CPA examination uses the selected Framework. filegrc\u2019s starter references provide orientation but do not replace the publisher\u2019s official criteria.",
         "cadence": "Add or retire a version only through a deliberate scope decision. Reconfirm the selected version when planning each audit."
       },
       "required": [
@@ -2579,7 +2579,7 @@
       "collection": "requirements",
       "description": "Authoritative catalog criteria selected and tailored by Program-scoped applicability decisions.",
       "guidance": {
-        "policyBasis": "The selected Framework defines the Requirements. Controls show how management addresses each applicable criterion; the publisher’s official text remains authoritative.",
+        "policyBasis": "The selected Framework defines the Requirements. Controls show how management addresses each applicable criterion; the publisher\u2019s official text remains authoritative.",
         "cadence": "Review applicability during audit planning and after material scope, service, system, or framework changes.",
         "reviewPoints": [
           "Decide whether this criterion applies to the selected service, Trust Services Categories, customer commitments, and planned audit.",
@@ -2778,7 +2778,7 @@
       "collection": "complementary-controls",
       "description": "Actions a customer or carved-out provider must perform for a linked Control to work as described. A Complementary Control record is not required for SOC 2 when no external dependency applies.",
       "guidance": {
-        "policyBasis": "The system description must explain relevant customer and subservice-organization responsibilities so readers understand where management’s Controls depend on others.",
+        "policyBasis": "The system description must explain relevant customer and subservice-organization responsibilities so readers understand where management\u2019s Controls depend on others.",
         "cadence": "Review for every audit and after material customer-responsibility, vendor, contract, integration, or service changes.",
         "reviewPoints": [
           "Confirm that the linked Control actually depends on a customer or carved-out provider action.",
@@ -3105,7 +3105,7 @@
       "pluralTitle": "Control tests",
       "group": "program",
       "collection": "control-tests",
-      "description": "A test of one Control’s design or operation for a date or period, including method, population, samples, Evidence, result, and exceptions. Management-run Control Tests are not required for SOC 2 because the CPA firm tests independently.",
+      "description": "A test of one Control\u2019s design or operation for a date or period, including method, population, samples, Evidence, result, and exceptions. Management-run Control Tests are not required for SOC 2 because the CPA firm tests independently.",
       "guidance": {
         "policyBasis": "The information security policy requires management to monitor Controls. The CPA firm performs its own independent testing for the SOC 2 examination.",
         "cadence": "Plan from the Control operation pattern, linked Obligations, risk, and audit scope. Record the exact period or as-of date, link the complete population and sampled items when sampling applies, and complete review before relying on the result.",
@@ -3306,7 +3306,7 @@
       "pluralTitle": "Findings",
       "group": "work",
       "collection": "findings",
-      "description": "A confirmed gap that needs tracking after a control test, review, risk assessment, security test, incident review, management meeting, or audit. Keep observations and report details in the source record’s Markdown. Create a Finding only when the gap needs its own owner, due date, remediation state, or verified closure. A Finding record is not required for SOC 2 when no confirmed gap needs tracking.",
+      "description": "A confirmed gap that needs tracking after a control test, review, risk assessment, security test, incident review, management meeting, or audit. Keep observations and report details in the source record\u2019s Markdown. Create a Finding only when the gap needs its own owner, due date, remediation state, or verified closure. A Finding record is not required for SOC 2 when no confirmed gap needs tracking.",
       "guidance": {
         "policyBasis": "The information security policy requires confirmed issues from monitoring, audits, incidents, scans, and reviews to remain tracked until corrective action is verified.",
         "cadence": "Create only after management confirms the gap. Use the Finding itself for straightforward remediation, add Action Items only for separate assigned tasks, and close only after remediation is verified.",
@@ -4080,7 +4080,7 @@
       "pluralTitle": "Attestations",
       "group": "governance",
       "collection": "attestations",
-      "description": "One person’s acknowledgement, training completion, certification, or assigned-work confirmation. Bind it to the exact content revision and signed Evidence when required.",
+      "description": "One person\u2019s acknowledgement, training completion, certification, or assigned-work confirmation. Bind it to the exact content revision and signed Evidence when required.",
       "guidance": {
         "policyBasis": "The information security policy requires people to complete assigned training and acknowledge applicable responsibilities.",
         "cadence": "Assign on the approved onboarding and recurring schedules and after material content changes that require acknowledgement.",
@@ -4089,6 +4089,10 @@
         ],
         "obligationActivityTypes": [
           "training"
+        ],
+        "reviewPoints": [
+          "Compare the current workforce roster with every applicable current Training, Policy and required Document. Record real completion for each person and subject; old content and pending assignments do not complete the baseline.",
+          "Completing an Attestation binds the current subject content, including signed and external methods. Retain actual external completion Evidence and confirm it refers to that content. Existing historical bindings are preserved; use a new Attestation for a new acknowledgement or training completion."
         ]
       },
       "required": [
@@ -4177,10 +4181,10 @@
             "attestationMethod": "git-approval"
           },
           "allowedWhen": {
-            "status": "completed",
-            "attestationMethod": "git-approval"
+            "status": "completed"
           },
-          "managed": true
+          "managed": true,
+          "description": "The exact subject Markdown acknowledged or used for training. Completing an attestation binds current content; external and signed records still require their actual completion proof. Historical bindings remain unchanged."
         },
         "expiresOn": {
           "type": "date"
@@ -4420,7 +4424,7 @@
       "collection": "training",
       "description": "Reusable, governed training content, including its audience, passing criteria, and linked Policies and Controls. Approve the exact content in Step 2, activate it during Step 3 implementation, define assignment schedules in Obligations, and record individual completions in Attestations.",
       "guidance": {
-        "policyBasis": "The information security policy requires security training and added role-specific instruction when a person’s responsibilities or data access warrant it.",
+        "policyBasis": "The information security policy requires security training and added role-specific instruction when a person\u2019s responsibilities or data access warrant it.",
         "cadence": "Approve the exact training content in Step 2. During Step 3, finish the linked Controls and Obligations, then activate the unchanged approved revision. Assign training through Obligations on approved onboarding and recurring schedules and after relevant material changes or incidents.",
         "reviewPoints": [
           "Write the training for the people who must follow it and state the behavior you expect.",
@@ -4850,14 +4854,15 @@
       "pluralTitle": "Risk assessments",
       "group": "risk",
       "collection": "risk-assessments",
-      "description": "One approved evaluation of a defined scope using the program’s risk method. It records participants, Systems, Vendors, conclusions, Evidence, and the Risks created or reassessed.",
+      "description": "One approved evaluation of a defined scope using the program\u2019s risk method. It records participants, Systems, Vendors, conclusions, Evidence, and the Risks created or reassessed.",
       "guidance": {
         "policyBasis": "The information security policy requires periodic and change-driven assessment of threats, assets, obligations, Controls, likelihood, impact, and treatment.",
         "cadence": "Complete on the approved risk-based schedule and after a material change that could alter risk. Record new and changed risks instead of hiding them in the summary.",
         "reviewPoints": [
           "Confirm the assessment covered the real service, material dependencies, data, commitments, and recent changes.",
           "Confirm the ratings and responses match management's current view of each risk.",
-          "Confirm no material risk was left out."
+          "Confirm no material risk was left out.",
+          "For the selected risk Control baseline, explicitly cover every Program System, active Component, material provider, active Commitment and current Risk. A narrow or vendor-only assessment and a retrieval rehearsal do not complete the full program assessment."
         ],
         "sourceResourceIds": [
           "policy-information-security"
@@ -5186,7 +5191,7 @@
         "policyBasis": "The information security policy requires review before a Vendor handles sensitive data or supports important services, plus periodic review of higher-risk providers.",
         "cadence": "Complete before access, on the approved risk-based schedule for Critical and High-risk vendors, and after material service changes or incidents.",
         "reviewPoints": [
-          "Confirm the review covers the Vendor’s current services, connected Systems, data access, criticality, subservice role, and contract terms.",
+          "Confirm the review covers the Vendor\u2019s current services, connected Systems, data access, criticality, subservice role, and contract terms.",
           "Evaluate current assurance reports, security and privacy terms, incident history, resilience, access model, and material changes.",
           "Make the approve, conditional, or reject decision match the risks and assign any needed follow-up."
         ],
@@ -5317,7 +5322,7 @@
       "pluralTitle": "Access grants",
       "group": "people-access",
       "collection": "access-grants",
-      "description": "One Person’s or Service Account’s access to one System, including business need, privilege, request, approval, provisioning, expiry, removal, ticket, and Evidence.",
+      "description": "One Person\u2019s or Service Account\u2019s access to one System, including business need, privilege, request, approval, provisioning, expiry, removal, ticket, and Evidence.",
       "guidance": {
         "policyBasis": "The information security policy requires unique identity, documented business need, least privilege, approval, authorized provisioning, and prompt removal.",
         "cadence": "Record every grant and material change. Remove access at or before notice for involuntary or high-risk departures and within 24 hours for other departures.",
@@ -5501,7 +5506,8 @@
         "reviewPoints": [
           "Confirm the review population is complete for every System and exact date or period in scope.",
           "Decide whether each person and service account still needs its exact access and privilege level.",
-          "Confirm every removal, change, or exception has follow-up."
+          "Confirm every removal, change, or exception has follow-up.",
+          "For the selected access Control baseline, reconcile actual provider human and service-account exports with Access Grants. Retain a checked population export per source, including zero counts, record every grant decision and resolve count differences before completion."
         ],
         "sourceResourceIds": [
           "policy-information-security"
@@ -6823,7 +6829,7 @@
       "pluralTitle": "Audits",
       "group": "audits",
       "collection": "audits",
-      "description": "One real SOC 2 engagement with a CPA firm, including the auditor-agreed scope and period, requests, fieldwork, Findings, opinion, and final report. Management’s candidate dates remain on the Workspace.",
+      "description": "One real SOC 2 engagement with a CPA firm, including the auditor-agreed scope and period, requests, fieldwork, Findings, opinion, and final report. Management\u2019s candidate dates remain on the Workspace.",
       "guidance": {
         "policyBasis": "A CPA firm independently examines the scoped service against the selected Framework. Management supplies the system description, Controls, operating records, and Evidence.",
         "cadence": "Create one record after a CPA firm is engaged, or earlier only when a customer deadline makes early coordination useful. Keep management candidate dates on the workspace and record the auditor-agreed Type 1 date or Type 2 period here.",
@@ -7326,7 +7332,7 @@
       "pluralTitle": "Audit requests",
       "group": "audits",
       "collection": "audit-requests",
-      "description": "One auditor request or prepared-by-client item, with its Audit, owner, due date, approved response, Requirements, Controls, Evidence, and follow-up. A separate Audit Request tracker is not required for SOC 2 when the CPA firm’s portal is authoritative.",
+      "description": "One auditor request or prepared-by-client item, with its Audit, owner, due date, approved response, Requirements, Controls, Evidence, and follow-up. A separate Audit Request tracker is not required for SOC 2 when the CPA firm\u2019s portal is authoritative.",
       "guidance": {
         "policyBasis": "Audit Requests turn fieldwork into owned, dated deliverables and preserve the exact response and Evidence supplied to the CPA firm.",
         "cadence": "Create on receipt, assign immediately, meet the auditor due date, bind evidence to the requested period and Git revision, and close only after acceptance.",
@@ -8466,7 +8472,8 @@
         "reviewPoints": [
           "Select only the bounded Systems governed or examined by this Program.",
           "Record Requirement applicability against this Program's current scope.",
-          "Keep unrelated inventory outside the Program. Assign source-event discovery, triggering, reconciliation, queue checks and escalation; link existing procedures and dated rehearsal proof without backdating activation."
+          "Keep unrelated inventory outside the Program. Assign source-event discovery, triggering, reconciliation, queue checks and escalation; link existing procedures and dated rehearsal proof without backdating activation.",
+          "Reuse substantive implemented Control procedures and unchanged approved program Documents for operating ownership. Link the procedures used by dated rehearsal Evidence, or select procedureResourceIds. Do not create a second Document or duplicate approval just for the readiness group."
         ]
       },
       "required": [
@@ -11201,6 +11208,16 @@
             "evidence"
           ],
           "label": "Operating handoff rehearsal proof"
+        },
+        "procedureResourceIds": {
+          "type": "array",
+          "items": "id",
+          "relation": [
+            "control",
+            "document"
+          ],
+          "label": "Existing operating procedures",
+          "description": "Existing implemented Control procedures or approved program Documents used for discovery, triggering, reconciliation, queue checks and escalation. Reuse unchanged content and normal reviews."
         }
       },
       "additionalProperties": false
@@ -12508,6 +12525,50 @@
         "reviewDateField": "reviewedOn",
         "executionDateField": "completedOn"
       }
-    }
+    },
+    "baselineProfiles": [
+      {
+        "id": "program-risk",
+        "controlCodes": [
+          "RSK-01"
+        ],
+        "activities": [
+          "risk-assessment"
+        ],
+        "resourceType": "risk-assessment"
+      },
+      {
+        "id": "workforce-training",
+        "controlCodes": [
+          "HR-02"
+        ],
+        "activities": [
+          "training",
+          "role-training"
+        ],
+        "resourceType": "attestation"
+      },
+      {
+        "id": "workforce-acknowledgements",
+        "controlCodes": [
+          "HR-01"
+        ],
+        "activities": [
+          "workforce-acknowledgement"
+        ],
+        "resourceType": "attestation"
+      },
+      {
+        "id": "provider-access",
+        "controlCodes": [
+          "IAM-01",
+          "IAM-02"
+        ],
+        "activities": [
+          "access-review"
+        ],
+        "resourceType": "access-review"
+      }
+    ]
   }
 }
