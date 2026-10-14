@@ -298,3 +298,35 @@ test("completion preserves exclusions and the authoritative expected-member coun
   assert.equal(result.linked.members.find(({ resourceId }) => resourceId === "asset-example").disposition, "not-applicable");
   assert.equal(result.linked.reviewedByIds, undefined);
 });
+
+test("CLI reconciliation consumes create, update, and supersession scaffolds with revision protection", async (context) => {
+  const f = await fixture(context);
+  const proof = join(f.root, "data", "control-activities", `${f.record.id}.json`);
+  await writeJson(proof, f.record);
+  const args = [new URL("../bin/filegrc.js", import.meta.url).pathname];
+  const cli = async (...command) => executeCli(runCli, process.execPath, [...args, ...command, "--root", f.root, "--json"]);
+  const payload = join(f.root, "reconciliation.json");
+  const scaffold = JSON.parse((await cli("reconcile-obligation", f.obligation.id, "--scaffold", "--window-start", "2026-07-05", "--as-of", "2026-07-07")).stdout);
+  assert.equal(scaffold.operation, "create");
+  assert.equal(scaffold.revision, null);
+  await writeJson(payload, scaffold);
+  await cli("reconcile-obligation", f.obligation.id, payload);
+  const update = JSON.parse((await cli("reconcile-obligation", f.obligation.id, "--scaffold", "--window-start", "2026-07-05")).stdout);
+  assert.equal(update.operation, "update");
+  assert.equal(typeof update.revision, "string");
+  await writeJson(payload, { ...update, revision: null });
+  await assert.rejects(cli("reconcile-obligation", f.obligation.id, payload), /revision.*required/);
+  await writeJson(payload, { ...update, revision: "stale" });
+  await assert.rejects(cli("reconcile-obligation", f.obligation.id, payload), /changed/);
+  update.record = { ...update.record, status: "reconciled", conclusion: "complete", reviewedByIds: ["person-example"], reconciledAt: "2026-07-07T16:30:00Z" };
+  await writeJson(payload, update);
+  await cli("reconcile-obligation", f.obligation.id, payload);
+  const correction = JSON.parse((await cli("reconcile-obligation", f.obligation.id, "--scaffold", "--window-start", "2026-07-05", "--correct-finalized")).stdout);
+  assert.equal(correction.operation, "supersede");
+  await writeJson(payload, { ...correction, revision: null });
+  await assert.rejects(cli("reconcile-obligation", f.obligation.id, payload), /revision.*required/);
+  await writeJson(payload, { ...correction, revision: "stale" });
+  await assert.rejects(cli("reconcile-obligation", f.obligation.id, payload), /changed/);
+  await writeJson(payload, correction);
+  await cli("reconcile-obligation", f.obligation.id, payload);
+});

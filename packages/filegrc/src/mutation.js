@@ -41,7 +41,7 @@ export function normalizeResourceMutation(value, options = {}) {
   if (value.content !== undefined && (Array.isArray(value.content) || typeof value.content !== "object" || value.content === null)) {
     throw new Error("Mutation content must be an object keyed by Markdown slot.");
   }
-  if (value.revision !== undefined && typeof value.revision !== "string") {
+  if (value.revision != null && typeof value.revision !== "string") {
     throw new Error("Mutation revision must be a string.");
   }
   if (options.requireRevision && (typeof value.revision !== "string" || value.revision.length === 0)) {
@@ -56,7 +56,7 @@ export function normalizeResourceMutation(value, options = {}) {
   return {
     record: value.record,
     content: value.content,
-    revision: value.revision,
+    revision: value.revision ?? undefined,
     contentRevisions: value.contentRevisions,
     completionContext: value.completionContext
   };
