@@ -20,7 +20,8 @@ export const MODEL_CAPABILITY_VERSIONS = Object.freeze({
   "control-collection-oversight": 11,
   "retention-schedule-approval": 11,
   "schedule-set-review": 12,
-  "operating-preparation": 13
+  "operating-preparation": 13,
+  "complete-operating-baseline": 13
 });
 
 export function modelSupports(modelOrVersion, capability) {

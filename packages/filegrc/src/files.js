@@ -1288,14 +1288,21 @@ function assertLifecycleFieldsUnchanged(previousRecord, nextRecord, fields, even
 
 async function prepareAttestationBinding(loaded, record, previousRecord = null) {
   const nextRecord = structuredClone(record);
-  const bound = record.status === "completed" && record.attestationMethod === "git-approval";
+  const bindAllMethods = modelSupports(loaded.model, "complete-operating-baseline");
+  const bound = record.status === "completed" && (bindAllMethods || record.attestationMethod === "git-approval");
   if (!bound) {
+    delete nextRecord.contentRevisions;
+    return bindAttestationReportingRoute(loaded, nextRecord);
+  }
+  if (bindAllMethods && previousRecord?.status === "completed" && !previousRecord.contentRevisions) {
+    // Upgrading or resaving old external proof cannot attest to new content.
+    // Preserve the historical absence; a new completion needs a new record.
     delete nextRecord.contentRevisions;
     return bindAttestationReportingRoute(loaded, nextRecord);
   }
   if (
     previousRecord?.status === "completed"
-    && previousRecord.attestationMethod === "git-approval"
+    && (bindAllMethods || previousRecord.attestationMethod === "git-approval")
     && previousRecord.contentRevisions
   ) {
     nextRecord.contentRevisions = structuredClone(previousRecord.contentRevisions);

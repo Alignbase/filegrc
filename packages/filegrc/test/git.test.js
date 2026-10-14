@@ -217,6 +217,13 @@ test("tokenized section and detail requests keep Git subprocess work bounded", a
   assert.ok(calls.length <= 14, `expected at most 14 Git subprocesses for a warm home navigation, received ${calls.length}: ${calls.join(", ")}`);
 
   calls = [];
+  const warmDetails = await Promise.all(["person-owner", "person-owner"].map((id) =>
+    fetch(`${served.url}/api/resource/person/${id}?history=false&workflow=true&token=${encodeURIComponent(homeBootstrap.stateToken)}`)));
+  assert.equal(warmDetails.every(({ status }) => status === 200), true);
+  assert.ok(calls.length <= 14, `warm workflow details only verify the live snapshot: ${calls.join(", ")}`);
+  assert.ok(!calls.some((call) => call.startsWith("sync:")), "Details must reuse the worker workflow, not repeat synchronous Git/workflow computation on the HTTP thread");
+
+  calls = [];
   assert.deepEqual(getFilesAtRevisions(root, [{ revision, relativePath: "data/budget-history.txt" }]), ["Historical budget fixture.\n"]);
   assert.ok(calls.some((call) => call.includes("sync:cat-file --batch")), `expected the historical batch subprocess to be observed, received: ${calls.join(", ")}`);
 
@@ -235,7 +242,7 @@ test("tokenized section and detail requests keep Git subprocess work bounded", a
   assert.ok(recoveredHistory.get("data/workspace.json").length > 0);
 });
 
-test("tokenized workflow detail rejects transient history failures and recovers", async (context) => {
+test("tokenized workflow detail rejects transient Git deadline failures and recovers", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-detail-strict-history-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   await makeComprehensiveWorkspace(root);
@@ -263,10 +270,13 @@ test("tokenized workflow detail rejects transient history failures and recovers"
   assert.ok(detailRecord);
 
   let failHistory = true;
-  const restore = setGitSubprocessObserverForTests(({ kind, args }) => {
-    if (failHistory && kind === "sync" && args.includes("log") && args.includes("--name-only")) {
-      throw new Error("transient detail history failure");
+  const restore = setGitCommandInterceptorForTests(({ args, run }) => {
+    if (failHistory && args[0] === "rev-parse" && args.includes("--verify")) {
+      const error = new Error("transient detail Git deadline");
+      error.code = "FILEGRC_GIT_DEADLINE";
+      throw error;
     }
+    return run();
   });
   context.after(restore);
 
@@ -3075,4 +3085,35 @@ test("new bootstrap tokens reuse verified Git reads and invalidate on files, HEA
   const restrictedResponse = await repository(restricted);
   assert.equal(restrictedResponse.status, 200);
   assert.equal((await restrictedResponse.json()).state.git.available, false);
+});
+
+test("cold workflow details share a section calculation and recover from an earlier caller deadline", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-detail-request-lifetime-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeComprehensiveWorkspace(root, "13");
+  await git(root, ["init", "--initial-branch=main"]);
+  await git(root, ["config", "user.name", "Test User"]);
+  await git(root, ["config", "user.email", "test@example.test"]);
+  await git(root, ["add", "."]);
+  await git(root, ["commit", "-m", "Initial workspace"]);
+  const { createFilegrcServer } = await import("../src/server.js");
+  const options = { allowNonAuthoritativeWrites: true, resourceDetailDeadlineMs: 1 };
+  const server = createFilegrcServer(root, options);
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  context.after(() => new Promise((resolve) => server.close(resolve)));
+  const url = `http://127.0.0.1:${server.address().port}`;
+  const bootstrap = await (await fetch(`${url}/api/state/bootstrap`)).json();
+  const token = encodeURIComponent(bootstrap.stateToken);
+  const path = `/api/resource/source-coverage/source-coverage-example?history=false&workflow=true&token=${token}`;
+  assert.equal((await fetch(`${url}${path}`)).status, 503);
+  options.resourceDetailDeadlineMs = 10_000;
+  const results = await Promise.all([fetch(`${url}${path}`), fetch(`${url}/api/state/workflow?token=${token}`)]);
+  assert.equal(results.every(({ status }) => status === 200), true);
+  const [detail, section] = await Promise.all(results.map((response) => response.json()));
+  const { workflowForResource } = await import("../src/workflow.js");
+  const loaded = await import("../src/workspace.js").then(({ loadWorkspace }) => loadWorkspace(root));
+  assert.deepEqual(detail.workflow, workflowForResource(section.state.workflow, "source-coverage", "source-coverage-example", loaded));
+  const entry = loaded.entries.find(({ record }) => record.id === "source-coverage-example");
+  await writeJson(join(root, "data", entry.relativePath), { ...entry.record, title: "Changed source coverage" });
+  assert.equal((await fetch(`${url}${path}`)).status, 409, "Workflow reuse must not serve stale record facts");
 });

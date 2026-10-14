@@ -1055,20 +1055,10 @@ async function loadStateSessionResource(session, token, type, id, serverOptions,
       includeHistory
     }));
     if (detail && includeWorkflow) {
-      const repository = await loadStateSessionSection(
-        session,
-        "repository",
-        serverOptions,
-        programId,
-        {},
-        deadlineAt
+      const section = await loadStateSessionSection(
+        session, "workflow", serverOptions, programId, {}, deadlineAt
       );
-      const workflow = await withGitCommandCache(session.gitCommandCache, () => assessWorkflow(session.loaded, {
-        programId,
-        historyDeadlineAt: deadlineAt,
-        strictHistory: repository?.git?.available === true
-      }));
-      detail.workflow = workflowForResource(workflow, type, id, session.loaded);
+      detail.workflow = workflowForResource(section.workflow, type, id, session.loaded);
     }
     await verifyStateSessionSnapshot(session, performance.now(), deadlineAt);
     assertCurrentStateSession(session);

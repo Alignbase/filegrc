@@ -297,7 +297,7 @@ export async function assessProgramReadiness(input, options = {}) {
   const evidenceReady = evidenceGateStages.every((current) => current.counts.action === 0);
   const stages = [
     ...evidenceGateStages,
-    await operationStage(loaded, program, scope, records, byId, asOf, evidenceReady, loaded.model, progressWindow)
+    await operationStage(loaded, program, scope, records, byId, asOf, evidenceReady, loaded.model, progressWindow, preparation)
   ];
   for (const assessment of collectionReviews.filter(({ resourceType, complete }) => (
     complete && resourceType !== "retention-schedule-item"
@@ -1965,7 +1965,11 @@ async function evidenceSourcesStage(scope, byId, model, readMarkdown) {
   return stage("sources", "Control Evidence Sources", `Complete the authoritative ${modelSupports(model, "component-sources") ? "Components" : "Systems"} for every selected control family before marking the Controls implemented.`, items);
 }
 
-async function operationStage(loaded, workspace, scope, records, byId, asOf, evidenceReady, model, progressWindow = null) {
+async function operationStage(loaded, workspace, scope, records, byId, asOf, evidenceReady, model, progressWindow = null, preparation = null) {
+  const fullRisk = preparation?.baseline.find(({ id }) => id === "baseline-program-risk");
+  const currentRiskItem = fullRisk ? item("risk-assessment", fullRisk.complete ? "complete" : "action", fullRisk.title,
+    fullRisk.complete ? fullRisk.acceptance : fullRisk.work, fullRisk.resourceId ? byId.get(fullRisk.resourceId) : { type: "risk-assessment" },
+    { preparationChecks: [fullRisk], commands: fullRisk.commands }) : riskAssessmentItem(scope, records, byId, asOf);
   const goal = workspace?.assuranceGoal || "none";
   const alreadyOperating = modelSupports(model, "operating-preparation") && (records.some((record) => record.type === "policy" && record.status === "active"
     && scope.controls.some((control) => control.policyIds?.includes(record.id))) || Boolean(progressWindow?.start));
@@ -1994,7 +1998,7 @@ async function operationStage(loaded, workspace, scope, records, byId, asOf, evi
           : "The program can operate without an audit record. Keep dated evidence from every control occurrence.",
         workspace || { type: "workspace" }
       ),
-      riskAssessmentItem(scope, records, byId, asOf)
+      currentRiskItem
     ]);
   }
 
@@ -2069,7 +2073,7 @@ async function operationStage(loaded, workspace, scope, records, byId, asOf, evi
         ]
       }
     ),
-    riskAssessmentItem(scope, records, byId, asOf)
+    currentRiskItem
   ]);
 }
 

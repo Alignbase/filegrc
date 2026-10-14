@@ -3592,7 +3592,7 @@ async function planV12ToV13Migration(loaded) {
   const workspace = { ...loaded.workspace, dataModelVersion: "13" };
   const entry = loaded.entries.find(({ record }) => record.id === workspace.id);
   const reviews = programs.map((program) => classifiedChange("review-required", program.id, "operatingOwnership",
-    "Inspect program-readiness for source retrieval, preservation and operating ownership gaps. Reuse existing records and reviews. Perform missing work with its actual current date; keep existing activation and candidate dates. Approve only changed governed content, changed schedules or retention decisions through their existing review workflow."));
+    "Inspect program-readiness for source retrieval, preservation, full-program risk assessment, current workforce training and acknowledgements, provider-access reconciliation and reusable operating procedures. Reuse existing records and reviews. Perform missing work with its actual current date; keep existing activation and candidate dates. Approve only changed governed content, changed schedules or retention decisions through their existing review workflow."));
   return {
     schemaVersion: 2, sourceModelVersion: "12", targetModelVersion: "13", ready: !unsupported.length,
     missing: [], conflicts: [], manualActions: [],

@@ -20,6 +20,14 @@ async function fixture(context) {
   return { root, loaded, program, controls };
 }
 
+test("malformed procedure selection remains actionable repair work", async (context) => {
+  const { loaded, program, controls } = await fixture(context);
+  program.operatingOwnership = { procedureResourceIds: {} };
+  const preparation = await assessOperatingPreparation(loaded, program, controls, "2026-10-13");
+  assert.equal(preparation.ownership.complete, false);
+  assert.equal(preparation.ownership.preparationChecks.find(({ id }) => id === "operating-procedure").complete, false);
+});
+
 test("preparation names missing source facts and reuses collected proof without a new independent verification", async (context) => {
   const { loaded, program, controls } = await fixture(context);
   delete program.candidateCoverage;
@@ -250,3 +258,17 @@ test("baseline work combines existing member results instead of requiring a new 
   controlTest.outcome = "failed";
   assert.equal(assessCompletionForObligation(controlTest, obligation, loaded, { asOf: "2026-10-13", memberIds: ["control-example"] }).complete, false);
  });
+
+test("an applicability label cannot substitute for executing an adopted test activity", async (context) => {
+  const { loaded, program, controls } = await fixture(context);
+  const obligation = loaded.resources.find(({ type }) => type === "obligation");
+  const rule = loaded.resources.find(({ type }) => type === "obligation-rule");
+  Object.assign(obligation, { activityType: "backup-test", scopeResourceIds: ["system-example"] });
+  Object.assign(rule, { preparationPurpose: "applicability-review", recurrence: { mode: "calendar", unit: "year", interval: 1, anchorMode: "activation" },
+    selector: { resourceType: "system", statuses: ["active"], membershipMode: "as-of", cutoff: "window-start" } });
+  const task = firstOperatingTasks(loaded, program, { effectiveOn: "2026-10-13" }).tasks.find(({ obligationId }) => obligationId === obligation.id);
+  assert.equal(task.requiredTest, true);
+  assert.equal(task.preparationPurpose, "test-execution");
+  const baseline = (await assessOperatingPreparation(loaded, program, controls, "2026-10-13")).baseline.find(({ obligationId }) => obligationId === obligation.id);
+  assert.equal(baseline.complete, false);
+});

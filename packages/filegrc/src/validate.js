@@ -2184,7 +2184,7 @@ async function validateAttestationBinding(record, model, root, byId, path, diagn
   if (
     record.type !== "attestation"
     || record.status !== "completed"
-    || record.attestationMethod !== "git-approval"
+    || (record.attestationMethod !== "git-approval" && !modelSupports(model, "complete-operating-baseline"))
     || !record.contentRevisions
   ) return;
   const expectedPaths = new Set();
