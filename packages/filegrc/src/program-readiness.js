@@ -1,3 +1,4 @@
+import { withAssessmentCache } from "./calculation-cache.js";
 import { assessOperatingPreparation, firstOperatingTasks } from "./operating-preparation.js";
 import { reportingCutoverIssues } from "./activation-readiness.js";
 import { recordBelongsToProgram } from "./program.js";
@@ -134,6 +135,10 @@ function calculateSetupActionProgress(stages, target, windowMilestoneComplete) {
 }
 
 export async function assessProgramReadiness(input, options = {}) {
+  return withAssessmentCache(() => assessProgramReadinessUncached(input, options));
+}
+
+async function assessProgramReadinessUncached(input, options = {}) {
   const loaded = input?.resources && input?.model && input?.entries
     ? input
     : await loadWorkspace(input);

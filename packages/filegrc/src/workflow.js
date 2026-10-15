@@ -1,3 +1,4 @@
+import { withAssessmentCache } from "./calculation-cache.js";
 import { resourceIndex } from "./resource-index.js";
 import { assertWorkspaceEngineVersion } from "./runtime-version.js";
 import { cp, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -90,7 +91,7 @@ const OWNER_FIELDS = [
  * the complete contract for cross-interface workflow guidance.
  */
 export async function assessWorkflow(input, options = {}) {
-  return measureTiming("workflow-assessment", () => assessWorkflowUnmeasured(input, options));
+  return withAssessmentCache(() => measureTiming("workflow-assessment", () => assessWorkflowUnmeasured(input, options)));
 }
 
 async function assessWorkflowUnmeasured(input, options = {}) {
