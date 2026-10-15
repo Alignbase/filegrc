@@ -272,3 +272,36 @@ test("an applicability label cannot substitute for executing an adopted test act
   const baseline = (await assessOperatingPreparation(loaded, program, controls, "2026-10-13")).baseline.find(({ obligationId }) => obligationId === obligation.id);
   assert.equal(baseline.complete, false);
 });
+
+test("System scan baselines and CLI reuse component-scoped execution without weakening proof or dates", async (context) => {
+  const { root, loaded, program, controls } = await fixture(context);
+  const { assessCompletionForObligation } = await import("../src/obligations.js");
+  const { resourceDataPath } = await import("../src/resource-markdown.js");
+  const obligation = loaded.resources.find(({ type }) => type === "obligation");
+  const rule = loaded.resources.find(({ type }) => type === "obligation-rule");
+  const scan = loaded.resources.find(({ type }) => type === "vulnerability-scan");
+  scan.completedAt = "2026-07-01T12:00:00Z";
+  Object.assign(obligation, { activityType: "vulnerability-scan", scopeResourceIds: ["system-example"] });
+  Object.assign(rule, { recurrence: { mode: "calendar", unit: "year", interval: 1, anchorMode: "activation" },
+    selector: { resourceType: "system", statuses: ["active"], membershipMode: "as-of", cutoff: "window-start" } });
+  const baseline = () => assessOperatingPreparation(loaded, program, controls, "2026-10-13")
+    .then(({ baseline }) => baseline.find(({ obligationId }) => obligationId === obligation.id));
+  assert.equal((await baseline()).complete, true, JSON.stringify(await baseline()));
+  assert.ok((await baseline()).resultIds.includes(scan.id));
+  for (const record of [obligation, rule, scan]) {
+    await writeFile(join(root, "data", resourceDataPath(loaded.model, record)), JSON.stringify(record));
+  }
+  const cli = JSON.parse((await captureCli(runCli, ["program-readiness", "--root", root, "--json"])).stdout);
+  const cliBaseline = cli.stages.flatMap(({ items }) => items).flatMap(({ preparationChecks }) => preparationChecks || []).find(({ id }) => id === `baseline-${obligation.id}`);
+  assert.equal(cliBaseline.complete, true);
+  const options = { asOf: "2026-10-13", memberIds: ["system-example"] };
+  scan.reviewedOn = "2099-01-01";
+  assert.equal(assessCompletionForObligation(scan, obligation, loaded, options).complete, false);
+  scan.reviewedOn = "2026-07-01";
+  scan.status = "running";
+  assert.equal(assessCompletionForObligation(scan, obligation, loaded, options).complete, false);
+  scan.status = "complete";
+  const proof = loaded.resources.find(({ type }) => type === "evidence");
+  proof.status = "withdrawn";
+  assert.equal(assessCompletionForObligation(scan, obligation, loaded, options).complete, false);
+});
