@@ -688,6 +688,30 @@ Key format: `namespace`.
 | `rehearsalEvidenceIds` | array of id | No | Operating handoff rehearsal proof References: `evidence` |
 | `procedureResourceIds` | array of id | No | Existing operating procedures References: `control`, `document` |
 
+### `provider-access-reconciliation`
+
+| Property | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `componentId` | id | Yes | References: `component` |
+| `populationEvidenceId` | id | Conditional | References: `evidence` Required when `boundary` is `direct`. Allowed when `boundary` is `direct`. |
+| `accounts` | array of object (`provider-account-decision`) | Conditional | Required when `boundary` is `direct`. Allowed when `boundary` is `direct`. |
+| `boundary` | enum | Yes | Values: `direct`, `inherited`, `no-account-store` |
+| `identityComponentId` | id | Conditional | References: `component` Required when `boundary` is `inherited`. Allowed when `boundary` is `inherited`. |
+| `boundaryEvidenceIds` | array of id | Conditional | References: `evidence` Required when `boundary` is one of `inherited`, `no-account-store`. |
+| `rationale` | string | Conditional | Required when `boundary` is one of `inherited`, `no-account-store`. |
+
+### `provider-account-decision`
+
+| Property | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `accountReference` | string | Yes |  |
+| `disposition` | enum | Yes | Values: `authorized`, `provider-managed`, `removed`, `unresolved` |
+| `subjectId` | id | No | References: `person`, `service-account` |
+| `accessGrantIds` | array of id | No | References: `access-grant` |
+| `rationale` | string | Conditional | Required when `authorizationKind` is `review-renewal`. |
+| `resolutionEvidenceIds` | array of id | No | References: `evidence` |
+| `authorizationKind` | enum | Conditional | Values: `access-grant`, `review-renewal`, `service-account-inventory` Required when `disposition` is `authorized`. Allowed when `disposition` is `authorized`. |
+
 ## Common fields
 
 | Field | Type | Required | Meaning |
@@ -1786,7 +1810,7 @@ When reviewing:
 - Confirm the review population is complete for every System and exact date or period in scope.
 - Decide whether each person and service account still needs its exact access and privilege level.
 - Confirm every removal, change, or exception has follow-up.
-- For the selected access Control baseline, reconcile actual provider human and service-account exports with Access Grants. Retain a checked population export per source, including zero counts, record every grant decision and resolve count differences before completion.
+- For the selected access Control baseline, retain actual provider populations and use sourceReconciliations to account for every row. Map human accounts to current authorization and owned service identities to Service Accounts, explain inherited identity stores and provider-managed exclusions, retain removal proof, and resolve unknown access. Account counts and Access Grant counts are separate.
 
 Default sources: `policy-information-security`
 
@@ -1812,6 +1836,7 @@ Record Markdown: shown by default as an implicit companion file.
 | `completedOn` | date | Conditional | Completed on Required when `status` is `complete`. Allowed when `status` is `complete`. |
 | `cancellation` | object (`cancellation`) | Conditional | Required when `status` is `canceled`. Allowed when `status` is `canceled`. |
 | `componentIds` | array of id | Yes | Components References: `component` |
+| `sourceReconciliations` | array of object (`provider-access-reconciliation`) | No | Provider account reconciliation |
 
 ### Systems and Vendors
 
@@ -2336,8 +2361,8 @@ Markdown companions:
 | `verifiedOn` | date | Conditional | Required when `status` is `verified`. |
 | `expiresOn` | date | No |  |
 | `sourceResourceIds` | array of id | No | Relation group: `evidence-source-record`. References: `appointment`, `document`, `obligation`, `obligation-event`, `requirement`, `commitment`, `complementary-control`, `control`, `control-test`, `finding`, `exception`, `action-item`, `policy`, `policy-review`, `attestation`, `meeting`, `training`, `risk`, `risk-assessment`, `vendor`, `vendor-review`, `access-grant`, `access-review`, `vulnerability`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request`, `source-coverage`, `control-activity`, `retention-schedule-item`, `requirement-mapping`, `obligation-rule`, `obligation-occurrence`, `reporting-route`, `reporting-route-set` |
-| `filePaths` | array of data-path | Conditional | Required when `sourceKind` is `file` and `status` is one of `collected`, `verified`, `withdrawn`. Allowed when `sourceKind` is one of `file`, `system`, `rendered-page`, `authored-record`. |
-| `externalReference` | object (`external-reference`) | Conditional | Required when `sourceKind` is `external-reference` and `status` is one of `collected`, `verified`, `withdrawn`. Allowed when `sourceKind` is one of `external-reference`, `system`. |
+| `filePaths` | array of data-path | Conditional | Required when `sourceKind` is `file` and `status` is one of `collected`, `verified`, `withdrawn`. Allowed when `sourceKind` is one of `file`, `system`, `rendered-page`, `authored-record`, `component`. |
+| `externalReference` | object (`external-reference`) | Conditional | Required when `sourceKind` is `external-reference` and `status` is one of `collected`, `verified`, `withdrawn`. Allowed when `sourceKind` is one of `external-reference`, `system`, `component`. |
 | `sourceCommit` | string | Conditional | Required when `sourceKind` is `rendered-page` and `status` is one of `collected`, `verified`, `withdrawn`. |
 | `capture` | object (`page-capture`) | Conditional | Required when `sourceKind` is `rendered-page` and `status` is one of `collected`, `verified`, `withdrawn`. Allowed when `sourceKind` is `rendered-page`. |
 | `classificationId` | id | Conditional | Classification References: `classification` Required when `status` is one of `collected`, `verified`, `withdrawn`. |

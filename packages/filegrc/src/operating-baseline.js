@@ -1,3 +1,4 @@
+import { assessProviderAccessReconciliation } from "./provider-access-reconciliation.js";
 import { readFile } from "node:fs/promises";
 import { markdownEntries, resourceDataPath } from "./resource-markdown.js";
 import { resolveDataPath } from "./paths.js";
@@ -225,21 +226,25 @@ export async function assessProgramBaseline(loaded, program, controls, asOf, mak
         });
         if (unresolvedDecisionIds.length || candidate.exceptionCount < unique(permittedExceptionIds).length) issues.push("resolved-access-decisions");
         if (invalidDecisions) issues.push("supported-grant-decisions");
-        if (candidate.populationCount !== decisions.length || candidate.exceptionCount === undefined) issues.push("reconciled-account-counts");
+        if ((!candidate.sourceReconciliations && candidate.populationCount !== decisions.length) || candidate.exceptionCount === undefined) issues.push("reconciled-account-counts");
+        const generatedOn = (proof) => proof?.generatedAt ? currentCalendarDate(timezone, new Date(proof.generatedAt)) : null;
         const exports = evidence(candidate).filter((proof) => valid(proof) && !preparationEvidenceIssues(proof, byId, asOf).length
-          && proof.artifactKind === "population-export" && proof.readinessTest !== true && permittedDate(proof.generatedAt?.slice(0, 10))
-          && proof.generatedAt.slice(0, 10) <= candidate.completedOn && proof.collectedOn >= proof.generatedAt.slice(0, 10) && proof.collectedOn <= candidate.completedOn && proof.completenessValidation?.trim() && proof.accuracyValidation?.trim());
-        const missingSourceIds = componentIds.filter((id) => !exports.some((proof) => proof.sourceComponentId === id
+          && proof.artifactKind === "population-export" && proof.readinessTest !== true && permittedDate(generatedOn(proof))
+          && generatedOn(proof) <= candidate.completedOn && proof.collectedOn >= generatedOn(proof) && proof.collectedOn <= candidate.completedOn && proof.completenessValidation?.trim() && proof.accuracyValidation?.trim());
+        const reconciliation = candidate.sourceReconciliations ? assessProviderAccessReconciliation(candidate,
+          { componentIds, exports, byId, asOf, valid, proofValid, grants, timezone }) : null;
+        if (reconciliation) issues.push(...reconciliation.issues);
+        const missingSourceIds = reconciliation?.missingSourceIds || componentIds.filter((id) => !exports.some((proof) => proof.sourceComponentId === id
           && proof.populationCount === reviewedGrants.filter((grant) => grant?.componentId === id).length));
         if (missingSourceIds.length || !await currentProcedureContent(loaded, candidate)) issues.push("actual-provider-population-and-results");
-        return { resourceId: candidate.id, complete: !issues.length, missingFacts: issues, missingScopeIds, missingGrantIds, missingSourceIds, invalidGrantIds, unresolvedDecisionIds, permittedExceptionIds, remediationIds };
+        return { resourceId: candidate.id, complete: !issues.length, missingFacts: issues, missingScopeIds, missingGrantIds, missingSourceIds, invalidGrantIds, unresolvedDecisionIds, permittedExceptionIds, remediationIds, ...(reconciliation || {}) };
       }));
       const result = assessments.find(({ complete }) => complete) || assessments.sort((a, b) => a.missingFacts.length - b.missingFacts.length)[0];
       complete = componentIds.length > 0 && result?.complete === true; record = byId.get(result?.resourceId) || record;
       title = "Reconcile actual provider access";
       work = `Obtain the actual human and service-account lists from ${componentIds.map((id) => byId.get(id)?.title || id).join(", ") || "the scoped providers"}. Check export filters and completeness, compare every account and permission with approved Access Grants and current people or Service Accounts, and decide whether each grant stays, changes or is removed. Investigate missing accounts, orphan access and count differences, record exceptions and follow-up work, then complete the existing Access Review and its normal approval. A successful export rehearsal does not perform this reconciliation.`;
-      acceptance = "A completed Access Review covers all scoped providers, retains checked actual per-source population exports (including zero counts), reconciles their counts to reviewed grants and covers all current active grants, records every grant decision and has its normal dated approval. Removal and change decisions need actual resolution, or an unexpired approved Exception with assigned remediation and a deadline. Missing or excess provider accounts remain gaps until resolved.";
-      details = { ...details, populationIds: grants.map(({ id }) => id), componentIds, candidateResults: assessments,
+      acceptance = "A completed Access Review explains every scoped provider's identity boundary and retains checked actual account populations, including real zero counts. Reconcile each account row with its accountable Person or Service Account, mapped grants, explained provider-managed exclusion, or retained removal proof. Inherited identity stores link the reconciled provider; Components without an identity store retain bounded configuration proof. Account and grant counts are separate. Cover all active grants and their decisions, resolve unknown access, and keep the existing dated review approval. Removal and change decisions need actual resolution or an unexpired approved Exception with assigned remediation and a deadline. Captured authenticated UI populations are allowed when provenance, capture time, completeness and accuracy are retained; do not label them API exports.";
+      details = { ...details, suggestedValues: { sourceReconciliations: componentIds.map((componentId) => ({ componentId, boundary: null })) }, populationIds: grants.map(({ id }) => id), componentIds, candidateResults: assessments,
         resultIds: complete ? [record.id] : [], missingFacts: result?.missingFacts || ["completed-access-reconciliation"],
         instructions: result ? [
           ...(result.missingScopeIds.length ? [`Include provider Components: ${result.missingScopeIds.map((id) => byId.get(id)?.title || id).join(", ")}.`] : []),

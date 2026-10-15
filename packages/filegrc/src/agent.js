@@ -64,7 +64,11 @@ export function buildAgentGuide(loaded, type, options = {}) {
       values: allowedValues(loaded.model, field),
       relation,
       disjointFrom: field.disjointFrom ?? null,
-      format: field.format ?? null
+      format: field.format ?? null,
+      ...(field.description ? { description: field.description } : {}),
+      ...(field.items ? { items: field.items } : {}),
+      ...(field.objectType ? { objectType: field.objectType } : {}),
+      ...(field.itemObjectType ? { itemObjectType: field.itemObjectType } : {})
     };
   });
   const requiredAtCreation = fieldList.filter(({ required: isRequired }) => isRequired);
@@ -121,6 +125,7 @@ export function buildAgentGuide(loaded, type, options = {}) {
     conditionalRequirements,
     optionalFields,
     oneOf: definition.oneOf ?? [],
+    objectTypes: referencedObjectTypes(loaded.model, fields),
     markdown,
     workflow: [
       "Inspect the recommended action, existing records, relationships, source Markdown, and available evidence. Do the research, drafting, record edits, and validation you can do yourself.",
@@ -194,6 +199,9 @@ export function scaffoldResourceMutation(loaded, type, title, options = {}) {
     ) {
       record[name] = scaffoldValue(name, field, loaded.model);
     }
+  }
+  for (const name of definition.scaffoldFields || []) {
+    if (record[name] === undefined) record[name] = scaffoldValue(name, fields[name], loaded.model);
   }
   applyModelScaffoldDefaults(record, loaded, options);
 
@@ -360,4 +368,16 @@ function humanize(value) {
     .replace(/[-_]+/g, " ")
     .replace(/([a-z])([A-Z])/g, "$1 $2")
     .replace(/^./, (letter) => letter.toUpperCase());
+}
+
+function referencedObjectTypes(model, fields) {
+  const definitions = {};
+  const visit = (field) => {
+    const name = field.objectType || field.itemObjectType;
+    if (!name || definitions[name] || !model.objectTypes[name]) return;
+    definitions[name] = model.objectTypes[name];
+    for (const child of Object.values(definitions[name].properties || {})) visit(child);
+  };
+  for (const field of Object.values(fields)) visit(field);
+  return definitions;
 }

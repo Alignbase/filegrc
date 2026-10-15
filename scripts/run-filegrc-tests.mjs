@@ -8,6 +8,7 @@ const testRoot = join(packageRoot, "test");
 const unitFiles = new Set([
   "applicability-scope.test.js",
   "completion-scope.test.js",
+  "provider-access-reconciliation.test.js",
   "favicon.test.js",
   "git-adapter.test.js",
   "id.test.js",

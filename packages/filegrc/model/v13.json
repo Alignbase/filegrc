@@ -2017,7 +2017,8 @@
               "file",
               "system",
               "rendered-page",
-              "authored-record"
+              "authored-record",
+              "component"
             ]
           }
         },
@@ -2035,7 +2036,8 @@
           "allowedWhen": {
             "sourceKind": [
               "external-reference",
-              "system"
+              "system",
+              "component"
             ]
           }
         },
@@ -5507,7 +5509,7 @@
           "Confirm the review population is complete for every System and exact date or period in scope.",
           "Decide whether each person and service account still needs its exact access and privilege level.",
           "Confirm every removal, change, or exception has follow-up.",
-          "For the selected access Control baseline, reconcile actual provider human and service-account exports with Access Grants. Retain a checked population export per source, including zero counts, record every grant decision and resolve count differences before completion."
+          "For the selected access Control baseline, retain actual provider populations and use sourceReconciliations to account for every row. Map human accounts to current authorization and owned service identities to Service Accounts, explain inherited identity stores and provider-managed exclusions, retain removal proof, and resolve unknown access. Account counts and Access Grant counts are separate."
         ],
         "sourceResourceIds": [
           "policy-information-security"
@@ -5641,6 +5643,13 @@
             "component"
           ],
           "label": "Components"
+        },
+        "sourceReconciliations": {
+          "type": "array",
+          "items": "object",
+          "itemObjectType": "provider-access-reconciliation",
+          "label": "Provider account reconciliation",
+          "description": "Reconcile each actual provider account export, including accountable identities, mapped grants, bounded provider-managed exclusions, removals and unresolved rows. Use opaque row references; retain personal account identifiers outside Git."
         }
       },
       "listFields": [
@@ -5654,6 +5663,13 @@
         "scheduledFor",
         "coverage",
         "cancellation"
+      ],
+      "scaffoldFields": [
+        "componentIds",
+        "grantDecisions",
+        "populationCount",
+        "exceptionCount",
+        "sourceReconciliations"
       ]
     },
     "vulnerability": {
@@ -11221,6 +11237,149 @@
         }
       },
       "additionalProperties": false
+    },
+    "provider-access-reconciliation": {
+      "additionalProperties": false,
+      "required": [
+        "componentId",
+        "boundary"
+      ],
+      "properties": {
+        "componentId": {
+          "type": "id",
+          "relation": [
+            "component"
+          ]
+        },
+        "populationEvidenceId": {
+          "type": "id",
+          "relation": [
+            "evidence"
+          ],
+          "requiredWhen": {
+            "boundary": "direct"
+          },
+          "allowedWhen": {
+            "boundary": "direct"
+          }
+        },
+        "accounts": {
+          "type": "array",
+          "items": "object",
+          "itemObjectType": "provider-account-decision",
+          "requiredWhen": {
+            "boundary": "direct"
+          },
+          "allowedWhen": {
+            "boundary": "direct"
+          }
+        },
+        "boundary": {
+          "type": "enum",
+          "values": [
+            "direct",
+            "inherited",
+            "no-account-store"
+          ]
+        },
+        "identityComponentId": {
+          "type": "id",
+          "relation": [
+            "component"
+          ],
+          "requiredWhen": {
+            "boundary": "inherited"
+          },
+          "allowedWhen": {
+            "boundary": "inherited"
+          }
+        },
+        "boundaryEvidenceIds": {
+          "type": "array",
+          "items": "id",
+          "relation": [
+            "evidence"
+          ],
+          "requiredWhen": {
+            "boundary": [
+              "inherited",
+              "no-account-store"
+            ]
+          }
+        },
+        "rationale": {
+          "type": "string",
+          "requiredWhen": {
+            "boundary": [
+              "inherited",
+              "no-account-store"
+            ]
+          }
+        }
+      }
+    },
+    "provider-account-decision": {
+      "additionalProperties": false,
+      "required": [
+        "accountReference",
+        "disposition"
+      ],
+      "properties": {
+        "accountReference": {
+          "type": "string",
+          "description": "Unique opaque row reference into the retained export. Keep personal account identifiers outside Git."
+        },
+        "disposition": {
+          "type": "enum",
+          "values": [
+            "authorized",
+            "provider-managed",
+            "removed",
+            "unresolved"
+          ]
+        },
+        "subjectId": {
+          "type": "id",
+          "relation": [
+            "person",
+            "service-account"
+          ]
+        },
+        "accessGrantIds": {
+          "type": "array",
+          "items": "id",
+          "relation": [
+            "access-grant"
+          ]
+        },
+        "rationale": {
+          "type": "string",
+          "requiredWhen": {
+            "authorizationKind": "review-renewal"
+          }
+        },
+        "resolutionEvidenceIds": {
+          "type": "array",
+          "items": "id",
+          "relation": [
+            "evidence"
+          ]
+        },
+        "authorizationKind": {
+          "type": "enum",
+          "values": [
+            "access-grant",
+            "review-renewal",
+            "service-account-inventory"
+          ],
+          "requiredWhen": {
+            "disposition": "authorized"
+          },
+          "allowedWhen": {
+            "disposition": "authorized"
+          }
+        }
+      }
     }
   },
   "obligationActivities": {
