@@ -1534,7 +1534,10 @@ test("moves low-frequency record utilities into the header overflow menu", () =>
   assert.match(APP_STYLES, /\.record-utility-dialog\{width:min\(680px/);
 });
 
-test("keeps long metadata labels separate from their values", () => {
+test("keeps metadata labels separate and structured details out of the narrative sidebar", () => {
+  assert.match(APP_SCRIPT, /metadataPanel: hasStructuredMetadata \? "" : recordFieldsPanel/);
+  assert.match(APP_STYLES, /\.detail-grid>\.detail-metadata-wide\{grid-column:1\/-1\}/);
+  assert.match(APP_STYLES, /\.metadata>div:has\(>dd>\.object-value-list\)\{grid-template-columns:minmax\(0,1fr\)\}/);
   assert.match(APP_STYLES, /\.metadata>div\{grid-template-columns:minmax\(140px,1fr\) minmax\(0,2\.5fr\)\}/);
   assert.match(APP_STYLES, /\.metadata dt\{min-width:0;overflow-wrap:anywhere\}/);
 });
