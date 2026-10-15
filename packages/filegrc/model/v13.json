@@ -11267,12 +11267,10 @@
           "type": "array",
           "items": "object",
           "itemObjectType": "provider-account-decision",
-          "requiredWhen": {
-            "boundary": "direct"
-          },
           "allowedWhen": {
             "boundary": "direct"
-          }
+          },
+          "description": "One decision for each actual retained account row. Empty or omitted only when the checked provider export count is zero."
         },
         "boundary": {
           "type": "enum",

@@ -293,6 +293,14 @@ test("provider baseline reconciles actual account rows separately from grants an
   review.sourceReconciliations[0].accounts[2].disposition = "provider-managed";
   proof.readinessTest = true;
   assert.equal((await baseline("provider-access")).complete, false, "A retrieval rehearsal is not an actual account population");
+  proof.readinessTest = false;
+  Object.assign(grant, { status: "revoked", deprovisionedOn: "2026-07-01", deprovisionedByIds: [get("person").id], deprovisionReason: "Removed before the checked zero population" });
+  service.status = "disabled";
+  review.grantDecisions = []; review.populationCount = 0; proof.populationCount = 0;
+  review.sourceReconciliations[0].accounts = [];
+  assert.equal((await baseline("provider-access")).complete, true, "A genuine checked zero population needs no invented account row");
+  proof.populationCount = 1;
+  assert.equal((await baseline("provider-access")).complete, false, "An empty account list cannot hide a positive export count");
 });
 
 test("provider reconciliation guide and scaffold expose nested model facts without inventing account decisions", async (context) => {

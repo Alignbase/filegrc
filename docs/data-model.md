@@ -694,7 +694,7 @@ Key format: `namespace`.
 | --- | --- | --- | --- |
 | `componentId` | id | Yes | References: `component` |
 | `populationEvidenceId` | id | Conditional | References: `evidence` Required when `boundary` is `direct`. Allowed when `boundary` is `direct`. |
-| `accounts` | array of object (`provider-account-decision`) | Conditional | Required when `boundary` is `direct`. Allowed when `boundary` is `direct`. |
+| `accounts` | array of object (`provider-account-decision`) | No | Allowed when `boundary` is `direct`. |
 | `boundary` | enum | Yes | Values: `direct`, `inherited`, `no-account-store` |
 | `identityComponentId` | id | Conditional | References: `component` Required when `boundary` is `inherited`. Allowed when `boundary` is `inherited`. |
 | `boundaryEvidenceIds` | array of id | Conditional | References: `evidence` Required when `boundary` is one of `inherited`, `no-account-store`. |
