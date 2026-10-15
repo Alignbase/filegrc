@@ -1546,6 +1546,35 @@ test("renders nested relationship values without exposing raw JSON", () => {
   assert.match(APP_STYLES, /\.object-value-list\{display:grid;gap:7px\}/);
 });
 
+test("nested model detail renders account decisions, typed facts and escaped text recursively", async () => {
+  const source = APP_SCRIPT.slice(APP_SCRIPT.indexOf("function formatObjectArray"), APP_SCRIPT.indexOf("function workQueueScheduleStatus"));
+  const model = JSON.parse(await readFile(new URL("../model/v13.json", import.meta.url), "utf8"));
+  const escape = (value) => String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll('"', "&quot;");
+  const context = {
+    state: { model }, esc: escape, humanize: value => value, properCase: value => value,
+    pluralize: value => value, formatReference: value => '<a href="#' + escape(value) + '">' + escape(value) + '</a>',
+    formatCalendarDate: value => 'date:' + value, formatLocalDateTime: value => 'time:' + value
+  };
+  const rows = [{ componentId: "component-provider", boundary: "direct", populationEvidenceId: "evidence-population", accounts: [
+    { accountReference: "row-1<script>", disposition: "authorized", subjectId: "person-owner", authorizationKind: "access-grant", accessGrantIds: ["access-grant-owner"] },
+    { accountReference: "row-2", disposition: "authorized", subjectId: "service-account-job", authorizationKind: "service-account-inventory" },
+    { accountReference: "row-3", disposition: "provider-managed", rationale: "Bounded <provider> role" }
+  ] }];
+  context.rows = rows;
+  const output = vm.runInNewContext(source + '\nformatObjectArray(rows, "provider-access-reconciliation")', context);
+  for (const value of ["row-1&lt;script>", "row-2", "row-3", "#person-owner", "#service-account-job", "#access-grant-owner", "Bounded &lt;provider> role"]) assert.ok(output.includes(value), value);
+  assert.doesNotMatch(output, /\[object Object\]|<script>|<provider>/);
+  model.objectTypes["nested-detail-test"] = { properties: { detail: { type: "object", objectType: "typed-detail-test" }, unknown: { type: "object", objectType: "json-map" } } };
+  model.objectTypes["typed-detail-test"] = { properties: { on: { type: "date" }, at: { type: "timestamp" }, enabled: { type: "boolean" }, labels: { type: "array", items: "string" } } };
+  context.rows = [{ detail: { on: "2026-10-15", at: "2026-10-15T12:00:00Z", enabled: false, labels: ["<unsafe>", "plain"] }, unknown: { note: "<escaped>" } }];
+  const typed = vm.runInNewContext(source + '\nformatObjectArray(rows, "nested-detail-test")', context);
+  for (const value of ["date:2026-10-15", "time:2026-10-15T12:00:00Z", "No", "&lt;unsafe>", "&lt;escaped>"]) assert.ok(typed.includes(value), value);
+  assert.doesNotMatch(typed, /\[object Object\]|<unsafe>|<escaped>/);
+  assert.ok(typed.includes("note"), "Typed dictionaries retain their keys and values");
+  const compact = vm.runInNewContext(source + '\nformatObjectArray(rows, "nested-detail-test", true)', context);
+  assert.ok(compact.includes("date:2026-10-15"));
+});
+
 test("uses model-driven controls for fixed-shape object fields", () => {
   assert.match(APP_SCRIPT, /schema\?\.additionalProperties === false/);
   assert.match(APP_SCRIPT, /function objectPropertyFields\(schema, value = \{\}\)/);
