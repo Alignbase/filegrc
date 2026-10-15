@@ -5,8 +5,12 @@ const sizes = new WeakMap();
 const MAX_RESULTS = 200_000;
 const limits = new WeakMap();
 
-// Only explicit, verified read snapshots may retain results. Ordinary domain
-// calls continue to observe mutable inputs and files on every invocation.
+// Only explicit, verified read snapshots may retain results between calls.
+// Ordinary assessments share work within one invocation, then discard it.
+export function withAssessmentCache(callback) {
+  return hasCalculationCache() ? callback() : withCalculationCache(new WeakMap(), callback);
+}
+
 export function withCalculationCache(cache, callback, { maxResults = MAX_RESULTS } = {}) {
   limits.set(cache, maxResults);
   return calculations.run(cache, callback);
