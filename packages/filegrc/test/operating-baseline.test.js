@@ -265,3 +265,53 @@ test("role training and external audiences stay specific to their adopted subjec
   assert.ok(result.subjectPopulations.find(({ subjectId }) => subjectId === roleCourse.id).personIds.includes("person-independent-approver-example"));
   assert.ok(!result.subjectPopulations.find(({ subjectId }) => subjectId === general.id).personIds.includes("person-independent-approver-example"));
 });
+
+test("provider baseline reconciles actual account rows separately from grants and exposes the same CLI guidance", async (context) => {
+  const { root, loaded, get, baseline } = await fixture(context, "IAM-01");
+  const review = get("access-review"), grant = get("access-grant"), proof = get("evidence"), service = get("service-account");
+  const component = get("component");
+  Object.assign(service, { componentIds: [component.id], ownerIds: [get("person").id] });
+  Object.assign(review, { completedOn: "2026-07-01", approvedOn: "2026-07-02", populationCount: 3, exceptionCount: 0,
+    grantDecisions: [{ accessGrantId: grant.id, decision: "retain" }], sourceReconciliations: [{ componentId: component.id,
+      boundary: "direct", populationEvidenceId: proof.id, accounts: [
+        { accountReference: "row-1", disposition: "authorized", subjectId: grant.subjectId, authorizationKind: "access-grant", accessGrantIds: [grant.id] },
+        { accountReference: "row-2", disposition: "authorized", subjectId: service.id, authorizationKind: "service-account-inventory" },
+        { accountReference: "row-3", disposition: "provider-managed", rationale: "Provider-owned service role with no customer-managed human login; reviewed trust boundary" }
+      ] }] });
+  Object.assign(proof, { artifactKind: "population-export", sourceKind: "component", sourceComponentId: component.id,
+    collectedOn: "2026-07-01", verifiedOn: "2026-07-01", generatedAt: "2026-07-01T10:00:00Z", timezone: "UTC", externalReference: { url: "https://evidence.example.com/provider-accounts" }, queryDescription: "Authenticated UI observation of all account classes; all pages inspected; owner confirmed completeness",
+    populationCount: 3, completenessValidation: "Compared all account classes and page totals with provider UI", accuracyValidation: "Checked account owners and permissions against provider detail",
+    coverage: { kind: "as-of", on: "2026-07-01" } });
+  delete proof.filePaths;
+  assert.equal((await baseline("provider-access")).complete, true, JSON.stringify((await baseline("provider-access")).candidateResults));
+  for (const record of [review, proof, service]) await writeFile(join(root, "data", resourceDataPath(loaded.model, record)), JSON.stringify(record));
+  const cli = JSON.parse((await captureCli(runCli, ["program-readiness", "--root", root, "--json"])).stdout);
+  const cliCheck = cli.stages.flatMap(({ items }) => items).flatMap(({ preparationChecks }) => preparationChecks || []).find(({ id }) => id === "baseline-provider-access");
+  assert.equal(cliCheck.complete, true);
+  review.sourceReconciliations[0].accounts[2].disposition = "unresolved";
+  assert.equal((await baseline("provider-access")).complete, false);
+  review.sourceReconciliations[0].accounts[2].disposition = "provider-managed";
+  proof.readinessTest = true;
+  assert.equal((await baseline("provider-access")).complete, false, "A retrieval rehearsal is not an actual account population");
+  proof.readinessTest = false;
+  Object.assign(grant, { status: "revoked", deprovisionedOn: "2026-07-01", deprovisionedByIds: [get("person").id], deprovisionReason: "Removed before the checked zero population" });
+  service.status = "disabled";
+  review.grantDecisions = []; review.populationCount = 0; proof.populationCount = 0;
+  review.sourceReconciliations[0].accounts = [];
+  assert.equal((await baseline("provider-access")).complete, true, "A genuine checked zero population needs no invented account row");
+  proof.populationCount = 1;
+  assert.equal((await baseline("provider-access")).complete, false, "An empty account list cannot hide a positive export count");
+});
+
+test("provider reconciliation guide and scaffold expose nested model facts without inventing account decisions", async (context) => {
+  const { root } = await fixture(context, "IAM-01");
+  const guide = JSON.parse((await captureCli(runCli, ["guide", "access-review", "--root", root, "--json"])).stdout);
+  assert.equal(guide.optionalFields.find(({ name }) => name === "sourceReconciliations").itemObjectType, "provider-access-reconciliation");
+  assert.ok(guide.objectTypes["provider-account-decision"].properties.authorizationKind.values.includes("review-renewal"));
+  assert.ok(guide.objectTypes["provider-access-reconciliation"].properties.boundary.values.includes("inherited"));
+  const scaffold = JSON.parse((await captureCli(runCli, ["scaffold", "access-review", "--title", "Provider reconciliation", "--root", root])).stdout);
+  assert.deepEqual(scaffold.record.sourceReconciliations, []);
+  assert.deepEqual(scaffold.record.grantDecisions, []);
+  assert.equal(scaffold.record.populationCount, null);
+  assert.notEqual(scaffold.record.status, "complete");
+});
