@@ -1284,6 +1284,29 @@ export function completionMatchesMember(record, field, resourceId, model, byId, 
   const spec = modelSupports(model, "operating-preparation") && model?.operatingPreparation?.completionRecords?.[record.type];
   if (!spec) return false;
   if (spec.scopeFields.some((name) => includes(record[name]))) return true;
+  // Components carry their System membership through systemUses. A Component
+  // result can cover that System, but a broad System result never proves that
+  // every individual Component was tested. Explicit System scope wins over
+  // inference, and a shared Component needs proof naming the intended System.
+  const scopeIds = spec.scopeFields.flatMap((name) => Array.isArray(record[name]) ? record[name] : [record[name]]);
+  if (byId?.get(resourceId)?.type === "system") {
+    if (Array.isArray(record.systemIds) && record.systemIds.length
+      || scopeIds.some((id) => byId.get(id)?.type === "system")) return false;
+    const componentFields = spec.scopeFields.filter((name) =>
+      model.resources[record.type]?.fields[name]?.relation?.includes("component"));
+    const hasBoundedProof = (componentId) => (record.evidenceIds || []).some((id) => {
+      const proof = byId.get(id);
+      return proof?.type === "evidence" && proof.systemIds?.includes(resourceId)
+        && proof.componentIds?.includes(componentId);
+    });
+    const scopedComponents = componentFields.flatMap((name) => Array.isArray(record[name]) ? record[name] : [record[name]]).filter(Boolean);
+    if (scopedComponents.length) return scopedComponents.some((id) => {
+      const component = byId.get(id);
+      if (component?.type !== "component" || !Array.isArray(component.systemUses)) return false;
+      const systemIds = [...new Set(component.systemUses.map((use) => use.systemId))];
+      return systemIds.includes(resourceId) && (systemIds.length === 1 || hasBoundedProof(component.id));
+    });
+  }
   const proofFields = ["sourceResourceIds", ...model.operatingPreparation.completionRecords.evidence.scopeFields];
   return spec.allowProofScope === true && (record.evidenceIds || []).some((id) =>
     proofFields.some((name) => includes(byId?.get(id)?.[name])));
