@@ -1,14 +1,12 @@
 # FileGRC
 
-![FileGRC, run a SOC 2 program as files in Git](docs/filegrc-social-preview.png)
+[![FileGRC, run a SOC 2 program as files in Git](docs/filegrc-social-preview.png)](https://filegrc.com)
 
-Run a SOC 2 program as files in Git.
+Build and run your SOC 2 program with free software, files you own, and your own agents.
 
-FileGRC gives founder-led engineering teams one place to adopt policies, implement controls, run recurring work, collect evidence, and prepare an audit.
+FileGRC is a Git-native GRC workspace for founders and engineers. Adopt policies, track control work, collect evidence, and prepare audit responses in one repository. The local software is free, open source, and [MIT licensed](https://github.com/Alignbase/filegrc/blob/main/LICENSE).
 
-It is open source, MIT licensed, and runs locally.
-
-Use a dedicated private repository for your FileGRC workspace. The browser commits and pushes each saved program change, so a standalone repository keeps the compliance audit trail separate from application development history.
+## Get started
 
 ```sh
 npx create-filegrc@latest company-grc
@@ -17,115 +15,45 @@ npm run validate
 npm run serve
 ```
 
-Requires Node.js 20 or newer and Git.
+Requires Node.js 20 or newer and Git. Use a dedicated private repository for your program. Browser saves commit and push changes; agents and CLI users manage Git themselves.
 
-Run FileGRC through the version installed by `npm ci`. The CLI, local server, and write APIs accept stable versions in the same compatibility line, minor before 1.0 and major from 1.0 onward, subject to workspace model and API support. Hosted applications can run one tested patch in that line without changing repository version files. Unsupported lines, prereleases, and malformed versions are rejected. Older revision bindings remain readable after an engine upgrade, so an unchanged review does not need to be repeated or rewritten just to adopt a new engine.
+## Your program, in files
 
-Existing model v10 workspaces must run `npx filegrc migrate --to-model 11 --preview --json` after installing a model v11 package. The migration removes the old per-Control implementation review fields. Owners can record implementation directly, while periodic Control oversight uses a Collection Review. Independent Policy, Document, and Training approvals do not change. Older workspaces migrate one model version at a time. See the [model v11 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v11.md).
+JSON holds structured records. Markdown holds policies, procedures, and long-form work. Git supplies the change history, so you can review diffs, trace decisions, and retrieve earlier versions.
 
-## How it works
+Use the local web app, your editor, or an agent. They work with the same files and validation rules. Your program stays readable and usable offline.
 
-The repository is the program. There is no separate application database.
+[![FileGRC SOC 2 program overview](docs/filegrc-home.png)](https://filegrc.com)
 
-- **JSON** holds records that FileGRC validates, filters, and connects.
-- **Markdown** holds policies, procedures, plans, minutes, and narratives.
-- **Git** exclusively supplies authors, commit timestamps, revisions, diffs, renames, prior versions, and commit messages.
+FileGRC guides you through scope, policy approval, control implementation, ongoing work, and audit preparation. Start with a Security-focused SOC 2 program, then expand when your scope calls for it. Starter records are proposals to review against how your company actually works.
 
-Use the same source through the local web app, a text editor, the CLI, or CI. Browser and CLI actions call the same rules, so engineers and agents see the same validation and readiness results.
+## Give your agents the whole picture
 
-New workspaces use `main` as the authoritative browser branch. Browser saves fetch and fast-forward from `origin`, validate the change, and create a focused local commit. The UI then unlocks for navigation while Git push continues in the background. Other writes remain locked until the Repository status confirms `Synced`; a failed push keeps the local commit and offers Retry sync. Draft, proposed, approved, and retired records all live on that branch because record status, not a Git branch, represents approval.
+An agent can inspect a policy, follow its linked controls and evidence, and check what the program needs next. Local files, model guides, and [machine-readable CLI output](https://github.com/Alignbase/filegrc/tree/main/packages/filegrc#readme) let it maintain records and work through tasks without navigating a browser.
 
-Detached and feature-branch checkouts are read-only in the browser by default. Developers can run `npx filegrc serve --allow-non-authoritative-writes` for local task-worktree edits; that override never commits or pushes. CLI and agent workflows continue to manage Git explicitly.
+Ask your agent to:
 
-## One path from setup to audit
+- Find the next setup task and carry it through validation.
+- Prepare an access review using the current owners, scope, and evidence sources.
+- Draft a security questionnaire response with sources for each answer and gaps clearly flagged.
+- Assemble an audit evidence packet from the agreed scope and period.
 
-![FileGRC SOC 2 program overview](docs/filegrc-home.png)
+The goal is a program running in days and supported responses in minutes. Actual timing depends on your scope, existing controls, current records, and accessible evidence. Human decisions and required reviews remain part of the work.
 
-1. **Define scope.** Set program ownership, choose the criteria, define the service, Systems, and providers in scope, review any supplemental requirement mappings, and commit the reporting-channel proposals needed by the planned program.
-2. **Approve policies.** Review Policies, program Documents, and Training in one table. Have someone other than the owner approve each exact revision. Approval does not mean the linked Controls are implemented.
-3. **Implement controls.** Implement the approved requirements, define how each Control works, connect its Evidence sources, and configure Obligations. Use one Activation box to put eligible approved Policies, Documents, and Training into use together, with separate approval and activation revisions.
-4. **Operate the program.** Run scheduled and event-driven work, maintain risk, and retain dated evidence.
-5. **Audit.** Set up the CPA engagement, support fieldwork, and prepare the evidence packet.
+## Stay ready as the program runs
 
-A Policy says what the company commits to do by the date it takes effect. Approval means the company accepts those commitments. It does not prove the work is done. Controls and operating records describe how the company meets them and provide the proof.
+The Work Queue connects recurring reviews, policy events, owners, and deadlines. Readiness checks show missing work before an evidence period or audit, while evidence packets bring together records, attachments, Git history, and indexes.
 
-FileGRC does not infer technical implementation from Policy prose. Configuration facts belong in Controls, Components, Systems, Obligations, and Evidence. A Control may be implemented while its governing Policy, required program Document, or Training is approved but inactive. Enabled Obligations remain dormant until all of their governing content is active and effective.
+[![FileGRC audit readiness](docs/filegrc-audit.png)](https://filegrc.com)
 
-Control implementation includes evidence-source and Obligation readiness. Use `npx filegrc program-readiness --json` to see each Control's launch state and next practical check. Implemented means the control works now for its named scope, with a real owner, procedure, usable evidence source, and enabled work rules. It does not claim a future cycle or event has already happened. When the Step 3 preparation work is ready, one eligible reviewer records the implemented Control collection review. Management then activates the unchanged approved Policies, program Documents, and Training together with `npx filegrc activate-content --scaffold`. The individual Policy activation command remains available. Evidence Readiness requires a current Control collection review and active required content before the candidate period can begin. Retain real retrieval rehearsals and required baseline results during Step 3. During Step 4, create operating Evidence only after the work produces a real record or artifact. Create engagement terms, management assertions, representation letters, and other Audit Documents in Step 5, link each to one Audit, approve it, then activate it with `npx filegrc activate-documents --audit AUDIT_ID --scaffold`.
+Optional [FileGRC Autopilot](https://app.filegrc.com/guide) adds hosted owner reminders and policy-driven escalation when the local app is closed. The local software remains free; audit fees, source systems, and paid services are separate.
 
-The Program Overview shows what is done, what is blocked, and what to do next.
+## Go deeper
 
-## FileGRC Autopilot
+Read the [workspace guide](https://github.com/Alignbase/filegrc/blob/main/packages/create-filegrc/template/AGENTS.md) for setup, Git, approvals, CLI workflows, and upgrades. Read the [record workflow guide](https://github.com/Alignbase/filegrc/blob/main/packages/create-filegrc/template/data/AGENTS.md) before changing program records. Browse the [data model](https://github.com/Alignbase/filegrc/blob/main/docs/data-model.md), or run `npx filegrc guide --json` to discover the installed commands and model.
 
-Run your SOC 2 program automatically.
+FileGRC manages GRC records and audit evidence. Your infrastructure, identity, monitoring, endpoint, backup, and other source systems operate the controls and produce evidence. Keep secrets and personal data that may need erasure out of Git.
 
-FileGRC Autopilot handles owner reminders and policy-driven escalation while your team performs the work and keeps the records in Git. It is optional, costs $19.99 USD per connected repository per month, and is operated by Alignbase Inc. The local product remains free and MIT licensed.
+Your team performs the control work and reviews responses before submission. An independent CPA firm performs the SOC 2 examination, judges evidence sufficiency, and issues the report. Using FileGRC alone does not establish compliance.
 
-At the end of Step 3, after owners, contacts, procedures, evidence sources, enabled Obligations, and the Control collection review are ready, choose **FileGRC Autopilot** as the recommended next action before activating approved Documents, Training, and Policies. Choose the secondary action, **Continue to content activation without Autopilot**, to use the local Work Queue instead. Neither choice changes activation or readiness checks.
-
-
-1. Follow the [Autopilot setup guide](https://app.filegrc.com/guide) to connect your existing private repository through the FileGRC GitHub App and activate billing.
-2. Start with email. Keep Person contacts current in Git so reminders reach owners even when the local app is closed.
-3. Add Slack if useful. Confirm suggested Person links and review delivery policy in the Autopilot dashboard.
-
-The Step 4 Work Queue keeps the **FileGRC Autopilot** offer available if you continue locally and decide to connect later. `npx filegrc obligations` and `npx filegrc workflow` expose the offer in text and JSON output for engineers and agents.
-
-Run `npx filegrc automation` to inspect local connection setup, or add `--open` to open the dashboard or setup guide. A valid `.filegrc/hosted-automation.json` marker replaces signup offers with dashboard links. Live status remains unknown; removing the marker does not disconnect service.
-
-The [Autopilot dashboard](https://app.filegrc.com) manages connections, billing, person linking, and delivery health. It does not host the editor, perform control work, create real evidence, or judge evidence sufficiency. Check current service availability before subscribing; email production approval and broad Slack distribution remain launch gates.
-
-Program records, owners, Person email addresses, and dates remain authoritative in Git. Autopilot stores notification settings and Person-to-Slack links in its database. Manage those settings in the [Autopilot dashboard](https://app.filegrc.com). Keep credentials out of Git. Users perform control work, record events, and retain evidence locally.
-
-## The routine work stays connected
-
-- **Work Queue** turns policy schedules and follow-up into upcoming, blocked, due, and overdue work, with named blockers when a task cannot proceed.
-- **Policy Events** create the right tasks for hiring, departures, incidents, vendor changes, and other events.
-- **Program Readiness** checks whether you can begin a reliable evidence period.
-- **Period Health** checks role, policy, control, source, obligation, and Git-history continuity across candidate and formal Type 2 dates.
-- **Audit Readiness** checks the engagement, period, documents, evidence, and Type 2 populations.
-- **Evidence packets** collect the scoped records, attachments, history, indexes, and checksums for delivery.
-
-![FileGRC audit readiness](docs/filegrc-audit.png)
-
-The Security starter uses one consolidated Information Security Policy with familiar policy-family headings, one Security Incident and Recovery Plan, one focused Data Retention Schedule, one Security Awareness Training record, and the Controls and Obligations needed for the Security common criteria. The headings make common customer and Vendor questionnaire topics easy to locate, but they do not prove implementation or create separate policy documents. Confirm the applicable Control status and Evidence before answering a questionnaire.
-
-These records are proposals, so review them against how your company actually works. Suggested retention periods and schedule cadences are starting points, not adopted requirements. Add Privacy, Confidentiality, Availability, Processing Integrity, employment, anti-bribery, or other broader GRC material only when the company chooses to expand the scope.
-
-## Built for engineers and agents
-
-The browser is helpful, but it is not required. An agent can discover the model, inspect valid relationships, create records, complete scheduled work, trigger events, and check the result from the CLI.
-
-```sh
-npx filegrc program-path --next --json
-npx filegrc reconcile --preview --json
-npx filegrc reconcile --dismiss --candidate FINGERPRINT --reviewer PERSON_ID --reviewed-on YYYY-MM-DD --rationale "Why no real event occurred" --yes --json
-npx filegrc workflow --json # full checklist when needed
-npx filegrc period-health --require-healthy --json
-npx filegrc review-applicability decisions.json --preview --json
-npx filegrc review-collection person --scaffold
-npx filegrc guide risk-assessment --json
-npx filegrc obligations --json
-npx filegrc complete OBLIGATION_ID --scaffold --window-start YYYY-MM-DD --completed-on YYYY-MM-DD
-npx filegrc program-readiness --summary --json
-npx filegrc audit-readiness audit-id --json
-npx filegrc evidence-packet --audit audit-id
-npm run check:milestone
-```
-
-Read `AGENTS.md` and `data/AGENTS.md` inside a generated workspace for the full headless workflow.
-
-## Clear boundaries
-
-FileGRC manages GRC records and audit evidence. Your workforce, identity, source control, infrastructure, monitoring, endpoint, backup, training, signature, procurement, and vendor systems still operate the controls and produce source evidence.
-
-The independent CPA firm still selects samples, tests controls, evaluates exceptions, decides whether evidence is sufficient, and issues the SOC 2 report.
-
-For a SOC 2 engagement, scope all 33 Security Common Criteria, all nine Description Criteria, and any optional Trust Services Categories included in the report. The Security Common Criteria remain mandatory. Record any criterion from an optional category judged not relevant under DC8 instead of omitting a Description Criterion.
-
-Do not put plaintext credentials, private keys, tokens, recovery codes, or personal data that may need erasure into Git. Source-controlled ciphertext is allowed only under the Information Security Policy's approved encryption, separate-key, access, and rotation conditions. The editable local server has no authentication and binds to loopback by default.
-
-Learn more at [filegrc.com](https://filegrc.com) or [view the source on GitHub](https://github.com/Alignbase/filegrc).
-
-Model v12 requires a complete Program Obligation schedule-set review before activation. Use `npx filegrc review-collection obligation --program PROGRAM_ID --scaffold`, record adopted rules, replacements, retired duplicates, and intentionally inapplicable proposals, then preview and save the exact revision with an independent reviewer. Reporting Channel Sets need independent approval in Step 1; Step 3 verifies their effective coverage and usability at cutover. Existing model v11 workspaces preview `npx filegrc migrate --to-model 12 --preview --json`. See the [model v12 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v12.md).
-
-Model v13 checks completed full-program risk assessment, current workforce training and policy acknowledgements, and actual provider-access reconciliation when selected Controls require them. Retrieval rehearsals prove collection access; they do not complete baseline work. Operating ownership reuses substantive Control procedures and unchanged approved program Documents without a separate Document or duplicate approval. Run `npx filegrc program-readiness --json` for exact gaps, candidates and normal mutation commands shared with the browser. Existing v13 repositories update the engine within the 0.18 release line; no new model migration is needed. Existing v12 repositories preview `npx filegrc migrate --to-model 13 --preview --json` before applying the upgrade. Active programs repair current gaps with actual dates and preserve historical activation and reviews. Material content, schedule and retention changes keep their normal reviews. See the [model v13 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v13.md).
+[Learn more](https://filegrc.com) · [Source code](https://github.com/Alignbase/filegrc) · [Report an issue](https://github.com/Alignbase/filegrc/issues)
