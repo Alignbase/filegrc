@@ -90,8 +90,8 @@ test("hosted policy files do not change local readiness; CLI exposes the same op
   }
 });
 
-test("template introduction and agent instructions preserve email-first optional setup and Git boundaries", async () => {
-  for (const name of ["README.md", "AGENTS.md"]) {
+test("workspace introduction and agent instructions preserve email-first optional setup and Git boundaries", async () => {
+  for (const name of ["WORKSPACE.md", "AGENTS.md"]) {
     const text = await readFile(new URL("../../create-filegrc/template/" + name, import.meta.url), "utf8");
     assert.match(text, /FileGRC Autopilot/);
     assert.match(text, /Run your SOC 2 program automatically\./);
