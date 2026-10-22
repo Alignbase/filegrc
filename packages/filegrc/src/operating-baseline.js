@@ -43,8 +43,14 @@ export async function assessProgramBaseline(loaded, program, controls, asOf, mak
   };
   const actualPeople = (ids, date) => ids?.length > 0 && ids.every((id) => personWasActiveOn(byId.get(id), date));
   const evidence = (record) => (record.evidenceIds || []).map((id) => byId.get(id));
-  const proofValid = (record) => evidence(record).length > 0 && evidence(record).every((proof) =>
-    valid(proof) && !preparationEvidenceIssues(proof, byId, asOf).length && proof.readinessTest !== true);
+  const proofValid = (record) => {
+    const proofs = evidence(record);
+    // A rehearsal may support an assessment without proving operation itself.
+    // Keep every linked artifact valid and require actual operating proof too.
+    return proofs.length > 0 && proofs.every((proof) =>
+      valid(proof) && !preparationEvidenceIssues(proof, byId, asOf).length)
+      && proofs.some((proof) => proof.readinessTest !== true);
+  };
   const timezone = loaded.workspace?.timezone || "UTC";
   const assessedAt = asOf === currentCalendarDate(timezone) ? new Date().toISOString() : timestampFromLocalDateTime(`${asOf}T23:59:59`, timezone);
   const calendar = planObligations(loaded.resources, { model: loaded.model, programId: program.id, asOf, from: asOf, through: asOf, includeComplete: true }).calendarItems;

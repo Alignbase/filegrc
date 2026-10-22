@@ -5,7 +5,7 @@ import { assessReportingRouteSets } from "./reporting-route-sets.js";
 import { reportingRouteSourceAppliesToProgram } from "./reporting-route-integrity.js";
 import { timestampFromLocalDateTime } from "./time.js";
 
-export async function reportingCutoverIssues(loaded, updates) {
+export async function reportingCutoverIssues(loaded, updates, { operatingAsOf } = {}) {
   if (!modelSupports(loaded.model, "schedule-set-review")) return [];
   const sources = updates.filter((record) => ["policy", "document", "commitment", "risk"].includes(record.type)
     && Array.isArray(record.reportingRouteRequirements) && record.reportingRouteRequirements.length);
@@ -17,6 +17,11 @@ export async function reportingCutoverIssues(loaded, updates) {
     let effectiveAt;
     try { effectiveAt = timestampFromLocalDateTime(`${source.effectiveOn || source.statusTransition?.changedOn || new Date().toISOString().slice(0, 10)}T00:00:00`, loaded.workspace?.timezone || "UTC"); }
     catch { issues.push({ code: "invalid-cutover-date", sourceId: source.id, message: "The intended content effective date and timezone must be valid." }); continue; }
+    const original = loaded.resources.find(({ id }) => id === source.id);
+    // Current preparation may repair a legacy operating gap. Actual activation
+    // still uses the original cutover, and historical period checks stay strict.
+    if (operatingAsOf && original?.status === "active" && original.effectiveOn
+      && new Date(effectiveAt) <= new Date(operatingAsOf)) effectiveAt = operatingAsOf;
     for (const program of future.resources.filter((record) => record.type === "program" && record.status !== "retired"
       && reportingRouteSourceAppliesToProgram(source, record, future.resources))) {
       for (const requirement of source.reportingRouteRequirements) {
