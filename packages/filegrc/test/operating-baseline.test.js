@@ -80,6 +80,36 @@ test("full risk baseline rejects narrow, unfinished, unreviewed and rehearsal-on
   assert.equal((await baseline("program-risk")).complete, false);
 });
 
+test("risk baseline accepts supporting rehearsals alongside real proof without weakening evidence validity", async (context) => {
+  const { loaded, get, baseline } = await fixture(context, "RSK-01");
+  const assessment = get("risk-assessment");
+  const initial = await baseline("program-risk");
+  for (const [field, ids] of Object.entries(initial.scope)) assessment[field] = ids;
+  Object.assign(assessment, { assessmentKind: "enterprise-risk", completedOn: "2026-07-01", approvedOn: "2026-07-02",
+    assessorIds: ["person-example"], reviewerIds: ["person-independent-approver-example"] });
+  const actual = get("evidence");
+  const rehearsal = { ...actual, id: "evidence-supporting-rehearsal", readinessTest: true };
+  loaded.resources.push(rehearsal);
+  assessment.evidenceIds = [actual.id, rehearsal.id];
+  assert.equal((await baseline("program-risk")).complete, true);
+  assessment.evidenceIds.reverse();
+  assert.equal((await baseline("program-risk")).complete, true, "Proof order does not change eligibility");
+  assessment.evidenceIds = [rehearsal.id];
+  assert.equal((await baseline("program-risk")).complete, false, "Rehearsals alone never prove completion");
+  assessment.evidenceIds = [actual.id, rehearsal.id];
+  actual.status = "draft";
+  assert.equal((await baseline("program-risk")).complete, false, "A rehearsal cannot substitute for unfinished operating proof");
+  actual.status = "collected";
+  rehearsal.expiresOn = "2026-10-12";
+  assert.equal((await baseline("program-risk")).complete, false, "Expired supporting artifacts still need resolution");
+  delete rehearsal.expiresOn;
+  rehearsal.collectorIds = ["person-not-present"];
+  assert.equal((await baseline("program-risk")).complete, false, "Invalid supporting artifacts cannot be ignored");
+  rehearsal.collectorIds = actual.collectorIds;
+  assessment.evidenceIds.push("evidence-missing");
+  assert.equal((await baseline("program-risk")).complete, false, "Broken references never establish completion");
+});
+
 test("selected Controls choose baseline work, and current workforce needs current subject completion", async (context) => {
   const { loaded, get, baseline, controls } = await fixture(context, "HR-02");
   const training = get("training");
