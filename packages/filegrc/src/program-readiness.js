@@ -265,10 +265,15 @@ async function assessProgramReadinessUncached(input, options = {}) {
     const content = [...requiredPolicies(scope, byId), ...requiredGovernedDocuments(scope, records, byId, loaded.model)]
       .filter(({ status }) => ["approved", "active"].includes(status))
       .map((record) => ({ ...record, status: "active", effectiveOn: record.effectiveOn || record.proposedEffectiveOn || asOf }));
-    const issues = await reportingCutoverIssues(loaded, content);
+    const issues = await reportingCutoverIssues(loaded, content, { operatingAsOf: asOfTime });
+    const repairingOperatingContent = content.some((record) => record.reportingRouteRequirements?.length
+      && byId.get(record.id)?.status === "active" && record.effectiveOn <= asOf);
     if (content.some((record) => record.reportingRouteRequirements?.length)) controlStage.items.push(item(
-      "reporting-channel-cutover", issues.length ? "action" : "complete", "Verify reporting channels at cutover",
-      issues[0]?.message || "The committed approved channels are usable and cover the intended content effective date.",
+      "reporting-channel-cutover", issues.length ? "action" : "complete",
+      repairingOperatingContent ? "Verify reporting channels for current operation" : "Verify reporting channels at cutover",
+      issues[0]?.message || (repairingOperatingContent
+        ? "The committed approved channels are usable for current operation and any planned cutover. Historical coverage remains subject to period checks; current repair does not backdate approval."
+        : "The committed approved channels are usable and cover the intended content effective date."),
       { type: "reporting-route-set" }, { issues, commands: ["npx filegrc reporting-route-sets --json", "npx filegrc activate-content --scaffold"] }
     ));
   }

@@ -1019,6 +1019,32 @@ test("cutover requires the exact committed approval effective at the intended da
   assert.ok((await reportingCutoverIssues(stale, [update])).some(({ code }) => code === "changed-reporting-route-proposal"));
 });
 
+test("current readiness accepts repaired legacy reporting coverage while activation and history stay strict", async (context) => {
+  const { root, route } = await cloneApprovedRouteWorkspace(context, "filegrc-current-route-repair-");
+  const loaded = await loadWorkspace(root);
+  loaded.model = loadModel("13");
+  const policy = loaded.resources.find(({ id }) => id === "policy-example");
+  assert.equal(policy.status, "active");
+  const before = JSON.stringify(policy);
+  assert.ok((await reportingCutoverIssues(loaded, [policy])).some(({ code }) => code === "uncovered-reporting-route-interval"));
+  await assert.rejects(requireReportingCutover(loaded, [policy]), { code: "FILEGRC_ACTIVATION_NOT_READY" });
+  const operatingAsOf = "2021-09-01T12:00:00Z";
+  assert.deepEqual(await reportingCutoverIssues(loaded, [policy], { operatingAsOf }), []);
+  assert.equal(JSON.stringify(policy), before, "Current checks never rewrite activation facts");
+  const readiness = await assessProgramReadiness(loaded, { asOf: "2021-09-01" });
+  const check = readiness.stages.flatMap(({ items }) => items).find(({ id }) => id === "reporting-channel-cutover");
+  assert.equal(check.status, "complete");
+  assert.match(check.message, /does not backdate approval/);
+  const absent = { ...loaded, resources: loaded.resources.filter(({ id }) => id !== route.id) };
+  assert.ok((await reportingCutoverIssues(absent, [policy], { operatingAsOf })).length, "Current approved channels remain required");
+  const proposed = { ...loaded, resources: loaded.resources.map((record) => record.id === policy.id ? { ...record, status: "approved" } : record) };
+  assert.ok((await reportingCutoverIssues(proposed, [policy], { operatingAsOf })).length, "New activation cannot use the repair path");
+  const historical = await assessReportingRouteSets(loaded, { at: "2021-07-29T12:00:00Z" });
+  assert.ok(historical.issues.some(({ code }) => code === "uncovered-reporting-route-interval"));
+  const early = await assessProgramReadiness(loaded, { asOf: "2021-07-29" });
+  assert.equal(early.stages.flatMap(({ items }) => items).find(({ id }) => id === "reporting-channel-cutover").status, "action");
+});
+
 test("rejects unsupported backfilled route decisions", async (context) => {
   const { root, byId, route } = await cloneApprovedRouteWorkspace(context, "filegrc-route-decisions-");
   await git(root, "switch", "-c", "late-route-requirement");
