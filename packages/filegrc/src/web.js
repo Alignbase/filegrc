@@ -2339,11 +2339,11 @@ function renderObligations(main, params = new URLSearchParams()) {
     : "";
   const activeOperation = operationLocked
     ? (acceptedTriggers.length ? renderEvents(acceptedTriggers, "active", "Trigger the matching workflow when an event occurs. filegrc adds every required action to the Work Queue with its owner and deadline.") : "") +
-      (currentItems.length ? renderQueue(currentItems, ["overdue", "due", "blocked", "upcoming"], "Complete work the program has already adopted. Each card shows its due window, source, and next action.") : "")
+      (currentItems.length ? renderQueue(currentItems, ["upcoming", "due", "overdue", "blocked"], "Complete work the program has already adopted. Each card shows its due window, source, and next action.") : "")
     : "";
   const setupTriggers = operationLocked ? proposedTriggers : orderedTriggers;
   const setupItems = operationLocked ? proposedItems : plan.items;
-  const setupStatuses = operationLocked ? ["proposed"] : ["overdue", "due", "blocked", "upcoming", "proposed"];
+  const setupStatuses = operationLocked ? ["proposed"] : ["upcoming", "due", "overdue", "blocked", "proposed"];
   const operationSetupOpen = operationLocked ? "" : " open";
   const operationSetupSummary = operationLocked
     ? '<summary>Preview ' + proposedTriggers.length + ' proposed Policy Events and ' + proposedItems.length + ' proposed Work Queue items</summary>'
