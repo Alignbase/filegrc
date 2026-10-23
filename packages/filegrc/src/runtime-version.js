@@ -17,15 +17,18 @@ export function runtimeCompatibilityLine(version) {
 export function assessRuntimeCompatibility(runtimeVersion, repositoryVersion, options = {}) {
   const supportedLine = runtimeCompatibilityLine(runtimeVersion);
   const repositoryLine = runtimeCompatibilityLine(repositoryVersion);
+  // 0.19 adds optional nonmaterial-amendment records. It reads existing 0.18
+  // workspaces unchanged; 0.18 runtimes must reject the new release line.
+  const supportedRepositoryLines = supportedLine === "0.19.x" ? ["0.18.x", "0.19.x"] : [supportedLine];
   const dataModelVersion = options.dataModelVersion ?? null;
   const requiredApiContractVersion = Object.hasOwn(options, "requiredApiContractVersion") ? options.requiredApiContractVersion : RUNTIME_API_CONTRACT_VERSION;
   const reason = !supportedLine ? "invalid-runtime-version"
     : repositoryVersion !== null && !repositoryLine ? "invalid-repository-version"
-      : repositoryLine && repositoryLine !== supportedLine ? "unsupported-compatibility-line"
+      : repositoryLine && !supportedRepositoryLines.includes(repositoryLine) ? "unsupported-compatibility-line"
         : dataModelVersion !== null && !SUPPORTED_MODEL_VERSIONS.includes(dataModelVersion) ? "unsupported-workspace-model"
           : requiredApiContractVersion !== RUNTIME_API_CONTRACT_VERSION ? "unsupported-api-contract" : null;
   return { compatible: reason === null, installedVersion: runtimeVersion, repositoryVersion,
-    supportedLine, repositoryLine, dataModelVersion, apiContractVersion: RUNTIME_API_CONTRACT_VERSION,
+    supportedLine, supportedRepositoryLines, repositoryLine, dataModelVersion, apiContractVersion: RUNTIME_API_CONTRACT_VERSION,
     supportedModelVersions: [...SUPPORTED_MODEL_VERSIONS], reason };
 }
 

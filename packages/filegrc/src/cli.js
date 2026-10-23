@@ -69,6 +69,7 @@ import {
   proposeReportingRouteSet,
   scaffoldReportingRouteSet
 } from "./reporting-route-sets.js";
+import { amendedResourceView, scaffoldNonmaterialAmendment, saveNonmaterialAmendment } from "./nonmaterial-amendments.js";
 import { planProgramAmendment } from "./program-amendment.js";
 import { resolveProgram } from "./program.js";
 import { resourceReviewRevisions, retentionReviewResourceIds } from "./retention.js";
@@ -600,6 +601,22 @@ export async function runCli(argv = process.argv.slice(2)) {
     }
     throw new Error("Use reporting-route-set scaffold [approve|cancel|successor], propose ROUTE_SET_ID, approve PAYLOAD.json, or cancel PAYLOAD.json.");
   }
+  if (command === "amend-nonmaterial") {
+    const targetId = positionals[0];
+    if (!targetId) throw new Error("Pass the source resource ID.");
+    if (flags.scaffold) {
+      const result = await scaffoldNonmaterialAmendment(root, targetId, { category: flags.category, fieldKey: flags.field });
+      console.log(JSON.stringify(result, null, 2));
+      return result;
+    }
+    if (!positionals[1]) throw new Error("Pass a scaffolded amendment payload path.");
+    const payload = JSON.parse(await readFile(resolve(positionals[1]), "utf8"));
+    if (payload.record?.targetResourceId !== targetId) throw new Error("The amendment must match the requested source record.");
+    if (!flags.preview && !flags.yes) throw new Error("Preview the decision, then pass --yes to record it.");
+    const result = await withWorkflowDelta(root, () => saveNonmaterialAmendment(root, payload, { preview: Boolean(flags.preview) }));
+    console.log(JSON.stringify(result, null, 2));
+    return result;
+  }
   if (command === "program-amendment") {
     const sourceResourceId = flags.source || positionals[0];
     if (!sourceResourceId) throw new Error("Pass a source resource ID or --source resource-id.");
@@ -978,6 +995,7 @@ export async function runCli(argv = process.argv.slice(2)) {
     const output = flags.workflow
       ? {
           record,
+          nonmaterialView: amendedResourceView(loaded, record),
           workflow: workflowForResource(await assessWorkflow(loaded), record.type, record.id, loaded)
         }
       : record;
@@ -1415,6 +1433,8 @@ Usage:
   filegrc automation [--json] [--open] [--root PATH]
   filegrc obligations [--program program-id] [--as-of YYYY-MM-DD] [--from YYYY-MM-DD] [--through YYYY-MM-DD] [--now RFC3339] [--complete] [--json]
   filegrc program-readiness [--as-of YYYY-MM-DD] [--require-ready] [--summary | --control CONTROL_ID] [--json]
+  filegrc amend-nonmaterial <source-resource-id> --scaffold [--category label-correction|reporting-email-alias] [--field field.path]
+  filegrc amend-nonmaterial <source-resource-id> <amendment.json> --preview|--yes [--json]
   filegrc program-amendment <source-resource-id> [--json]
   filegrc review-bindings <retention-or-mapping-id> [--json]
   filegrc evidence-map [--as-of YYYY-MM-DD] [--json]
@@ -1766,6 +1786,7 @@ function agentOverview(model, connection) {
     search: "filegrc search <query> --json",
     obligations: "filegrc obligations --json",
     programReadiness: "filegrc program-readiness --json",
+    nonmaterialAmendment: "filegrc amend-nonmaterial RESOURCE_ID --scaffold",
     programAmendment: "filegrc program-amendment <source-resource-id> --json",
     reviewBindings: "filegrc review-bindings <retention-or-mapping-id> --json",
     evidenceMap: "filegrc evidence-map --json",

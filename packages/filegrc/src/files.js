@@ -24,6 +24,7 @@ export const INTERNAL_WORKFLOW_CAPABILITIES = Object.freeze({
   reportingRouteSetProposal: Symbol("reporting-route-set-proposal"),
   reportingRouteSetApproval: Symbol("reporting-route-set-approval"),
   reportingRouteSetCancellation: Symbol("reporting-route-set-cancellation"),
+  nonmaterialAmendment: Symbol("nonmaterial-amendment"),
   reconciliationDismissal: Symbol("reconciliation-dismissal")
 });
 
@@ -679,6 +680,9 @@ function assertImmutableWorkflowRecord(existing, next, options = {}, loaded = nu
   const preservesExisting = (allowed = []) => [...new Set([...Object.keys(existing), ...Object.keys(next)])].every((key) => (
     allowed.includes(key) || JSON.stringify(next[key]) === JSON.stringify(existing[key])
   ));
+  if (existing.type === "nonmaterial-amendment" && !preservesExisting()) {
+    throw new Error("Nonmaterial amendments are immutable owner decisions. Record a new amendment instead.");
+  }
   if (existing.type === "reconciliation-dismissal" && !preservesExisting()) {
     throw new Error(`Reconciliation dismissal "${existing.id}" is immutable because it records a fingerprint-bound review decision.`);
   }
@@ -717,6 +721,10 @@ function assertImmutableWorkflowRecord(existing, next, options = {}, loaded = nu
     if (existing.status === "draft" && next.status === "proposed") {
       if (capability !== INTERNAL_WORKFLOW_CAPABILITIES.reportingRouteSetProposal || !preservesExisting(["status"])) {
         throw new Error(`Reporting Route Set "${existing.id}" must use the managed proposal action.`);
+      }
+    } else if (existing.status === "proposed" && next.status === "withdrawn") {
+      if (capability !== INTERNAL_WORKFLOW_CAPABILITIES.nonmaterialAmendment || !preservesExisting(["status", "withdrawal"])) {
+        throw new Error("Withdraw the matching proposal through the nonmaterial amendment workflow.");
       }
     } else if (existing.status === "proposed" && next.status === "approved") {
       if (
@@ -919,6 +927,9 @@ function finalizedOccurrenceUsingProof(loaded, targetId) {
 }
 
 function assertSpecializedWorkflowCreate(record, options = {}, loaded = null) {
+  if (record?.type === "nonmaterial-amendment" && options.workflowCapability !== INTERNAL_WORKFLOW_CAPABILITIES.nonmaterialAmendment) {
+    throw new Error("Use the nonmaterial amendment scaffold, preview and save workflow.");
+  }
   if (
     record?.type === "reconciliation-dismissal"
     && options.workflowCapability !== INTERNAL_WORKFLOW_CAPABILITIES.reconciliationDismissal
@@ -1010,7 +1021,7 @@ async function deleteResourceUnlocked(input, type, id, options) {
   assertRevision(source, options.expectedRevision, "The record");
   const record = JSON.parse(source);
   if (
-    record.type === "reconciliation-dismissal"
+    ["reconciliation-dismissal", "nonmaterial-amendment"].includes(record.type)
     || (record.type === "obligation-occurrence" && ["reconciled", "superseded"].includes(record.status))
     || (record.type === "audit-population" && ["reconciled", "not-applicable", "superseded"].includes(record.status))
     || (record.type === "obligation-event" && ["complete", "canceled"].includes(record.status))
@@ -1018,7 +1029,7 @@ async function deleteResourceUnlocked(input, type, id, options) {
     || (record.type === "collection-review" && ["active", "retired"].includes(record.status))
     || (record.type === "obligation-rule" && ["active", "retired"].includes(record.status))
     || (record.type === "reporting-route" && ["active", "retired"].includes(record.status))
-    || (record.type === "reporting-route-set" && ["proposed", "approved", "canceled", "historical"].includes(record.status))
+    || (record.type === "reporting-route-set" && ["proposed", "approved", "canceled", "historical", "withdrawn"].includes(record.status))
     || (record.type === "attestation" && record.status === "completed")
     || (["policy", "document", "commitment", "risk"].includes(record.type)
       && record.reportingRouteRequirements?.length

@@ -2050,7 +2050,7 @@ test("keeps operation status explicit and stage instructions available on demand
   assert.match(APP_SCRIPT, /const findings = workflow\.findings\.filter\(\(item\) => matches\(item\) && activeStates\.has\(item\.state\)\)/);
   assert.match(APP_SCRIPT, /function controlApplicabilityPending\(record\)/);
   assert.match(APP_SCRIPT, /route\.name === "list" && \["requirement", "control", "commitment", "complementary-control"\]\.includes\(route\.type\)\) return \["program"\]/);
-  assert.match(detailSource, /<h3>Record details<\/h3>/);
+  assert.match(detailSource, /entry\.nonmaterialView\?\.amendmentIds\.length \? "Originally recorded details" : "Record details"/);
   assert.match(detailSource, /detail-metadata-panel/);
   assert.match(APP_SCRIPT, /resourceReviewCriteria\(type, true\)/);
   assert.match(APP_SCRIPT, /detail-support-panel detail-review-panel/);

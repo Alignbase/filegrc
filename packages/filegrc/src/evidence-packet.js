@@ -487,7 +487,8 @@ export async function prepareEvidencePacket(input, options = {}) {
             canceled,
             authorities,
             approvalAssertionTiming,
-            cancellationAssertionTiming
+            cancellationAssertionTiming,
+            nonmaterialView
           }) => ({
             id: record.id,
             title: record.title,
@@ -509,6 +510,7 @@ export async function prepareEvidencePacket(input, options = {}) {
                 authorityRevision: reportingRouteEventCommit(loaded, record, "cancellation")
               }
               : null,
+            nonmaterialView: nonmaterialView || null,
             primaryLane: record.primaryLane,
             alternateLane: record.alternateLane || null,
             committed,
@@ -651,9 +653,10 @@ function expandEvidenceWorkflowContext(selectedIds, byId) {
   const queue = [...selectedIds];
   const childrenBySource = new Map();
   for (const record of byId.values()) {
-    if (!["finding", "action-item"].includes(record.type) || !record.sourceResourceId) continue;
-    if (!childrenBySource.has(record.sourceResourceId)) childrenBySource.set(record.sourceResourceId, []);
-    childrenBySource.get(record.sourceResourceId).push(record.id);
+    const sourceId = record.type === "nonmaterial-amendment" ? record.targetResourceId : record.sourceResourceId;
+    if (!["finding", "action-item", "nonmaterial-amendment"].includes(record.type) || !sourceId) continue;
+    if (!childrenBySource.has(sourceId)) childrenBySource.set(sourceId, []);
+    childrenBySource.get(sourceId).push(record.id);
   }
   const enqueue = (ids = []) => {
     for (const id of ids) {
@@ -674,6 +677,7 @@ function expandEvidenceWorkflowContext(selectedIds, byId) {
       record?.sourceEvidenceId,
       record?.exceptionId
     ]);
+    if (record?.type === "nonmaterial-amendment") enqueue([record.targetResourceId, record.previousAmendmentId, record.withdrawnProposalId, record.amendedById, record.authorityAppointmentId]);
     if (record?.type === "evidence") enqueue([...(record.sourceResourceIds || []), record.sourceComponentId, record.sourceSystemId]);
     if (record?.type === "audit-population") enqueue([record.sourceEvidenceId, ...(record.controlIds || [])]);
     if (record?.type === "control-test") enqueue([record.populationId, ...(record.sampleEvidenceIds || [])]);
