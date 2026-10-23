@@ -14,7 +14,7 @@ export function scheduleSetRecords(loaded, program) {
   });
 }
 
-export function scheduleSetInputs(loaded, program) {
+export function scheduleSetInputs(loaded, program, options = {}) {
   const obligations = scheduleSetRecords(loaded, program);
   const ids = new Set(obligations.flatMap((record) => [record.id, ...(record.ruleIds || []),
     ...(record.controlIds || []), ...(record.policyIds || []), ...(record.scopeResourceIds || []), record.templateResourceId]).filter(Boolean));
@@ -41,6 +41,7 @@ export function scheduleSetInputs(loaded, program) {
     // Content adoption is the cutover after this review, not a change to its approved design.
     if (["policy", "document", "training"].includes(value.type) && ["approved", "active"].includes(value.status)) {
       value.status = "approved";
+      if (!options.legacyScheduleApprovalDates) delete value.approvedOn;
       for (const name of ["effectiveOn", "proposedEffectiveOn", "activationBasis", "activatedByIds", "activatedOn", "activatedContentRevisions"]) delete value[name];
     }
     return { record, value, includeContent: true };

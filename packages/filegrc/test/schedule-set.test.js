@@ -158,6 +158,20 @@ test("schedule-set review is exact, independent, and available through the CLI",
   const originalRevision = scheduleSetRevision(loaded, program);
   const operationOnly = { ...loaded, resources: loaded.resources.map((record) => record.type === "obligation" ? { ...record, completionResourceIds: ["new-operating-proof"] } : record) };
   assert.equal(scheduleSetRevision(operationOnly, program), originalRevision);
+  const approvalOnly = { ...loaded, resources: loaded.resources.map((record) => record.type === "policy" && ["active", "approved"].includes(record.status) ? { ...record, approvedOn: "2026-01-01" } : record) };
+  assert.equal(scheduleSetRevision(approvalOnly, program), originalRevision);
+  assert.equal(assessCollectionReview(approvalOnly, "obligation", { programId: program.id }).complete, true);
+  const legacyRevision = collectionRevision(loaded, "obligation", { program, legacyScheduleApprovalDates: true });
+  assert.notEqual(legacyRevision, originalRevision);
+  const legacyRecord = { ...assessment.review, collectionRevision: legacyRevision };
+  const legacyReview = { ...approvalOnly,
+    resources: approvalOnly.resources.map((record) => record.id === assessment.review.id ? legacyRecord : record),
+    entries: approvalOnly.entries.map((entry) => entry.record.id === assessment.review.id ? { ...entry, record: legacyRecord } : entry)
+  };
+  assert.equal(assessCollectionReview(legacyReview, "obligation", { programId: program.id }).review.collectionRevision, legacyRevision);
+  assert.equal(assessCollectionReview(legacyReview, "obligation", { programId: program.id }).complete, true, "An exact historical legacy approval remains valid after date-only changes");
+  const changedContent = { ...approvalOnly, resources: approvalOnly.resources.map((record) => record.type === "policy" ? { ...record, version: "materially-changed" } : record) };
+  assert.equal(assessCollectionReview(changedContent, "obligation", { programId: program.id }).complete, false);
   const schedule = loaded.entries.find(({ record }) => record.type === "obligation");
   await writeJson(join(root, "data", schedule.relativePath), { ...schedule.record, ownerIds: ["person-independent-approver-example"] });
   loaded = await loadWorkspace(root);

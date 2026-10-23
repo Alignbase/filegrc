@@ -27,7 +27,8 @@ export function legacyCollectionRevision(loaded, resourceType, options = {}) {
 
 export function collectionRevisionMatches(loaded, resourceType, storedRevision, options = {}) {
   if (!storedRevision) return false;
-  if (resourceType === "obligation") return revisionsMatch("collection", storedRevision, options.currentRevision || collectionRevision(loaded, resourceType, options));
+  if (resourceType === "obligation") return revisionsMatch("collection", storedRevision, options.currentRevision || collectionRevision(loaded, resourceType, options))
+    || revisionsMatch("collection", storedRevision, collectionRevision(loaded, resourceType, { ...options, legacyScheduleApprovalDates: true }));
   const currentRevision = options.currentRevision
     || collectionRevision(loaded, resourceType, options);
   // Accept both the pre-0.16 scope: input and the digest-only input used by
@@ -66,12 +67,17 @@ export function collectionReviewDecisionMatches(loaded, resourceType, review, re
   if (!review) return false;
   if (resourceType === "obligation") {
     if (!Array.isArray(review.populationResourceIds)) return false;
-    if (!collectionRevisionMatches(loaded, resourceType, review.collectionRevision, options)) return false;
     if (JSON.stringify([...(review.populationResourceIds || [])].sort()) !== JSON.stringify(records.map(({ id }) => id).sort())) return false;
     if (!loaded.root || !review.scopeRevision) return false;
     const historical = reviewHistoricalWorkspace(reviewHistoryContext(loaded.root, loaded), review.scopeRevision);
     const program = historical?.resources.find((record) => record.type === "program" && record.id === review.scopeResourceIds?.[0]);
-    return Boolean(program && revisionsMatch("collection", review.collectionRevision, collectionRevision(historical, "obligation", { program, historicalCommit: review.scopeRevision })));
+    if (!program || !collectionRevisionMatches(historical, "obligation", review.collectionRevision, {
+      program, historicalCommit: review.scopeRevision
+    })) return false;
+    // Preserve exact historical approval binding, then compare current schedule
+    // design without incidental approval-date changes on governed content.
+    return revisionsMatch("collection", collectionRevision(loaded, "obligation", options),
+      collectionRevision(historical, "obligation", { program, historicalCommit: review.scopeRevision }));
   }
   if (resourceType === "retention-schedule-item" || Number(loaded.model.modelVersion) < 11) {
     return collectionRevisionMatches(loaded, resourceType, review.collectionRevision, options);
@@ -224,7 +230,8 @@ function calculateCollectionRevisionUncached(loaded, resourceType, options, lega
     historicalReviewMetadata: options.historicalReviewMetadata,
     historicalCommit: options.historicalCommit,
     legacyRetentionSourceBasis: options.legacyRetentionSourceBasis,
-    legacyGovernedLifecycleMetadata: options.legacyGovernedLifecycleMetadata
+    legacyGovernedLifecycleMetadata: options.legacyGovernedLifecycleMetadata,
+    legacyScheduleApprovalDates: options.legacyScheduleApprovalDates
   })
     .map((input) => [input.record.id, input]));
   const authoritativeSource = loaded.resources.find(({ id }) => id === options.authoritativeSourceId);

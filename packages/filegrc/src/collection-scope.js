@@ -203,7 +203,7 @@ function scopedProgramPeople(loaded, program = {}) {
 }
 
 export function collectionRevisionInputs(loaded, resourceType, program, options = {}) {
-  if (resourceType === "obligation") return scheduleSetInputs(loaded, program);
+  if (resourceType === "obligation") return scheduleSetInputs(loaded, program, options);
   const legacy = options.legacy === true;
   const currentModel = modelSupports(loaded.model, "retention-schedule-approval");
   const reviewed = scopedCollectionRecords(loaded, resourceType, program);
