@@ -249,6 +249,29 @@ test("committed partial windows survive later content activation without duplica
   assert.equal(items[0].dueWindowStart, "2026-07-05");
 });
 
+test("closed committed partial windows survive later content cutovers without accepting edited dates", async (context) => {
+  const f = await fixture(context);
+  const result = await completeObligationOccurrence(f.root, { obligationId: f.obligation.id,
+    expectedRevision: f.revision, record: f.record });
+  assert.deepEqual(result.linked.coverage, { kind: "range", startsOn: "2026-07-05", endsOn: "2026-07-21" });
+  const loaded = await loadWorkspace(f.root);
+  const policy = loaded.entries.find(({ record }) => record.id === f.obligation.policyIds[0]);
+  await writeJson(policy.path, { ...policy.record, effectiveOn: "2026-08-10" });
+  let validation = await validateWorkspace(f.root);
+  assert.ok(validation.diagnostics.some(({ code }) => code === "invalid-obligation-occurrence-schedule-binding"), "Uncommitted dates cannot establish a historical window");
+  await writeJson(policy.path, policy.record);
+  await initializeGitWorkspace(f.root, "Retain the completed initial partial window");
+  await writeJson(policy.path, { ...policy.record, effectiveOn: "2026-08-10" });
+  validation = await validateWorkspace(f.root);
+  assert.equal(validation.diagnostics.some(({ code }) => code === "invalid-obligation-occurrence-schedule-binding"), false);
+  const current = await loadWorkspace(f.root);
+  const occurrence = current.entries.find(({ record }) => record.id === result.linked.id);
+  assert.deepEqual(occurrence.record, result.linked, "Activation preserves all frozen occurrence facts");
+  await writeJson(occurrence.path, { ...occurrence.record, coverage: { ...occurrence.record.coverage, startsOn: "2026-07-06" } });
+  validation = await validateWorkspace(f.root);
+  assert.ok(validation.diagnostics.some(({ code }) => code === "invalid-obligation-occurrence-schedule-binding"), "An edited historical start remains invalid");
+});
+
 test("CLI and browser retain the selected Program when multiple Programs are active", async (context) => {
   const cli = await fixture(context);
   const browser = await fixture(context);

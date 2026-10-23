@@ -782,12 +782,13 @@ function validateOccurrenceScheduleBinding(record, obligation, rule, resources, 
   const byId = new Map(resources.map((candidate) => [candidate.id, candidate]));
   const cutover = [obligationActivationDate(obligation, byId, rule, rule.timezone || "UTC"),
     obligationActivationDate(obligation, byId, model, rule.timezone || "UTC")].filter(Boolean).sort().at(-1);
-  if (modelSupports(model, "operating-preparation") && cutover && expectedStart < cutover && expectedEnd >= cutover
+  if (modelSupports(model, "operating-preparation") && cutover && expectedStart < cutover
     && start !== expectedStart) {
-    // Original full windows retain their published binding. A previously
-    // committed partial window also survives later governed-content cutovers.
-    expectedStart = start > expectedStart && start < cutover
-      && committedOccurrenceWindowMatches(root, record, resources) ? start : cutover;
+    // A committed partial window keeps its binding even when a later content
+    // cutover falls after its end. New partial windows still require overlap.
+    if (start > expectedStart && start < cutover
+      && committedOccurrenceWindowMatches(root, record, resources)) expectedStart = start;
+    else if (expectedEnd >= cutover) expectedStart = cutover;
   }
   const expectedCutoff = rule.selector?.cutoff === "window-end" ? expectedEnd : expectedStart;
   const program = resources.find(({ type, id }) => type === "program" && id === record.programId);
