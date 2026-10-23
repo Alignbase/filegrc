@@ -1,3 +1,4 @@
+import { workflowProofIds } from "./workflow-proof.js";
 import { randomUUID } from "node:crypto";
 import { constants, link, lstat, mkdir, open, readFile, rename, rm, stat } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
@@ -865,63 +866,12 @@ function assertWorkflowContentMutable(loaded, record) {
 function finalizedOccurrenceUsingProof(loaded, targetId) {
   if (!loaded?.resources?.length || !targetId) return null;
   const byId = new Map(loaded.resources.map((record) => [record.id, record]));
-  const proofTypes = new Set(["evidence", "exception", "attestation"]);
-  const proofFields = [
-    "completionResourceIds",
-    "evidenceIds",
-    "sampleEvidenceIds",
-    "sourceEvidenceId",
-    "sourceResourceIds",
-    "exceptionId",
-    "exceptionIds",
-    "attestationIds"
-  ];
-  for (const occurrence of loaded.resources.filter((record) => (
-    record.type === "obligation-occurrence" && ["reconciled", "superseded"].includes(record.status)
-  ))) {
-    const pending = (occurrence.members || []).flatMap((member) => [
-      ...(member.completionResourceIds || []),
-      ...(member.exceptionId ? [member.exceptionId] : [])
-    ]);
-    const visited = new Set();
-    while (pending.length) {
-      const id = pending.pop();
-      if (!id || visited.has(id)) continue;
-      if (id === targetId) return occurrence;
-      visited.add(id);
-      const record = byId.get(id);
-      if (!record) continue;
-      for (const field of proofFields) {
-        const value = record[field];
-        for (const relatedId of Array.isArray(value) ? value : value ? [value] : []) {
-          if (proofTypes.has(byId.get(relatedId)?.type)) pending.push(relatedId);
-        }
-      }
-    }
-  }
   for (const owner of loaded.resources.filter((record) => (
-    (record.type === "audit-population" && ["reconciled", "not-applicable", "superseded"].includes(record.status))
+    (record.type === "obligation-occurrence" && ["reconciled", "superseded"].includes(record.status))
+    || (record.type === "audit-population" && ["reconciled", "not-applicable", "superseded"].includes(record.status))
     || (record.type === "attestation" && record.status === "completed")
   ))) {
-    const pending = [
-      ...(owner.evidenceIds || []),
-      ...(owner.sourceEvidenceId ? [owner.sourceEvidenceId] : [])
-    ];
-    const visited = new Set();
-    while (pending.length) {
-      const id = pending.pop();
-      if (!id || visited.has(id)) continue;
-      if (id === targetId) return owner;
-      visited.add(id);
-      const record = byId.get(id);
-      if (!record) continue;
-      for (const field of proofFields) {
-        const value = record[field];
-        for (const relatedId of Array.isArray(value) ? value : value ? [value] : []) {
-          if (proofTypes.has(byId.get(relatedId)?.type)) pending.push(relatedId);
-        }
-      }
-    }
+    if (workflowProofIds(owner, (id) => byId.get(id)).has(targetId)) return owner;
   }
   return null;
 }

@@ -353,3 +353,113 @@ test("CLI reconciliation consumes create, update, and supersession scaffolds wit
   await writeJson(payload, correction);
   await cli("reconcile-obligation", f.obligation.id, payload);
 });
+
+for (const { unit, window, startsOn, endsOn } of [
+  { unit: "year", window: { precision: "date", startsAfter: 0, dueAfter: 30 }, startsOn: "2025-10-23", endsOn: "2025-11-22" },
+  { unit: "month", window: { precision: "date", startsAfter: 3, dueAfter: 12 }, startsOn: "2025-10-26", endsOn: "2025-11-04" },
+  { unit: "year", startsOn: "2025-10-23", endsOn: "2026-10-22" },
+  { unit: "month", startsOn: "2025-10-23", endsOn: "2025-11-22" }
+]) test(`activation-anchored ${unit} completion shares its ${window ? "explicit" : "full-cycle"} window with validation`, async (context) => {
+  const f = await fixture(context);
+  const rule = { ...f.rule, recurrence: { mode: "calendar", unit, interval: 1,
+    anchorDate: "2025-10-08", anchorMode: "activation" }, effectiveAt: "2025-10-08T00:00:00-05:00" };
+  if (window) rule.window = window;
+  else delete rule.window;
+  await writeJson(f.ruleEntry.path, rule);
+  const loaded = await loadWorkspace(f.root);
+  const policy = loaded.entries.find(({ record }) => record.id === f.obligation.policyIds[0]);
+  await writeJson(policy.path, { ...policy.record, effectiveOn: "2025-10-23" });
+  const evidence = loaded.entries.find(({ record }) => record.type === "evidence");
+  await writeJson(evidence.path, { ...evidence.record, collectedOn: "2025-10-27", verifiedOn: "2025-10-27" });
+  const record = { ...f.record, completedAt: "2025-10-27T15:30:00Z", reviewedOn: "2025-10-27" };
+  const scaffold = await scaffoldObligationCompletion(f.root, { obligationId: f.obligation.id,
+    windowStart: startsOn, completedOn: "2025-10-27" });
+  assert.equal(scaffold.scaffold.dueWindowStart, startsOn);
+  assert.equal(scaffold.scaffold.dueWindowEnd, endsOn);
+  const result = await completeObligationOccurrence(f.root, { obligationId: f.obligation.id,
+    expectedRevision: f.revision, completionContext: scaffold.completionContext, record });
+  assert.deepEqual(result.linked.coverage, { kind: "range", startsOn, endsOn });
+  const validation = await validateWorkspace(f.root);
+  assert.deepEqual(validation.diagnostics.filter(({ code }) => /occurrence|member|population/.test(code)), []);
+  await initializeGitWorkspace(f.root, "Retain the original activation window");
+  await writeJson(policy.path, { ...policy.record, effectiveOn: "2026-12-10" });
+  const later = await validateWorkspace(f.root);
+  assert.equal(later.diagnostics.some(({ code }) => code === "invalid-obligation-occurrence-schedule-binding"), false);
+  const current = await loadWorkspace(f.root);
+  const items = planObligations(current.resources, { model: current.model,
+    asOf: "2026-12-12", through: "2026-12-12", includeComplete: true }).calendarItems;
+  assert.equal(items.filter(({ occurrenceId }) => occurrenceId === result.linked.id).length, 1);
+  assert.equal(items.filter((item) => item.dueWindowStart <= endsOn && item.dueWindowEnd >= startsOn).length, 1,
+    "Later cutover does not duplicate the frozen cycle");
+  const occurrence = current.entries.find(({ record }) => record.id === result.linked.id);
+  await writeJson(occurrence.path, { ...occurrence.record,
+    coverage: { ...occurrence.record.coverage, endsOn: "2025-11-07" } });
+  const rejected = await validateWorkspace(f.root);
+  assert.ok(rejected.diagnostics.some(({ code }) => code === "invalid-obligation-occurrence-schedule-binding"));
+});
+
+test("committing an invalid activation window cannot authorize it after a later cutover", async (context) => {
+  const f = await fixture(context);
+  await writeJson(f.ruleEntry.path, { ...f.rule, recurrence: { ...f.rule.recurrence, anchorMode: "activation" } });
+  const result = await completeObligationOccurrence(f.root, { obligationId: f.obligation.id,
+    expectedRevision: f.revision, record: f.record });
+  const loaded = await loadWorkspace(f.root);
+  const occurrence = loaded.entries.find(({ record }) => record.id === result.linked.id);
+  await writeJson(occurrence.path, { ...occurrence.record,
+    coverage: { ...occurrence.record.coverage, endsOn: "2026-07-26" } });
+  await initializeGitWorkspace(f.root, "Retain an invalid window for validation");
+  const policy = loaded.entries.find(({ record }) => record.id === f.obligation.policyIds[0]);
+  await writeJson(policy.path, { ...policy.record, effectiveOn: "2026-08-10" });
+  const validation = await validateWorkspace(f.root);
+  assert.ok(validation.diagnostics.some(({ code }) => code === "invalid-obligation-occurrence-schedule-binding"));
+});
+
+
+test("new activation-based cycles after cutover use the same scaffold and validation basis", async (context) => {
+  const f = await fixture(context);
+  const loaded = await loadWorkspace(f.root);
+  const policy = loaded.entries.find(({ record }) => record.id === f.obligation.policyIds[0]);
+  await writeJson(f.ruleEntry.path, { ...f.rule, recurrence: { mode: "calendar", unit: "month", interval: 1,
+    anchorMode: "activation", anchorDate: "2025-10-08" }, effectiveAt: "2025-10-08T00:00:00Z" });
+  await writeJson(policy.path, { ...policy.record, effectiveOn: "2025-10-23" });
+  const initial = { ...f.record, id: "control-activity-initial-cycle", completedAt: "2025-10-27T15:30:00Z", reviewedOn: "2025-10-27" };
+  const evidence = loaded.entries.find(({ record }) => record.type === "evidence");
+  await writeJson(evidence.path, { ...evidence.record, collectedOn: "2025-10-27", verifiedOn: "2025-10-27" });
+  await completeObligationOccurrence(f.root, { obligationId: f.obligation.id, expectedRevision: f.revision, record: initial });
+  await initializeGitWorkspace(f.root);
+  await writeJson(policy.path, { ...policy.record, effectiveOn: "2026-07-10" });
+  const scaffold = await scaffoldObligationCompletion(f.root, { obligationId: f.obligation.id,
+    windowStart: "2026-07-10", completedOn: "2026-07-12" });
+  const current = { ...f.record, id: "control-activity-current-cycle", completedAt: "2026-07-12T15:30:00Z", reviewedOn: "2026-07-12" };
+  const result = await completeObligationOccurrence(f.root, { obligationId: f.obligation.id,
+    expectedRevision: f.revision, completionContext: scaffold.completionContext, record: current });
+  assert.deepEqual(result.linked.coverage, { kind: "range", startsOn: scaffold.scaffold.dueWindowStart,
+    endsOn: scaffold.scaffold.dueWindowEnd });
+  const validation = await validateWorkspace(f.root);
+  assert.equal(validation.diagnostics.some(({ code }) => code === "invalid-obligation-occurrence-schedule-binding"), false);
+});
+
+for (const [unit, anchorDate, startsOn, endsOn, nextStart] of [
+  ["month", "2024-01-31", "2024-02-29", "2024-03-30", "2024-03-31"],
+  ["year", "2024-02-29", "2025-02-28", "2026-02-27", "2026-02-28"]
+]) test(`recording a later ${unit} cycle does not replace its original calendar anchor`, async (context) => {
+  const f = await fixture(context);
+  const loaded = await loadWorkspace(f.root);
+  const policy = loaded.entries.find(({ record }) => record.id === f.obligation.policyIds[0]);
+  await writeJson(policy.path, { ...policy.record, effectiveOn: anchorDate });
+  const rule = { ...f.rule, recurrence: { mode: "calendar", unit, interval: 1, anchorMode: "activation" },
+    effectiveAt: `${anchorDate}T00:00:00Z` };
+  delete rule.window;
+  await writeJson(f.ruleEntry.path, rule);
+  const current = await loadWorkspace(f.root);
+  const options = { model: current.model, asOf: startsOn, through: nextStart, includeComplete: true };
+  const before = planObligations(current.resources, options).calendarItems.map(({ dueWindowStart, dueWindowEnd }) => [dueWindowStart, dueWindowEnd]);
+  const record = { ...f.record, completedAt: `${startsOn}T15:30:00Z`, reviewedOn: startsOn };
+  const evidence = current.entries.find(({ record }) => record.type === "evidence");
+  await writeJson(evidence.path, { ...evidence.record, collectedOn: startsOn, verifiedOn: startsOn });
+  const result = await completeObligationOccurrence(f.root, { obligationId: f.obligation.id,
+    expectedRevision: f.revision, record });
+  assert.deepEqual(result.linked.coverage, { kind: "range", startsOn, endsOn });
+  const after = await loadWorkspace(f.root);
+  assert.deepEqual(planObligations(after.resources, options).calendarItems.map(({ dueWindowStart, dueWindowEnd }) => [dueWindowStart, dueWindowEnd]), before);
+});

@@ -1,3 +1,4 @@
+import { workflowProofIds } from "./workflow-proof.js";
 import { amendmentEvidenceObservationMatches } from "./nonmaterial-amendments.js";
 import { readFile } from "node:fs/promises";
 import {
@@ -6,7 +7,6 @@ import {
   getFileHistory,
   getFileObjectIdAtRevision,
   getFilePathAtRevision,
-  getRecordIdentityHistories,
   getWorkingFileObjectId,
   isDataHistoryAncestor
 } from "./git.js";
@@ -30,17 +30,6 @@ const FINAL_STATUSES = new Map([
   ["action-item", new Set(["done", "canceled"])],
   ["exception", new Set(["approved", "revoked", "closed"])]
 ]);
-
-const PROOF_FIELDS = [
-  "completionResourceIds",
-  "evidenceIds",
-  "sampleEvidenceIds",
-  "sourceEvidenceId",
-  "sourceResourceIds",
-  "exceptionId",
-  "exceptionIds",
-  "attestationIds"
-];
 
 export async function validateWorkflowHistoryIntegrity(loaded, diagnostics) {
   const historical = historicalState(loaded);
@@ -261,7 +250,6 @@ export async function validateWorkflowHistoryIntegrity(loaded, diagnostics) {
 
   await validateReportingRouteAuthorityHistory(loaded, commits, revisionRecords, historiesById, diagnostics);
 
-  const byId = new Map(loaded.resources.map((record) => [record.id, record]));
   const proofOwners = loaded.resources.filter((record) => (
     record.type === "nonmaterial-amendment" ||
     (record.type === "obligation-occurrence" && ["reconciled", "superseded"].includes(record.status))
@@ -269,11 +257,6 @@ export async function validateWorkflowHistoryIntegrity(loaded, diagnostics) {
     || (record.type === "attestation" && record.status === "completed")
     || (record.type === "exception" && ["approved", "revoked", "closed"].includes(record.status))
   ));
-  const proofIdsByOwner = new Map(proofOwners.map((owner) => [owner.id, proofIds(owner, byId)]));
-  const proofIdentityHistories = getRecordIdentityHistories(
-    loaded.root,
-    new Set([...proofIdsByOwner.values()].flatMap((ids) => [...ids]))
-  );
   for (const owner of proofOwners) {
     const finalized = firstFinalized.get(owner.id);
     if (!finalized) continue;
@@ -284,10 +267,17 @@ export async function validateWorkflowHistoryIntegrity(loaded, diagnostics) {
       const ownerEntry = loaded.entries.find(({ record }) => record.id === owner.id);
       diagnostics.push(integrityError(ownerEntry, `Occurrence "${owner.id}" must bind a Collection Review committed after its scope revision and before the occurrence was finalized.`));
     }
-    const protectedIds = proofIdsByOwner.get(owner.id);
+    // Resolve the closure from the actual finalized snapshot, never today's
+    // links or types. Context may evolve, but proof cannot hide by changing it.
+    const historicalRecords = new Map();
+    const historicalRecord = (id) => {
+      if (!historicalRecords.has(id)) historicalRecords.set(id, recordAtRevision(loaded, finalized.commit, id, historiesById.get(id) || []));
+      return historicalRecords.get(id);
+    };
+    const protectedIds = workflowProofIds(finalized.record, (id) => historicalRecord(id)?.record);
     for (const id of protectedIds) {
       const currentEntry = loaded.entries.find(({ record }) => record.id === id);
-      const historical = recordAtRevision(loaded, finalized.commit, id, proofIdentityHistories.get(id) || []);
+      const historical = historicalRecord(id);
       if (!currentEntry || !historical) {
         const ownerEntry = loaded.entries.find(({ record }) => record.id === owner.id);
         diagnostics.push(integrityError(ownerEntry, `Proof record "${id}" must exist in the commit where ${owner.type} "${owner.id}" was first finalized.`));
@@ -847,31 +837,6 @@ function canonicalJson(value, field = null, revisionMap = false) {
     key,
     canonicalJson(value[key], key, revisionMap || CALCULATED_REVISION_MAP_FIELDS.has(field))
   ]));
-}
-
-function proofIds(occurrence, byId) {
-  if (occurrence.type === "nonmaterial-amendment") return new Set(occurrence.evidenceIds || []);
-  const pending = [
-    ...(occurrence.evidenceIds || []),
-    ...(occurrence.sourceEvidenceId ? [occurrence.sourceEvidenceId] : []),
-    ...(occurrence.members || []).flatMap((member) => [
-    ...(member.completionResourceIds || []),
-    member.exceptionId
-    ])
-  ].filter(Boolean);
-  const ids = new Set();
-  while (pending.length) {
-    const id = pending.pop();
-    if (!id || ids.has(id)) continue;
-    ids.add(id);
-    const record = byId.get(id);
-    if (!record) continue;
-    for (const field of PROOF_FIELDS) {
-      const value = record[field];
-      pending.push(...(Array.isArray(value) ? value : value ? [value] : []));
-    }
-  }
-  return ids;
 }
 
 async function compareMarkdownAtRevision(loaded, entry, historical, diagnostics, occurrenceId = null) {
