@@ -1,5 +1,5 @@
 import { nonmaterialAmendmentIssues } from "./nonmaterial-amendments.js";
-import { completionMatchesMember, assessCompletionForObligation, obligationActivationDate } from "./obligations.js";
+import { completionMatchesMember, assessCompletionForObligation, obligationScheduleRecurrence, calendarWindow } from "./obligations.js";
 import { reportingCutoverIssues, scheduleCutoverIssues, historicalContentCutover } from "./activation-readiness.js";
 import { scheduleSetIssues, scheduleReviewerConflicts } from "./schedule-set.js";
 import { createHash } from "node:crypto";
@@ -18,14 +18,12 @@ import { getDataRecordHistoryIndex, getFileAtRevision, getFileBufferAtRevision, 
 import { isCanonicalDataPath, resolveDataPath } from "./paths.js";
 import {
   addCalendarDays,
-  calendarOccurrence,
   calendarOccurrenceIndex,
   parseCalendarDate,
   validCalendarRecurrence
 } from "./recurrence.js";
 import { resourceReviewRevisionMatches, resourceReviewRevisions, retentionReviewResourceIds } from "./retention.js";
 import { retentionScheduleApprovalIssues } from "./retention-schedule-approval.js";
-import { obligationRuleRecurrence } from "./obligation-rule.js";
 import { obligationIsEnabled, obligationRuleIsEnabled } from "./program-lifecycle.js";
 import { currentPartyPeople, partyPeople } from "./parties.js";
 import { isMarkdownChoice, markdownEntries } from "./resource-markdown.js";
@@ -774,24 +772,17 @@ function validateObligationOccurrence(record, model, resources, entries, root, w
   }
 }
 
-function validateOccurrenceScheduleBinding(record, obligation, rule, resources, model, root, path, diagnostics) {
+function validateOccurrenceScheduleBinding(record, obligation, rule, resources, model, root, path, diagnostics, allowHistorical = true) {
   if (obligation?.type !== "obligation" || rule?.type !== "obligation-rule") return;
   const start = record.coverage?.kind === "range" ? record.coverage.startsOn : null;
-  const recurrence = obligationRuleRecurrence(rule);
+  const byId = new Map(resources.map((candidate) => [candidate.id, candidate]));
+  const timezone = resources.find(({ type }) => type === "workspace")?.timezone || "UTC";
+  const { recurrence, activationDate: cutover } = obligationScheduleRecurrence(obligation, rule, byId, model, timezone);
   if (!start || !validCalendarRecurrence(recurrence)) return;
   const index = calendarOccurrenceIndex(recurrence, start);
-  const occurrence = calendarOccurrence(recurrence, index);
-  const next = calendarOccurrence(recurrence, index + 1);
-  const startOffset = rule.window?.precision === "date" && Number.isInteger(rule.window.startsAfter)
-    ? rule.window.startsAfter
-    : 0;
-  let expectedStart = occurrence ? addCalendarDays(occurrence, startOffset) : null;
-  const expectedEnd = rule.window?.precision === "date" && Number.isInteger(rule.window.dueAfter)
-    ? addCalendarDays(occurrence, rule.window.dueAfter)
-    : next ? addCalendarDays(next, -1) : null;
-  const byId = new Map(resources.map((candidate) => [candidate.id, candidate]));
-  const cutover = [obligationActivationDate(obligation, byId, rule, rule.timezone || "UTC"),
-    obligationActivationDate(obligation, byId, model, rule.timezone || "UTC")].filter(Boolean).sort().at(-1);
+  const window = calendarWindow(recurrence, rule.window, index);
+  let expectedStart = window?.dueWindowStart || null;
+  const expectedEnd = window?.dueWindowEnd || null;
   if (modelSupports(model, "operating-preparation") && cutover && expectedStart < cutover
     && start !== expectedStart) {
     // A committed partial window keeps its binding even when a later content
@@ -822,6 +813,31 @@ function validateOccurrenceScheduleBinding(record, obligation, rule, resources, 
     || governingRule?.id !== rule.id
     || JSON.stringify([...(record.ownerIds || [])].sort()) !== JSON.stringify([...(obligation.ownerIds || [])].sort())
   ) {
+    if (allowHistorical && rule.recurrence?.anchorMode === "activation") {
+      const basis = record.supersedesId ? resources.find(({ id }) => id === record.supersedesId) : record;
+      const history = basis && getDataRecordHistoryIndex(root).historiesById.get(basis.id);
+      // The first saved window must itself have been valid in its original
+      // governing context. Merely committing arbitrary dates grants no authority.
+      const original = history?.at(-1);
+      if (original) {
+        const snapshot = recordsAtRevision({ root }, original.commit);
+        const historical = snapshot.find(({ id }) => id === basis.id);
+        if (historical && ["programId", "obligationId", "ruleId", "occurrenceKey", "membershipCutoffAt"]
+          .every((key) => historical[key] === record[key])
+          && JSON.stringify(historical.coverage) === JSON.stringify(record.coverage)) {
+          const originalObligation = snapshot.find(({ id }) => id === record.obligationId);
+          const originalRule = snapshot.find(({ id }) => id === record.ruleId);
+          if (originalObligation?.type === "obligation" && originalRule?.type === "obligation-rule"
+            && validCalendarRecurrence(obligationScheduleRecurrence(originalObligation, originalRule,
+              new Map(snapshot.map((candidate) => [candidate.id, candidate])), model, timezone).recurrence)) {
+            const issues = [];
+            validateOccurrenceScheduleBinding(record, originalObligation,
+              originalRule, snapshot, model, root, path, issues, false);
+            if (issues.length === 0) return;
+          }
+        }
+      }
+    }
     diagnostics.push(error(
       "invalid-obligation-occurrence-schedule-binding",
       path,

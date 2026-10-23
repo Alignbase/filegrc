@@ -179,21 +179,9 @@ export function planObligations(resources, options = {}) {
     }
 
     const configuredAnchor = schedule.recurrence?.anchorDate || schedule.startsOn;
-    const ruleActivationDate = !modelSupports(model, "operating-preparation")
-      ? obligationActivationDate(obligation, byId, rule || model, workspace?.timezone || "UTC")
-      : [obligationActivationDate(obligation, byId, rule || model, workspace?.timezone || "UTC"),
-      obligationActivationDate(obligation, byId, model, workspace?.timezone || "UTC")].filter(Boolean).sort().at(-1);
-    const activationDate = ruleActivationDate;
-    const recurrence = {
-      ...(rule ? obligationRuleRecurrence(rule, workspace?.timezone || "UTC") : schedule.recurrence || {}),
-      anchorDate: schedule.recurrence?.anchorMode === "activation" && activationDate
-        ? activationDate
-        : rule
-        ? configuredAnchor || activationDate
-        : configuredAnchor && activationDate
-          ? [configuredAnchor, activationDate].sort().at(-1)
-          : configuredAnchor || activationDate
-    };
+    const { recurrence, activationDate } = obligationScheduleRecurrence(
+      obligation, rule, byId, model, workspace?.timezone || "UTC"
+    );
     if (!validCalendarRecurrence(recurrence)) continue;
     const from = rule
       ? [requestedFrom || recurrence.anchorDate, activationDate].filter(Boolean).sort().at(-1)
@@ -1778,7 +1766,7 @@ function contentRevision(source) {
   return calculateRevision("content", source);
 }
 
-function calendarWindow(recurrence, configuredWindow, index) {
+export function calendarWindow(recurrence, configuredWindow, index) {
   const occurrence = calendarOccurrence(recurrence, index);
   const next = calendarOccurrence(recurrence, index + 1);
   if (!occurrence || !next) return null;
@@ -2105,6 +2093,30 @@ function occurrenceStatus(window, asOf, complete) {
   if (window.overdueOn <= asOf) return "overdue";
   if (window.dueWindowStart <= asOf) return "due";
   return "upcoming";
+}
+
+// Planning and persisted occurrence validation must use the same activation
+// anchor, including the latest governing content cutover in operating models.
+export function obligationScheduleRecurrence(obligation, rule, byId, model, timezone = "UTC") {
+  const schedule = rule || obligation;
+  const configuredAnchor = schedule.recurrence?.anchorDate || schedule.startsOn;
+  const activationDate = !modelSupports(model, "operating-preparation")
+    ? obligationActivationDate(obligation, byId, rule || model, timezone)
+    : [obligationActivationDate(obligation, byId, rule || model, timezone),
+      obligationActivationDate(obligation, byId, model, timezone)].filter(Boolean).sort().at(-1);
+  return {
+    activationDate,
+    recurrence: {
+      ...(rule ? obligationRuleRecurrence(rule, timezone) : schedule.recurrence || {}),
+      anchorDate: schedule.recurrence?.anchorMode === "activation" && activationDate
+        ? activationDate
+        : rule
+          ? configuredAnchor || activationDate
+          : configuredAnchor && activationDate
+            ? [configuredAnchor, activationDate].sort().at(-1)
+            : configuredAnchor || activationDate
+    }
+  };
 }
 
 export function obligationActivationDate(obligation, byId, ruleOrModel, timezone = "UTC") {
