@@ -1,3 +1,4 @@
+import { amendedResourceView } from "./nonmaterial-amendments.js";
 import { getRepositorySnapshot, isDataHistoryAncestor } from "./git.js";
 import { applyResourceBatch, INTERNAL_WORKFLOW_CAPABILITIES, updateResource } from "./files.js";
 import {
@@ -283,6 +284,9 @@ export async function assessReportingRoutePeriod(input = process.cwd(), options 
     }
     if (["policy", "document", "commitment", "risk"].includes(record.type)) {
       addDateBoundary(record.statusTransition?.changedOn, false, timezone, record.id, `${record.title || record.id} lifecycle date`);
+    }
+    if (record.type === "nonmaterial-amendment" && loaded.resources.some((target) => target.id === record.targetResourceId && target.type === "reporting-route-set" && (!options.programId || target.programId === options.programId))) {
+      addInstantBoundary(record.amendedAt, record.id, "Nonmaterial amendment time");
     }
     if (record.type !== "reporting-route-set") continue;
     for (const value of [record.approval?.effectiveAt, record.cancellation?.canceledAt]) {
@@ -692,6 +696,7 @@ function assessRouteSet(record, loaded, at, repository) {
           : "inactive";
   return {
     record,
+    nonmaterialView: amendedResourceView(loaded, record, { at }),
     committed,
     effective,
     canceled,

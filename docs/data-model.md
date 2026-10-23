@@ -712,6 +712,22 @@ Key format: `namespace`.
 | `resolutionEvidenceIds` | array of id | No | References: `evidence` |
 | `authorizationKind` | enum | Conditional | Values: `access-grant`, `review-renewal`, `service-account-inventory` Required when `disposition` is `authorized`. Allowed when `disposition` is `authorized`. |
 
+### `nonmaterial-amendment-confirmations`
+
+| Property | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `sameDestination` | boolean | No | Same underlying delivery destination |
+| `sameRecipients` | boolean | No | Same recipients |
+| `sameAccess` | boolean | No | Same access boundaries |
+| `sameAvailability` | boolean | No | Same fallback and availability behavior |
+| `sameDependencies` | boolean | No | Same system dependencies |
+
+### `reporting-route-withdrawal`
+
+| Property | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `amendmentId` | id | Yes | References: `nonmaterial-amendment` |
+
 ## Common fields
 
 | Field | Type | Required | Meaning |
@@ -1544,7 +1560,7 @@ Instructions: Replace the reporting-route placeholders with real normal and fall
 
 Policy basis: A reporting channel is an email address, phone number, web form, in-person contact, or other destination people use to raise a concern. Policies and other approved decisions say when channels are required; this record stores the current contact details so governed text does not copy them.
 
-Timing: Choose the normal channel and a usable fallback, then commit the proposal before approval. Approve the exact committed pair with the actual authority, time, and verified fixed evidence of the approval event. Record cancellation evidence the same way. Create a successor when either channel changes instead of editing an approved set.
+Timing: Choose the normal channel and a usable fallback, then commit the proposal before approval. Approve the exact committed pair with the actual authority, time, and verified fixed evidence of the approval event. Record cancellation evidence the same way. Create a successor when either channel changes instead of editing an approved set. A verified equivalent email alias can instead use an owner-authorized nonmaterial amendment; the original set and its approval remain unchanged.
 
 Path: `data/reporting-route-sets/<id>.json`
 
@@ -1554,7 +1570,7 @@ Markdown companions:
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
-| `status` | enum | Yes | Values: `draft`, `proposed`, `approved`, `canceled`, `historical` |
+| `status` | enum | Yes | Values: `draft`, `proposed`, `approved`, `canceled`, `historical`, `withdrawn` |
 | `programId` | id | Yes | References: `program` |
 | `purposeKey` | string (id) | Yes | Stable purpose key |
 | `purposeLabel` | string | Yes | Reports covered |
@@ -1569,6 +1585,38 @@ Markdown companions:
 | `cancellation` | object (`reporting-route-cancellation`) | Conditional | Managed by filegrc. Required when `status` is `canceled`. Allowed when `status` is `canceled`. |
 | `legacyRouteIds` | array of id | No | References: `reporting-route` Allowed when `status` is `historical`. |
 | `legacyBasis` | string | No | Allowed when `status` is `historical`. |
+| `withdrawal` | object (`reporting-route-withdrawal`) | Conditional | Managed by filegrc. Required when `status` is `withdrawn`. Allowed when `status` is `withdrawn`. |
+
+#### `nonmaterial-amendment`
+
+An owner-authorized administrative correction attached to an unchanged source record. It preserves the original approval and is not a new independent approval.
+
+Instructions: An owner-authorized administrative correction attached to an unchanged source record. It preserves the original approval and is not a new independent approval.
+
+Policy basis: Use only the model-defined categories and fields. The owner records why the correction preserves the approved decision. Changes to commitments, recipients, access, scope, timing, content or evidence conclusions keep their normal review.
+
+Timing: Record the actual decision time against committed source facts and fixed supporting evidence. Commit before relying on a correction. Preserve each decision; use another amendment or normal review for subsequent changes.
+
+Path: `data/nonmaterial-amendments/<id>.json`
+
+Record Markdown: available when needed as an implicit companion file.
+
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `targetResourceId` | id | Yes | Amended record References: `policy`, `document`, `training`, `retention-schedule-item`, `obligation-rule`, `control`, `component`, `vendor`, `reporting-route-set` |
+| `category` | enum | Yes | Values: `label-correction`, `reporting-email-alias` Values come from the `nonmaterialAmendments` registry. |
+| `sourceCommit` | string | Yes | Unchanged source revision |
+| `previousAmendmentId` | id | No | References: `nonmaterial-amendment` |
+| `fieldKey` | string | Yes | Corrected field |
+| `previousValue` | string | Yes |  |
+| `replacementValue` | string | Yes |  |
+| `amendedAt` | string | Yes | Actual amendment time |
+| `amendedById` | id | Yes | Owner making the decision References: `person` |
+| `authorityAppointmentId` | id | Yes | References: `appointment` |
+| `rationale` | string | Yes |  |
+| `evidenceIds` | array of id | No | References: `evidence` |
+| `confirmations` | object (`nonmaterial-amendment-confirmations`) | No |  |
+| `withdrawnProposalId` | id | No | References: `reporting-route-set` |
 
 ### Risk
 

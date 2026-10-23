@@ -140,3 +140,5 @@ export { indexResources, loadWorkspace } from "./workspace.js";
 export { notificationContacts } from "./notifications.js";
 
 export { assessHostedAutomation, githubRepository, hostedAutomationForConnection } from "./hosted-automation.js";
+
+export { amendedResourceView, scaffoldNonmaterialAmendment, saveNonmaterialAmendment } from "./nonmaterial-amendments.js";

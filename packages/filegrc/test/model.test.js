@@ -29,7 +29,7 @@ test("active model exposes the complete resource registry", () => {
     "Operate the Program",
     "Audit"
   ]);
-  assert.equal(Object.keys(model.resources).length, 56);
+  assert.equal(Object.keys(model.resources).length, 57);
   assert.deepEqual(model.resources["reconciliation-dismissal"].required, [
     "transitionFingerprint",
     "eventType",

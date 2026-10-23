@@ -70,7 +70,9 @@ test("stable runtime compatibility lines use minor before 1.0 and major thereaft
     ["0.17.0", "0.17.2", true], ["0.17.3", "0.17.0", true],
     ["0.17.3", "0.18.0", false], ["0.17.3", "0.16.9", false],
     ["1.0.0", "1.99.9", true], ["1.9.0", "1.0.0", true], ["1.0.0", "2.0.0", false],
-    ["0.17.0+build.1", "0.17.9", true]
+    ["0.17.0+build.1", "0.17.9", true],
+    ["0.19.0", "0.18.16", true], ["0.18.16", "0.19.0", false],
+    ["0.19.0", "0.19.2", true], ["0.19.0", "0.20.0", false]
   ]) assert.equal(assessRuntimeCompatibility(runtime, repository).compatible, compatible);
   for (const version of ["0.17.2-beta.1", "v0.17.2", "0.17", "00.17.2", "0.17.2 ", "^0.17.2", 17, "0.17.9007199254740992"]) {
     assert.equal(runtimeCompatibilityLine(version), null);

@@ -57,3 +57,7 @@ FileGRC manages GRC records and audit evidence. Your infrastructure, identity, m
 Your team performs the control work and reviews responses before submission. An independent CPA firm performs the SOC 2 examination, judges evidence sufficiency, and issues the report. Using FileGRC alone does not establish compliance.
 
 [Learn more](https://filegrc.com) · [Source code](https://github.com/Alignbase/filegrc) · [Report an issue](https://github.com/Alignbase/filegrc/issues)
+
+For a nonmaterial administrative correction, choose **Nonmaterial amendment** on a supported record page or run `npx filegrc amend-nonmaterial RESOURCE_ID --scaffold`. The owner can correct an administrative label or a verified equivalent reporting email alias while preserving the original record and approval. Changes to commitments, recipients, access, scope, schedules, governed content or evidence conclusions keep their normal reviews.
+
+The nonmaterial amendment workflow is available from FileGRC 0.19.0 with model v13. Existing workspaces need no model migration. The 0.19 runtime also reads existing 0.18 workspaces; 0.18 runtimes reject repositories pinned to 0.19, so hosted services must approve and install the new runtime before owners adopt these records.

@@ -9351,7 +9351,7 @@
       "description": "The normal and fallback ways people send a report for one purpose, such as an email address and a hotline for security concerns. The set records where each channel leads, who keeps it usable, and when the approved pair applies.",
       "guidance": {
         "policyBasis": "A reporting channel is an email address, phone number, web form, in-person contact, or other destination people use to raise a concern. Policies and other approved decisions say when channels are required; this record stores the current contact details so governed text does not copy them.",
-        "cadence": "Choose the normal channel and a usable fallback, then commit the proposal before approval. Approve the exact committed pair with the actual authority, time, and verified fixed evidence of the approval event. Record cancellation evidence the same way. Create a successor when either channel changes instead of editing an approved set."
+        "cadence": "Choose the normal channel and a usable fallback, then commit the proposal before approval. Approve the exact committed pair with the actual authority, time, and verified fixed evidence of the approval event. Record cancellation evidence the same way. Create a successor when either channel changes instead of editing an approved set. A verified equivalent email alias can instead use an owner-authorized nonmaterial amendment; the original set and its approval remain unchanged."
       },
       "required": [
         "status",
@@ -9373,7 +9373,8 @@
             "proposed",
             "approved",
             "canceled",
-            "historical"
+            "historical",
+            "withdrawn"
           ],
           "filter": true
         },
@@ -9491,6 +9492,17 @@
           "allowedWhen": {
             "status": "historical"
           }
+        },
+        "withdrawal": {
+          "type": "object",
+          "objectType": "reporting-route-withdrawal",
+          "managed": true,
+          "requiredWhen": {
+            "status": "withdrawn"
+          },
+          "allowedWhen": {
+            "status": "withdrawn"
+          }
         }
       },
       "listFields": [
@@ -9507,6 +9519,132 @@
           "required": true
         }
       }
+    },
+    "nonmaterial-amendment": {
+      "title": "Nonmaterial amendment",
+      "pluralTitle": "Nonmaterial amendments",
+      "group": "governance",
+      "collection": "nonmaterial-amendments",
+      "description": "An owner-authorized administrative correction attached to an unchanged source record. It preserves the original approval and is not a new independent approval.",
+      "guidance": {
+        "policyBasis": "Use only the model-defined categories and fields. The owner records why the correction preserves the approved decision. Changes to commitments, recipients, access, scope, timing, content or evidence conclusions keep their normal review.",
+        "cadence": "Record the actual decision time against committed source facts and fixed supporting evidence. Commit before relying on a correction. Preserve each decision; use another amendment or normal review for subsequent changes."
+      },
+      "required": [
+        "targetResourceId",
+        "category",
+        "sourceCommit",
+        "fieldKey",
+        "previousValue",
+        "replacementValue",
+        "amendedAt",
+        "amendedById",
+        "authorityAppointmentId",
+        "rationale"
+      ],
+      "fields": {
+        "targetResourceId": {
+          "type": "id",
+          "relation": [
+            "policy",
+            "document",
+            "training",
+            "retention-schedule-item",
+            "obligation-rule",
+            "control",
+            "component",
+            "vendor",
+            "reporting-route-set"
+          ],
+          "label": "Amended record"
+        },
+        "category": {
+          "type": "enum",
+          "registry": "nonmaterialAmendments",
+          "filter": true
+        },
+        "sourceCommit": {
+          "type": "string",
+          "label": "Unchanged source revision"
+        },
+        "previousAmendmentId": {
+          "type": "id",
+          "relation": [
+            "nonmaterial-amendment"
+          ]
+        },
+        "fieldKey": {
+          "type": "string",
+          "label": "Corrected field"
+        },
+        "previousValue": {
+          "type": "string"
+        },
+        "replacementValue": {
+          "type": "string"
+        },
+        "amendedAt": {
+          "type": "string",
+          "label": "Actual amendment time"
+        },
+        "amendedById": {
+          "type": "id",
+          "relation": [
+            "person"
+          ],
+          "label": "Owner making the decision"
+        },
+        "authorityAppointmentId": {
+          "type": "id",
+          "relation": [
+            "appointment"
+          ]
+        },
+        "rationale": {
+          "type": "string",
+          "search": true
+        },
+        "evidenceIds": {
+          "type": "array",
+          "items": "id",
+          "relation": [
+            "evidence"
+          ]
+        },
+        "confirmations": {
+          "type": "object",
+          "objectType": "nonmaterial-amendment-confirmations"
+        },
+        "withdrawnProposalId": {
+          "type": "id",
+          "relation": [
+            "reporting-route-set"
+          ]
+        }
+      },
+      "listFields": [
+        "title",
+        "targetResourceId",
+        "category",
+        "amendedAt",
+        "amendedById"
+      ],
+      "formFields": [
+        "targetResourceId",
+        "category",
+        "sourceCommit",
+        "previousAmendmentId",
+        "fieldKey",
+        "previousValue",
+        "replacementValue",
+        "amendedAt",
+        "amendedById",
+        "authorityAppointmentId",
+        "rationale",
+        "evidenceIds",
+        "confirmations",
+        "withdrawnProposalId"
+      ]
     }
   },
   "primitives": {
@@ -11378,6 +11516,45 @@
           }
         }
       }
+    },
+    "nonmaterial-amendment-confirmations": {
+      "additionalProperties": false,
+      "properties": {
+        "sameDestination": {
+          "type": "boolean",
+          "label": "Same underlying delivery destination"
+        },
+        "sameRecipients": {
+          "type": "boolean",
+          "label": "Same recipients"
+        },
+        "sameAccess": {
+          "type": "boolean",
+          "label": "Same access boundaries"
+        },
+        "sameAvailability": {
+          "type": "boolean",
+          "label": "Same fallback and availability behavior"
+        },
+        "sameDependencies": {
+          "type": "boolean",
+          "label": "Same system dependencies"
+        }
+      }
+    },
+    "reporting-route-withdrawal": {
+      "additionalProperties": false,
+      "required": [
+        "amendmentId"
+      ],
+      "properties": {
+        "amendmentId": {
+          "type": "id",
+          "relation": [
+            "nonmaterial-amendment"
+          ]
+        }
+      }
     }
   },
   "obligationActivities": {
@@ -12727,5 +12904,41 @@
         "resourceType": "access-review"
       }
     ]
+  },
+  "nonmaterialAmendments": {
+    "label-correction": {
+      "title": "Administrative label correction",
+      "resourceTypes": [
+        "policy",
+        "document",
+        "training",
+        "retention-schedule-item",
+        "obligation-rule",
+        "control",
+        "component",
+        "vendor",
+        "reporting-route-set"
+      ],
+      "fieldPaths": [
+        "title"
+      ]
+    },
+    "reporting-email-alias": {
+      "title": "Equivalent reporting email alias",
+      "resourceTypes": [
+        "reporting-route-set"
+      ],
+      "fieldPaths": [
+        "primaryLane.destination",
+        "alternateLane.destination"
+      ],
+      "requiredConfirmations": [
+        "sameDestination",
+        "sameRecipients",
+        "sameAccess",
+        "sameAvailability",
+        "sameDependencies"
+      ]
+    }
   }
 }

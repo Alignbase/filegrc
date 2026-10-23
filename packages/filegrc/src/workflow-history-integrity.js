@@ -1,3 +1,4 @@
+import { amendmentEvidenceObservationMatches } from "./nonmaterial-amendments.js";
 import { readFile } from "node:fs/promises";
 import {
   getDataRecordHistoryIndex,
@@ -17,12 +18,13 @@ import { CALCULATED_REVISION_FIELDS, CALCULATED_REVISION_MAP_FIELDS, canonicalCa
 
 const FINAL_STATUSES = new Map([
   ["reconciliation-dismissal", new Set([undefined])],
+  ["nonmaterial-amendment", new Set([undefined])],
   ["collection-review", new Set(["active", "retired"])],
   ["obligation-rule", new Set(["active", "retired"])],
   ["obligation-occurrence", new Set(["reconciled", "superseded"])],
   ["audit-population", new Set(["reconciled", "not-applicable", "superseded"])],
   ["reporting-route", new Set(["active", "retired"])],
-  ["reporting-route-set", new Set(["approved", "canceled", "historical"])],
+  ["reporting-route-set", new Set(["approved", "canceled", "historical", "withdrawn"])],
   ["attestation", new Set(["completed"])],
   ["obligation-event", new Set(["complete", "canceled"])],
   ["action-item", new Set(["done", "canceled"])],
@@ -261,6 +263,7 @@ export async function validateWorkflowHistoryIntegrity(loaded, diagnostics) {
 
   const byId = new Map(loaded.resources.map((record) => [record.id, record]));
   const proofOwners = loaded.resources.filter((record) => (
+    record.type === "nonmaterial-amendment" ||
     (record.type === "obligation-occurrence" && ["reconciled", "superseded"].includes(record.status))
     || (record.type === "audit-population" && ["reconciled", "not-applicable", "superseded"].includes(record.status))
     || (record.type === "attestation" && record.status === "completed")
@@ -290,7 +293,9 @@ export async function validateWorkflowHistoryIntegrity(loaded, diagnostics) {
         diagnostics.push(integrityError(ownerEntry, `Proof record "${id}" must exist in the commit where ${owner.type} "${owner.id}" was first finalized.`));
         continue;
       }
-      if (!sameJson(currentEntry.record, historical.record)) {
+      if (!(owner.type === "nonmaterial-amendment" && historical.record.type === "evidence"
+        ? amendmentEvidenceObservationMatches(historical.record, currentEntry.record, loaded, finalized.commit)
+        : sameJson(currentEntry.record, historical.record))) {
         diagnostics.push(integrityError(currentEntry, `Proof record "${id}" differs from the version used when ${owner.type} "${owner.id}" was first finalized. Create corrected proof and a superseding record.`));
         continue;
       }
@@ -845,6 +850,7 @@ function canonicalJson(value, field = null, revisionMap = false) {
 }
 
 function proofIds(occurrence, byId) {
+  if (occurrence.type === "nonmaterial-amendment") return new Set(occurrence.evidenceIds || []);
   const pending = [
     ...(occurrence.evidenceIds || []),
     ...(occurrence.sourceEvidenceId ? [occurrence.sourceEvidenceId] : []),

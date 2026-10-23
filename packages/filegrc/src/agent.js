@@ -84,6 +84,7 @@ export function buildAgentGuide(loaded, type, options = {}) {
 
   return {
     type,
+    nonmaterialAmendments: Object.fromEntries(Object.entries(loaded.model.nonmaterialAmendments || {}).filter(([, rule]) => rule.resourceTypes.includes(type))),
     ...(options.preparationChecks ? { preparationChecks: options.preparationChecks } : {}),
     title: definition.title,
     pluralTitle: definition.pluralTitle,

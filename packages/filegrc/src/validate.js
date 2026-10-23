@@ -1,3 +1,4 @@
+import { nonmaterialAmendmentIssues } from "./nonmaterial-amendments.js";
 import { completionMatchesMember, assessCompletionForObligation, obligationActivationDate } from "./obligations.js";
 import { reportingCutoverIssues, scheduleCutoverIssues, historicalContentCutover } from "./activation-readiness.js";
 import { scheduleSetIssues, scheduleReviewerConflicts } from "./schedule-set.js";
@@ -123,6 +124,15 @@ async function validateWorkspaceUnmeasured(input) {
 
   for (const entry of loaded.entries) {
     const { record } = entry;
+    if (record.type === "nonmaterial-amendment") {
+      diagnostics.push(...nonmaterialAmendmentIssues(loaded, record).map((item) => ({ ...item, path: `data/${entry.relativePath}` })));
+    }
+    if (record.type === "reporting-route-set" && record.status === "withdrawn") {
+      const amendment = byId.get(record.withdrawal?.amendmentId);
+      if (amendment?.type !== "nonmaterial-amendment" || amendment.withdrawnProposalId !== record.id) {
+        diagnostics.push({ severity: "error", code: "invalid-reporting-route-withdrawal", path: `data/${entry.relativePath}`, message: "A withdrawn proposal must name its matching owner amendment." });
+      }
+    }
     const displayPath = `data/${entry.relativePath}`;
     if (!record || Array.isArray(record) || typeof record !== "object") {
       diagnostics.push(error("invalid-record", displayPath, "A resource must be a JSON object."));
@@ -1033,7 +1043,7 @@ function validateReportingRouteSets(loaded, byId, pathById, diagnostics) {
       current[route.status === "approved" ? "approved" : "pending"].push(route);
       currentByPurpose.set(key, current);
     }
-    if (route.predecessorId) {
+    if (route.predecessorId && route.status !== "withdrawn") {
       const predecessor = byId.get(route.predecessorId);
       if (route.predecessorId === route.id) {
         diagnostics.push(error("invalid-reporting-route-lineage", path, "A Reporting Route Set cannot name itself as its predecessor."));

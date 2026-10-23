@@ -80,6 +80,7 @@ import {
   previewWorkflowMutation,
   workflowForResource
 } from "./workflow.js";
+import { scaffoldNonmaterialAmendment, saveNonmaterialAmendment } from "./nonmaterial-amendments.js";
 import { loadWorkspace } from "./workspace.js";
 import { APP_SCRIPT, APP_STYLES, renderIndex } from "./web.js";
 import { assertWorkspaceEngineVersion } from "./runtime-version.js";
@@ -379,6 +380,19 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
         return json(response, 201, await browserMutation(input, requestOptions, {
           message: (result) => `Create policy event: ${result.event?.title || payload.title || payload.eventType}`
         }, () => createObligationEvent(input, { ...payload, programId: payload.programId || requestOptions.programId })));
+      }
+      if (request.method === "POST" && url.pathname === "/api/nonmaterial-amendments/scaffold") {
+        const payload = await readJson(request);
+        return json(response, 200, await scaffoldNonmaterialAmendment(input, payload.targetResourceId, payload));
+      }
+      if (request.method === "POST" && url.pathname === "/api/nonmaterial-amendments/preview") {
+        return json(response, 200, await saveNonmaterialAmendment(input, await readJson(request), { preview: true }));
+      }
+      if (request.method === "POST" && url.pathname === "/api/nonmaterial-amendments") {
+        const payload = await readJson(request);
+        return json(response, 201, await browserMutation(input, requestOptions, {
+          message: () => `Record nonmaterial amendment: ${payload.record?.targetResourceId}`
+        }, () => saveNonmaterialAmendment(input, payload)));
       }
       if (request.method === "GET" && url.pathname === "/api/reporting-route-sets") {
         return json(response, 200, await assessReportingRouteSets(input, {

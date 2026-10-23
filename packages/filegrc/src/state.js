@@ -1,3 +1,4 @@
+import { amendedResourceView } from "./nonmaterial-amendments.js";
 import { assessReportingRouteSets } from "./reporting-route-sets.js";
 import { readFile } from "node:fs/promises";
 import { assessAuditPreparation } from "./audit-preparation.js";
@@ -432,6 +433,8 @@ function createResourceHistoryFromLoaded(loaded, type, id, options) {
 
 async function createStateEntry(loaded, entry, options) {
   const record = structuredClone(entry.record);
+  const amendmentView = options.includeDetails && loaded.resources.some((item) => item.type === "nonmaterial-amendment" && item.targetResourceId === record.id)
+    ? amendedResourceView(loaded, record) : null;
   const routeAssessment = options.includeDetails && record.type === "reporting-route-set" && record.status === "proposed"
     ? (await assessReportingRouteSets(loaded, { programId: record.programId })).routeSets.find((candidate) => candidate.record.id === record.id) : null;
   const content = {};
@@ -454,6 +457,7 @@ async function createStateEntry(loaded, entry, options) {
   return {
     record,
     ...(routeAssessment ? { proposalCommit: routeAssessment.proposalCommit } : {}),
+    ...(amendmentView?.amendmentIds.length ? { nonmaterialView: amendmentView } : {}),
     relativePath: `data/${entry.relativePath}`,
     revision: contentRevision(entry.source),
     content,
