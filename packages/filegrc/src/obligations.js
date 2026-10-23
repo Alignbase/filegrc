@@ -118,6 +118,7 @@ export function planObligations(resources, options = {}) {
     throw new Error(`The obligation query must be narrowed; it includes more than ${MAX_PLANNED_ITEMS.toLocaleString("en-US")} active obligations.`);
   }
   const calendarItems = [];
+  const cycleStartsByOccurrenceId = new Map();
   const plannedOccurrenceKeys = new Set();
   const triggerGroups = new Map();
   let scannedCalendarOccurrences = 0;
@@ -206,12 +207,13 @@ export function planObligations(resources, options = {}) {
     for (; ; index += 1) {
       const window = scanCalendarWindow(recurrence, schedule.window, index);
       if (!window || window.dueWindowStart > through) break;
+      const cycleWindowStart = window.dueWindowStart;
       if (schedule.endsOn && window.dueWindowStart > schedule.endsOn) break;
       if (rule && activationDate && window.dueWindowStart < activationDate) {
         if (!modelSupports(model, "operating-preparation")) continue;
         // A frozen full or partial cycle remains authoritative after later
         // content activation. The historical pass preserves its original key.
-        if (records.some((record) => record.type === "obligation-occurrence"
+        const frozen = records.find((record) => record.type === "obligation-occurrence"
           && record.programId === (program?.id || workspace?.id || "workspace")
           && record.obligationId === obligation.id && record.ruleId === rule.id
           && record.status !== "superseded" && record.coverage?.kind === "range"
@@ -219,7 +221,11 @@ export function planObligations(resources, options = {}) {
           && record.coverage.startsOn >= window.dueWindowStart && record.coverage.startsOn <= activationDate
           && record.coverage.startsOn <= window.dueWindowEnd
           && record.occurrenceKey === `${program?.id || workspace?.id || "workspace"}:${obligation.id}:${record.coverage.startsOn}`
-          && record.coverage.endsOn === window.dueWindowEnd)) continue;
+          && record.coverage.endsOn === window.dueWindowEnd);
+        if (frozen) {
+          cycleStartsByOccurrenceId.set(frozen.id, cycleWindowStart);
+          continue;
+        }
         // Preserve the eligible remainder of an initial cycle at cutover.
         // Never allow pre-activation proof to satisfy that partial cycle.
         if (window.dueWindowEnd < activationDate) continue;
@@ -280,6 +286,7 @@ export function planObligations(resources, options = {}) {
         key: `${obligation.id}:${window.dueWindowStart}`,
         kind: "calendar",
         activationOn: activationDate || null,
+        cycleWindowStart,
         configuredAnchor: configuredAnchor || null,
         initialCycleNotice: activationDate && window.dueWindowStart > activationDate
           ? `The first eligible cycle starts ${window.dueWindowStart}, after activation ${activationDate}. Check whether the approved rule needs a separate initial deadline; do not silently treat earlier cycles as completed.`
@@ -364,6 +371,7 @@ export function planObligations(resources, options = {}) {
     calendarItems.push({
       key: `${obligation.id}:${dueWindowStart}`,
       kind: "calendar",
+      cycleWindowStart: cycleStartsByOccurrenceId.get(occurrence.id) || dueWindowStart,
       obligationId: obligation.id,
       ruleId: rule.id,
       ruleStatus: rule.status,

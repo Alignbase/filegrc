@@ -62,8 +62,17 @@ export async function assessProgramBaseline(loaded, program, controls, asOf, mak
     if (!selected.length) continue;
     const controlIds = selected.map(({ id }) => id);
     const notBefore = selected.flatMap((control) => [control.effectiveOn, control.procedureEffectiveOn]).filter(Boolean).sort().at(-1);
-    const windows = schedules.map((schedule) => calendar.filter((task) => task.obligationId === schedule.id && task.dueWindowStart <= asOf)
-      .sort((a, b) => b.dueWindowStart.localeCompare(a.dueWindowStart))[0]).filter(Boolean);
+    const windows = schedules.map((schedule) => {
+      const task = calendar.filter((task) => task.obligationId === schedule.id && task.dueWindowStart <= asOf)
+        .sort((a, b) => b.dueWindowStart.localeCompare(a.dueWindowStart))[0];
+      if (!task) return null;
+      // Setup proof may precede content cutover within the adopted cycle.
+      // Use the planner's exact rule, anchor and configured offsets instead of
+      // reconstructing a cycle from its shifted or clipped operating start.
+      return task.cycleWindowStart && task.cycleWindowStart < task.dueWindowStart
+        ? { ...task, dueWindowStart: task.cycleWindowStart }
+        : task;
+    }).filter(Boolean);
     const currentDate = (date) => Boolean(date && date <= asOf && (!notBefore || date >= notBefore));
     const permittedDate = (date, relevantWindows = windows) => currentDate(date)
       && relevantWindows.every((window) => date >= window.dueWindowStart && date <= window.dueWindowEnd);
