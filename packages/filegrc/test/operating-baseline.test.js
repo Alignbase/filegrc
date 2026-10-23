@@ -12,6 +12,7 @@ import { assessProgramReadiness } from "../src/program-readiness.js";
 import { runCli } from "../src/cli.js";
 import { captureCli } from "./helpers.js";
 import { planModelMigration } from "../src/model-migration.js";
+import { planObligations } from "../src/obligations.js";
 
 async function fixture(context, code) {
   const root = await mkdtemp(join(tmpdir(), "filegrc-full-baseline-"));
@@ -344,4 +345,104 @@ test("provider reconciliation guide and scaffold expose nested model facts witho
   assert.deepEqual(scaffold.record.grantDecisions, []);
   assert.equal(scaffold.record.populationCount, null);
   assert.notEqual(scaffold.record.status, "complete");
+});
+
+
+test("later content cutover preserves risk setup proof within its adopted cycle", async (context) => {
+  const { loaded, program, controls, get, baseline } = await fixture(context, "RSK-01");
+  const assessment = get("risk-assessment");
+  const initial = await baseline("program-risk");
+  for (const [field, ids] of Object.entries(initial.scope)) assessment[field] = ids;
+  Object.assign(assessment, { assessmentKind: "enterprise-risk", completedOn: "2026-10-05", approvedOn: "2026-10-06",
+    assessorIds: ["person-example"], reviewerIds: ["person-independent-approver-example"] });
+  get("obligation").activityType = "risk-assessment";
+  Object.assign(get("obligation-rule"), { recurrence: { mode: "calendar", unit: "month", interval: 3, anchorMode: "explicit", anchorDate: "2026-07-01" },
+    effectiveAt: "2026-07-01T00:00:00Z", window: { precision: "date", startsAfter: 2, dueAfter: 89 } });
+  assert.equal((await baseline("program-risk")).complete, true);
+  get("policy").effectiveOn = "2026-10-12";
+  let result = await baseline("program-risk");
+  assert.equal(result.complete, true, JSON.stringify(result.candidateResults));
+  assert.equal(result.completionWindows[0].startsOn, "2026-10-03", "The configured cycle offset still applies");
+  const task = planObligations(loaded.resources, { model: loaded.model, programId: program.id, asOf: "2026-10-13", through: "2026-10-13", includeComplete: true }).calendarItems[0];
+  assert.equal(task.dueWindowStart, "2026-10-12", "Actual occurrence completion is still bounded by cutover");
+  const frozen = { ...get("obligation-occurrence"), id: "obligation-occurrence-frozen-risk", type: "obligation-occurrence",
+    programId: program.id, obligationId: task.obligationId, ruleId: task.ruleId, occurrenceKey: task.occurrenceKey,
+    status: "open", coverage: { kind: "range", startsOn: task.dueWindowStart, endsOn: task.dueWindowEnd }, members: [] };
+  loaded.resources.push(frozen);
+  assert.equal((await baseline("program-risk")).complete, true, "Recording the partial occurrence preserves setup proof eligibility");
+  const frozenTask = planObligations(loaded.resources, { model: loaded.model, programId: program.id, asOf: "2026-10-13", through: "2026-10-13", includeComplete: true }).calendarItems.find((item) => item.occurrenceId === frozen.id);
+  assert.equal(frozenTask.dueWindowStart, "2026-10-12", "Frozen occurrence dates stay authoritative");
+  assert.equal(frozenTask.cycleWindowStart, "2026-10-03");
+  assessment.completedOn = "2026-10-02";
+  assert.equal((await baseline("program-risk")).complete, false, "Proof before the configured offset stays ineligible");
+  assessment.completedOn = "2026-09-30";
+  assert.equal((await baseline("program-risk")).complete, false, "Previous-cycle work stays ineligible");
+  assessment.completedOn = "2026-10-05";
+  controls[0].procedureEffectiveOn = "2026-10-06";
+  assert.equal((await baseline("program-risk")).complete, false, "A changed Control procedure still needs current proof");
+});
+
+test("later content cutover preserves access setup exports without accepting stale or unsupported populations", async (context) => {
+  const { get, baseline } = await fixture(context, "IAM-01");
+  const review = get("access-review"), grant = get("access-grant"), proof = get("evidence");
+  get("obligation").activityType = "access-review";
+  Object.assign(get("obligation-rule"), { recurrence: { mode: "calendar", unit: "month", interval: 3, anchorMode: "explicit", anchorDate: "2026-07-01" },
+    effectiveAt: "2026-07-01T00:00:00Z", window: { precision: "date", startsAfter: 0, dueAfter: 89 } });
+  Object.assign(review, { completedOn: "2026-10-05", approvedOn: "2026-10-06", populationCount: 1, exceptionCount: 0,
+    grantDecisions: [{ accessGrantId: grant.id, decision: "retain" }] });
+  Object.assign(proof, { artifactKind: "population-export", sourceKind: "component", sourceComponentId: get("component").id,
+    collectedOn: "2026-10-05", verifiedOn: "2026-10-05", generatedAt: "2026-10-05T10:00:00Z", timezone: "UTC",
+    queryDescription: "All scoped provider accounts", populationCount: 1,
+    completenessValidation: "Compared all account classes with provider totals", accuracyValidation: "Checked account identifiers and permissions",
+    coverage: { kind: "as-of", on: "2026-10-05" } });
+  delete proof.filePaths;
+  assert.equal((await baseline("provider-access")).complete, true);
+  get("policy").effectiveOn = "2026-10-12";
+  assert.equal((await baseline("provider-access")).complete, true);
+  proof.generatedAt = "2026-09-30T10:00:00Z";
+  assert.equal((await baseline("provider-access")).complete, false, "A prior-cycle export cannot support the current population");
+  proof.generatedAt = "2026-10-05T10:00:00Z";
+  proof.populationCount = 2;
+  assert.equal((await baseline("provider-access")).complete, false, "Unreconciled accounts still block readiness");
+});
+
+test("setup eligibility retains the planner's rule, activation anchor and offset cycle", async (context) => {
+  for (const scenario of ["activation-anchor", "future-rule", "negative-offset", "cross-cycle-offset"]) {
+    await context.test(scenario, async (child) => {
+      const { loaded, get, baseline } = await fixture(child, "RSK-01");
+      const assessment = get("risk-assessment");
+      const initial = await baseline("program-risk");
+      for (const [field, ids] of Object.entries(initial.scope)) assessment[field] = ids;
+      Object.assign(assessment, { assessmentKind: "enterprise-risk", completedOn: "2026-10-05", approvedOn: "2026-10-06",
+        assessorIds: ["person-example"], reviewerIds: ["person-independent-approver-example"] });
+      const obligation = get("obligation"), rule = get("obligation-rule");
+      obligation.activityType = "risk-assessment";
+      Object.assign(rule, { recurrence: { mode: "calendar", unit: "month", interval: 3, anchorMode: "explicit", anchorDate: "2026-07-01" },
+        effectiveAt: "2026-07-01T12:00:00Z", window: { precision: "date", startsAfter: 0, dueAfter: 89 } });
+      get("policy").effectiveOn = "2026-10-12";
+      let expected = false;
+      if (scenario === "activation-anchor") rule.recurrence.anchorMode = "activation";
+      if (scenario === "future-rule") {
+        assessment.completedOn = "2026-09-20"; assessment.approvedOn = "2026-09-21";
+        const successor = { ...rule, id: "obligation-rule-future-risk", supersedesId: rule.id,
+          effectiveAt: "2026-11-01T12:00:00Z", recurrence: { ...rule.recurrence, anchorDate: "2026-09-01" } };
+        rule.status = "retired"; loaded.resources.push(successor);
+        obligation.ruleIds = [rule.id, successor.id]; obligation.activeRuleId = successor.id;
+      }
+      if (scenario === "negative-offset") {
+        get("policy").effectiveOn = "2026-07-01";
+        rule.window = { precision: "date", startsAfter: -10, dueAfter: 80 };
+        assessment.completedOn = "2026-08-20"; assessment.approvedOn = "2026-08-21";
+      }
+      if (scenario === "cross-cycle-offset") {
+        rule.recurrence = { mode: "calendar", unit: "week", interval: 1, anchorMode: "explicit", anchorDate: "2026-10-01" };
+        rule.effectiveAt = "2026-10-01T12:00:00Z";
+        rule.window = { precision: "date", startsAfter: 10, dueAfter: 13 };
+        assessment.completedOn = "2026-10-11"; assessment.approvedOn = "2026-10-12";
+        expected = true;
+      }
+      const result = await baseline("program-risk");
+      assert.equal(result.complete, expected, JSON.stringify(result.candidateResults));
+    });
+  }
 });
