@@ -228,7 +228,7 @@ export function planObligations(resources, options = {}) {
           .filter((record) => (
             record
             && completionFallsInWindow(record, window, workspace?.timezone || "UTC", model)
-            && completionTypeMatches(record, expectedCompletionTypes)
+            && completionMatchesObligation(record, obligation, model)
           ))
         : [];
       const completionResourceIds = reconciliation
@@ -250,7 +250,7 @@ export function planObligations(resources, options = {}) {
       const resolvedMemberIds = new Set((reconciliation?.members || [])
         .filter((member) => occurrenceMemberIsResolved(member, reconciliation, byId, (completionId) => {
           const completion = byId.get(completionId);
-          return completionTypeMatches(completion, expectedCompletionTypes)
+          return completionMatchesObligation(completion, obligation, model)
             && completionMatchesMember(completion, activity.aggregate?.completionMemberField, member.resourceId, model, byId, obligation)
             && completionFallsInWindow(completion, window, rule?.timezone || workspace?.timezone || "UTC", reconciliation?.status === "reconciled" ? undefined : model)
             && completionPassesActivity(completion, activity, model, byId, occurrenceProofDate(reconciliation, asOf, workspace?.timezone), workspace?.timezone);
@@ -337,19 +337,24 @@ export function planObligations(resources, options = {}) {
     const programStatus = programStatusByObligationId.get(obligation.id);
     const programBlocker = programStatus === "proposed" ? obligationProgramBlocker(obligation, byId, asOf, model, now) : null;
     const activity = obligationActivity(model, obligation);
+    const membershipFinal = membershipIsFinal(rule.selector, window, asOf);
+    const recordedMemberIds = (occurrence.members || []).map(({ resourceId }) => resourceId);
+    const expectedMemberIds = occurrence.status === "open" && !membershipFinal && rule.selector
+      ? [...new Set([...recordedMemberIds, ...selectScopedCollectionRecords({ resources: records, model }, rule.selector, program).map(({ id }) => id)])].sort()
+      : recordedMemberIds;
     const completedMemberIds = (occurrence.members || [])
       .filter(({ disposition, result }) => disposition === "expected" && result === "passed")
       .map(({ resourceId }) => resourceId);
     const resolvedMemberIds = (occurrence.members || [])
       .filter((member) => occurrenceMemberIsResolved(member, occurrence, byId, (completionId) => {
         const completion = byId.get(completionId);
-        return completionTypeMatches(completion, activity.completionResourceTypes)
+        return completionMatchesObligation(completion, obligation, model)
           && completionMatchesMember(completion, activity.aggregate?.completionMemberField, member.resourceId, model, byId, obligation)
           && completionFallsInWindow(completion, window, rule.timezone || workspace?.timezone || "UTC")
           && completionPassesActivity(completion, activity, model, byId, occurrenceProofDate(occurrence, asOf, workspace?.timezone), workspace?.timezone);
       }))
       .map(({ resourceId }) => resourceId);
-    const resolutionsComplete = (occurrence.members || []).every(({ resourceId }) => resolvedMemberIds.includes(resourceId));
+    const resolutionsComplete = membershipFinal && expectedMemberIds.every((resourceId) => resolvedMemberIds.includes(resourceId));
     const conclusionValid = ["complete", "complete-with-exceptions", "zero-population"].includes(occurrence.conclusion)
       && resolutionsComplete;
     const successful = occurrence.status === "reconciled"
@@ -376,14 +381,14 @@ export function planObligations(resources, options = {}) {
       completionType: preferredCompletionType(activity, obligation, byId),
       completionProfile: activity.completionProfile || null,
       completionResourceIds: [...new Set((occurrence.members || []).flatMap(({ completionResourceIds = [] }) => completionResourceIds))],
-      expectedMemberIds: (occurrence.members || []).map(({ resourceId }) => resourceId),
+      expectedMemberIds,
       completedMemberIds,
       resolvedMemberIds,
       resolutionsComplete,
       conclusionValid,
-      expectedCount: occurrence.expectedCount,
+      expectedCount: occurrence.status === "open" && !membershipFinal ? expectedMemberIds.length : occurrence.expectedCount,
       completedCount: occurrence.completedCount,
-      membershipFinal: true,
+      membershipFinal,
       reconciliationStatus: occurrence.status,
       operatingResult: occurrence.conclusion || null,
       legacySchedule: false,
@@ -434,6 +439,13 @@ export function planObligations(resources, options = {}) {
     .filter((item) => item.status !== "complete" || options.includeComplete);
   if (calendarItems.length + eventItems.length + standaloneItems.length > MAX_PLANNED_ITEMS) {
     throw new Error(`The obligation query must be narrowed; it exceeds ${MAX_PLANNED_ITEMS.toLocaleString("en-US")} planned items.`);
+  }
+  for (const item of calendarItems) {
+    if (!item.ruleId) continue;
+    const selector = byId.get(item.ruleId)?.selector;
+    item.membershipCutoffAt = selector?.cutoff === "window-end" ? item.dueWindowEnd : item.dueWindowStart;
+    item.memberWorkComplete = item.expectedMemberIds.every((id) => item.resolvedMemberIds.includes(id));
+    item.awaitingPopulationCutoff = item.memberWorkComplete && !item.membershipFinal;
   }
   const dateDeadlines = new Map();
   const items = [...calendarItems, ...eventItems, ...standaloneItems]
@@ -889,11 +901,11 @@ export async function scaffoldObligationOccurrence(input, options = {}) {
   const members = populationIds.map((resourceId) => {
     const prior = existingMembers.get(resourceId) || {};
     const matching = [...loaded.resources, ...(options.completionRecord && !byId.has(options.completionRecord.id) ? [options.completionRecord] : [])].filter((record) => (
-      activity.completionResourceTypes.includes(record.type)
+      completionMatchesObligation(record, obligation, loaded.model)
       && completionFallsInWindow(record, item, loaded.workspace.timezone, existing?.record.status === "reconciled" ? undefined : loaded.model)
       && completionMatchesMember(record, completionMemberField, resourceId, loaded.model, byId, obligation)
     ));
-    const accepted = matching.filter((record) => completionPassesActivity(record, activity, loaded.model, byId, undefined, loaded.workspace.timezone));
+    const accepted = matching.filter((record) => completionPassesActivity(record, activity, loaded.model, byId, asOf, loaded.workspace.timezone));
     return {
       ...prior,
       resourceId,
@@ -902,7 +914,6 @@ export async function scaffoldObligationOccurrence(input, options = {}) {
         ? prior.result || "pending"
         : accepted.length ? "passed" : matching.length ? "failed" : prior.result || "pending",
       completionResourceIds: [...new Set([
-        ...(prior.completionResourceIds || []),
         ...matching.map(({ id }) => id)
       ])]
     };
@@ -955,7 +966,7 @@ export async function scaffoldObligationOccurrence(input, options = {}) {
     record,
     revision: existing || predecessor ? contentRevision((existing || predecessor).source) : null,
     membershipFinal: item.membershipFinal,
-    instructions: "Review the frozen population as one occurrence. Link each member's dated completion, exception, or non-applicability decision. Set reconciled status, counts, conclusion, reviewers, and reconciledAt only after membership is final. Use a superseding record to correct a finalized occurrence."
+    instructions: (item.membershipFinal ? "" : `Population remains open through ${cutoff}. Record work now, then reconcile after the cutoff. `) + "Review the frozen population as one occurrence. Link each member's dated completion, exception, or non-applicability decision. Set reconciled status, counts, conclusion, reviewers, and reconciledAt only after membership is final. Use a superseding record to correct a finalized occurrence."
   };
 }
 
@@ -1383,6 +1394,9 @@ function assertExpectedCompletionType(obligation, record, model) {
     throw new Error(
       `Obligation "${obligation.id}" expects a completion resource of type ${expected.join(" or ")}, not "${record.type ?? ""}".`
     );
+  }
+  if (!completionMatchesObligation(record, obligation, model)) {
+    throw new Error(`Completion "${record.id || ""}" does not match the adopted activity profile, subtype, or Obligation linkage.`);
   }
 }
 
@@ -1835,7 +1849,9 @@ function planEventRun(event, actionItems, byId, asOf, now, model) {
         ? record.completionResourceIds || []
         : [...(record.completionResourceIds || []), ...(record.evidenceIds || [])];
       const linkedCompletionIds = [...new Set(completionIds)];
-      const matchingCompletionIds = linkedCompletionIds.filter((id) => completionTypeMatches(byId.get(id), expectedCompletionTypes));
+      const matchingCompletionIds = linkedCompletionIds.filter((id) => obligation?.type === "obligation"
+        ? completionMatchesObligation(byId.get(id), obligation, model)
+        : completionTypeMatches(byId.get(id), expectedCompletionTypes));
       const completionSatisfied = expectedCompletionTypes.length === 0
         || matchingCompletionIds.length > 0;
       const complete = record.status === "done" && completionSatisfied;
@@ -2048,7 +2064,7 @@ export function assessCompletionForObligation(record, obligation, loaded, option
   const byId = new Map(loaded.resources.map((current) => [current.id, current]));
   const date = executionDate(record, loaded.model, loaded.workspace?.timezone || "UTC");
   const issues = [];
-  if (!completionTypeMatches(record, activity.completionResourceTypes)) issues.push("Use the completion record type required by the adopted activity.");
+  if (!completionMatchesObligation(record, obligation, loaded.model)) issues.push("Use the completion record type, activity profile, subtype, and Obligation linkage required by the adopted activity.");
   if (!completionPassesActivity(record, activity, loaded.model, byId, options.asOf, loaded.workspace?.timezone)) issues.push("Finish the model-required actors, actual result, completion time, review and proof fields; a planned record or applicability decision is not test execution.");
   if (!date || options.asOf && date > options.asOf || options.notBefore && date < options.notBefore) issues.push("The actual completion date must cover the current implementation and cannot be in the future.");
   if (options.window && !completionFallsInWindow(record, options.window, loaded.workspace?.timezone || "UTC", loaded.model)) issues.push("This result falls outside the adopted occurrence's allowed completion dates.");
@@ -2062,6 +2078,19 @@ function normalizedEventWindow(configuredWindow) {
   return configuredWindow && !Array.isArray(configuredWindow) && typeof configuredWindow === "object"
     ? configuredWindow
     : {};
+}
+
+// Completion identity is distinct from a successful result: a failed execution
+// belongs in the occurrence, but another activity or Obligation does not.
+export function completionMatchesObligation(record, obligation, model) {
+  const activity = obligationActivity(model, obligation);
+  if (!completionTypeMatches(record, activity.completionResourceTypes)) return false;
+  if (record.obligationId && record.obligationId !== obligation.id) return false;
+  const spec = modelSupports(model, "operating-preparation")
+    && model?.operatingPreparation?.completionRecords?.[record.type];
+  if (spec && activity.completionProfile && record.profileId !== activity.completionProfile) return false;
+  if (spec?.externalOperationProof && record.artifactSubtype !== activity.activityType) return false;
+  return true;
 }
 
 function completionTypeMatches(record, expectedTypes = []) {
@@ -2216,7 +2245,7 @@ function currentOccurrence(records, occurrenceKey, obligationId, ruleId, window)
   )) || null;
 }
 
-function membershipIsFinal(selector, window, asOf) {
+export function membershipIsFinal(selector, window, asOf) {
   if (!selector) return true;
   if (selector.cutoff === "window-end") return asOf > window.dueWindowEnd;
   if (["as-of", "event-subject"].includes(selector.membershipMode)) return asOf > window.dueWindowStart;

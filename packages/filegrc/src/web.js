@@ -2542,7 +2542,7 @@ function obligationCard(item, collapsed = false) {
     : "");
   const kind = item.kind === "event" ? "Policy Event Task" : item.kind === "action" ? "Assigned Follow-up" : properCase(item.activityType || "Recurring");
   const population = item.ruleId
-    ? '<p><strong>' + esc(String(item.completedCount || 0)) + ' of ' + esc(String(item.expectedCount || 0)) + '</strong> expected members passed' + (item.membershipFinal ? '' : '; population still open') + '.</p>'
+    ? '<p><strong>' + esc(String(item.completedCount || 0)) + ' of ' + esc(String(item.expectedCount || 0)) + '</strong> expected members passed' + (item.membershipFinal ? '' : (item.awaitingPopulationCutoff ? '; work recorded, awaiting population cutoff ' : '; population remains open through ') + esc(item.membershipCutoffAt)) + '.</p>'
     : '';
   return '<article class="obligation-card status-' + esc(item.status) + '" data-work-source="' + esc(type + ":" + id) + '"' + (collapsed ? ' data-collapsed hidden' : "") + '><div class="obligation-card-head"><span>' + esc(kind) + '</span><strong>' + esc(timingText(item)) + '</strong></div><h3><a href="#/resource/' + type + '/' + encodeURIComponent(id) + '">' + esc(titleCase(item.title)) + '</a></h3><p>' + esc(windowText(item)) + '</p>' + population + '<div class="obligation-card-foot"><div class="obligation-links">' + (item.policyIds || []).map(formatReference).join("") + '</div>' + action + '</div></article>';
 }
