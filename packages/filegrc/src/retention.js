@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { contentRevision } from "./files.js";
 import { resolveDataPath } from "./paths.js";
-import { programComponents } from "./program.js";
+import { recordBelongsToProgram, programComponents } from "./program.js";
 import { markdownEntries } from "./resource-markdown.js";
 import { modelSupports } from "../model/index.js";
 import { canonicalCalculatedRevisionJson, revisionDigest, revisionsMatch } from "./revisions.js";
@@ -99,18 +99,8 @@ export async function assessRetentionReadiness(loaded, program, options = {}) {
   }));
 
   for (const coverage of loaded.resources.filter((record) => record.type === "source-coverage" && record.status === "active")) {
-    const linked = (coverage.retentionScheduleItemIds || []).map((id) => byId.get(id)).filter(Boolean);
-    const proposed = linked.filter((rule) => (
-      rule.type === "retention-schedule-item"
-      && proposedRules.includes(rule)
-      && (rule.scopeResourceIds || []).includes(coverage.id)
-    ));
-    const matching = linked.filter((rule) => (
-      rule.type === "retention-schedule-item"
-      && rule.status === "active"
-      && usableRules.includes(rule)
-      && (rule.scopeResourceIds || []).includes(coverage.id)
-    ));
+    if (!recordBelongsToProgram(coverage, program, byId, loaded.model)) continue;
+    const { proposedRules: proposed, rules: matching } = await resolveSourceCoverageRetention(loaded, coverage, program);
     items.push(readinessItem(
       `retention-source-coverage-${coverage.id}`,
       matching.length && options.scheduleApproved ? "complete" : proposed.length ? "info" : "action",
@@ -161,6 +151,22 @@ export async function assessRetentionReadiness(loaded, program, options = {}) {
       { commands: [`npx filegrc get ${application.id} --json`, `npx filegrc apply-retention-rule ${application.ruleId} --scaffold`] }));
   }
   return items;
+}
+
+// Both source assessments and schedule readiness share this exact decision.
+// An application extends an unchanged approved rule to one explicit population;
+// it never supplies a new category or changes the rule's preservation semantics.
+export async function resolveSourceCoverageRetention(loaded, coverage, program) {
+  const byId = new Map(loaded.resources.map((record) => [record.id, record]));
+  if (!coverage || !program || !recordBelongsToProgram(coverage, program, byId, loaded.model)) return { rules: [], proposedRules: [] };
+  const linked = (coverage.retentionScheduleItemIds || []).map((id) => byId.get(id)).filter((rule) => rule?.type === "retention-schedule-item");
+  const revisions = await resourceReviewRevisions(loaded, linked.flatMap((rule) => retentionReviewResourceIds(rule, loaded)));
+  const direct = (rule) => (rule.scopeResourceIds || []).includes(coverage.id);
+  const applied = (rule) => (rule.informationTypeIds || []).some((informationTypeId) => applicationCoversUse(loaded, { resource: coverage, informationTypeId }, program.id, rule.id));
+  return {
+    proposedRules: linked.filter((rule) => retentionRuleHasCoverageProposal(rule) && direct(rule)),
+    rules: linked.filter((rule) => rule.status === "active" && retentionRuleIsCurrent(rule, revisions, byId, loaded) && (direct(rule) || applied(rule)))
+  };
 }
 
 export async function resourceReviewRevision(loaded, resourceId) {

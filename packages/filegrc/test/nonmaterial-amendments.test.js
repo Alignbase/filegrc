@@ -281,3 +281,25 @@ test("reporting sets without email still offer administrative label corrections"
 });
 
 test.after(async () => { if (base) await rm(base, { recursive: true, force: true }); });
+
+
+test("0.20 adoption preserves committed 0.19 amendments and permits unchanged amendment workflows", async (t) => {
+  const root = await fixture(t);
+  const p = await payload(root, "policy-example");
+  await saveNonmaterialAmendment(root, p);
+  git(root, "add", "."); git(root, "commit", "-m", "Record owner label decision");
+  const originalPaths = ["data/policies/policy-example.json", `data/nonmaterial-amendments/${p.record.id}.json`];
+  const original = await Promise.all(originalPaths.map(path => readFile(join(root, path), "utf8")));
+  await writeFile(join(root, "package.json"), JSON.stringify({ private: true, dependencies: { filegrc: "0.20.0" } }));
+  await writeFile(join(root, "package-lock.json"), JSON.stringify({ lockfileVersion: 3, packages: { "": { dependencies: { filegrc: "0.20.0" } }, "node_modules/filegrc": { version: "0.20.0" } } }));
+  git(root, "add", "."); git(root, "commit", "-m", "Adopt supported runtime");
+  const loaded = await loadWorkspace(root);
+  assert.deepEqual(nonmaterialAmendmentIssues(loaded, loaded.resources.find(({ id }) => id === p.record.id)), []);
+  assert.deepEqual(await Promise.all(originalPaths.map(path => readFile(join(root, path), "utf8"))), original);
+  assert.equal((await validateWorkspace(root)).ok, true);
+  const next = await payload(root, "policy-example");
+  next.record.replacementValue = "Reviewed administrative label";
+  await saveNonmaterialAmendment(root, next);
+  git(root, "add", "."); git(root, "commit", "-m", "Record subsequent owner label decision");
+  assert.equal((await validateWorkspace(root)).ok, true);
+});

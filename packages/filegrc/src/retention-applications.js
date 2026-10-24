@@ -1,3 +1,4 @@
+import { recordBelongsToProgram, recordProgramRelationships } from "./program.js";
 import { calculationMemo } from "./calculation-cache.js";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -24,16 +25,22 @@ function canonical(value) {
 }
 function digest(value) { return createHash("sha256").update(JSON.stringify(canonical(value))).digest("hex"); }
 function applicationError(message) { return Object.assign(new Error(message), { code: "FILEGRC_RETENTION_APPLICATION" }); }
-export function retentionApplicationRuntimeSupported(loaded, commit = null) {
-  return calculationMemo(loaded, "retention-application-runtime", [commit], () => {
-  try {
-    const read = (name) => JSON.parse(commit ? runGitCommandSync(loaded.root, ["show", `${commit}:./${name}`], { timeout: 5000, maxBuffer: 2000000 }) : readFileSync(join(loaded.root, name), "utf8"));
-    const manifest = read("package.json"), lock = read("package-lock.json");
-    const entry = lock.packages?.["node_modules/filegrc"];
-    const requested = /^(?:\^|~)?0\.19\.(0|[1-9]\d*)$/.exec(manifest.dependencies?.filegrc || "");
-    const match = /^0\.19\.(0|[1-9]\d*)$/.exec(entry?.version || "");
-    return Boolean(requested && Number(requested[1]) >= 2 && lock.packages?.[""]?.dependencies?.filegrc === manifest.dependencies.filegrc && !entry?.link && match && Number(match[1]) >= Number(requested[1]));
-  } catch { return false; }
+// Target-aware adoption preserves service applications created on the 0.19 line.
+export function retentionApplicationRuntimeSupported(loaded, commit = null, target = null) {
+  const scopes = Array.isArray(target?.scopeResourceIds) ? target.scopeResourceIds : Array.isArray(target) ? target : [];
+  const sourceCoverage = target === "source-coverage" || target?.type === "source-coverage" || scopes.some((id) => loaded.resources.some((item) => item.id === id && item.type === "source-coverage"));
+  return calculationMemo(loaded, "retention-application-runtime", [commit, sourceCoverage], () => {
+    try {
+      const read = (name) => JSON.parse(commit ? runGitCommandSync(loaded.root, ["show", `${commit}:./${name}`], { timeout: 5000, maxBuffer: 2000000 }) : readFileSync(join(loaded.root, name), "utf8"));
+      const manifest = read("package.json"), lock = read("package-lock.json");
+      const entry = lock.packages?.["node_modules/filegrc"];
+      const requested = /^(?:\^|~)?0\.(19|20)\.(0|[1-9]\d*)$/.exec(manifest.dependencies?.filegrc || "");
+      const installed = /^0\.(19|20)\.(0|[1-9]\d*)$/.exec(entry?.version || "");
+      const supported = (version) => version && (Number(version[1]) === 20 || !sourceCoverage && Number(version[1]) === 19 && Number(version[2]) >= 2);
+      return Boolean(supported(requested) && supported(installed)
+        && lock.packages?.[""]?.dependencies?.filegrc === manifest.dependencies.filegrc && !entry?.link
+        && installed[1] === requested[1] && Number(installed[2]) >= Number(requested[2]));
+    } catch { return false; }
   });
 }
 function ruleMarkdown(loaded, rule) {
@@ -52,6 +59,24 @@ export function retentionRuleRevision(rule, loaded) {
 }
 export function retentionApplicationScopeRevision(record, loaded = null) {
   if (!record || typeof record !== "object") return null;
+  if (record.type === "source-coverage") {
+    const byId = new Map((loaded?.resources || []).map((item) => [item.id, item]));
+    const fields = ["id", "type", "status", "description", "sourceFamilyId", "coverageKind", "componentId", "systemId", "scopeResourceIds", "excludedPopulation", "collectionCadence", "reconciliationMethod", "retrievalMethodKey", "validFrom", "validThrough", "retentionScheduleItemIds", "retentionNotes"];
+    const sourceIds = [...new Set([record.componentId, record.systemId, ...(record.scopeResourceIds || [])].filter(Boolean))];
+    return digest({ sourceCoverage: Object.fromEntries(fields.map((key) => [key, record[key] ?? null])),
+      markdown: loaded ? ruleMarkdown(loaded, record) : [],
+      sources: Object.fromEntries(sourceIds.map((id) => {
+        const source = byId.get(id);
+        return [id, source?.type === "component" ? {
+          retentionFit: retentionApplicationScopeRevision(source, loaded),
+          evidenceSourceKinds: source.evidenceSourceKinds || [],
+          systemUses: source.systemUses || [],
+          systems: Object.fromEntries((source.systemUses || []).map(({ systemId }) => [systemId, retentionApplicationScopeRevision(byId.get(systemId), loaded)]))
+        } : ["system", "vendor"].includes(source?.type)
+          ? retentionApplicationScopeRevision(source, loaded)
+          : source ? Object.fromEntries(["id", "type", "status", "programId", "systemIds", "scopeResourceIds", "classificationId", "description", "boundary", "exclusions"].map((key) => [key, source[key] ?? null])) : null];
+      })) });
+  }
   const provider = record.type === "component" && loaded?.resources.find((item) => item.type === "vendor" && item.id === record.vendorId);
   return digest({ id: record.id, type: record.type, status: record.status,
     markdown: loaded ? ruleMarkdown(loaded, record) : [],
@@ -69,8 +94,8 @@ export function retentionApplicationScopeRevision(record, loaded = null) {
 export function retentionApplicationIssues(loaded, record, { includeStale = true } = {}) {
   const issues = [];
   const fail = (message) => issues.push({ severity: "error", code: "invalid-retention-application", resourceId: record.id, message });
-  if (!retentionApplicationRuntimeSupported(loaded)) {
-    fail("Upgrade the repository package dependency and lockfile to FileGRC 0.19.2 or newer in the supported 0.19 line before adopting retention applications.");
+  if (!retentionApplicationRuntimeSupported(loaded, null, record)) {
+    fail("Upgrade the repository package dependency and lockfile to FileGRC 0.19.2 for service applications, or 0.20.0 for Source Coverage applications.");
     return issues;
   }
   if (!Array.isArray(record.scopeResourceIds) || !Array.isArray(record.informationTypeIds)
@@ -80,7 +105,7 @@ export function retentionApplicationIssues(loaded, record, { includeStale = true
   }
   const history = loaded.root ? getDataRecordHistoryIndex(loaded.root).historiesById.get(record.id) || [] : [];
   const firstCommit = [...history].reverse()[0]?.commit;
-  if (firstCommit && !retentionApplicationRuntimeSupported(loaded, firstCommit)) fail("The repository must adopt a compatible package dependency and lockfile no later than its first retention application commit.");
+  if (firstCommit && !retentionApplicationRuntimeSupported(loaded, firstCommit, record)) fail("The repository must adopt a compatible package dependency and lockfile no later than its first retention application commit.");
   const eventSnapshot = firstCommit ? reviewHistoricalWorkspace(reviewHistoryContext(loaded.root, loaded), firstCommit) : loaded;
   const eventRecord = eventSnapshot?.resources.find(({ id }) => id === record.id);
   if (record.status === "active" && history.some(({ commit }) => reviewHistoricalWorkspace(reviewHistoryContext(loaded.root, loaded), commit)?.resources.find(({ id }) => id === record.id)?.status === "retired")) fail("A retired applicability decision cannot be reactivated. Record a new owner review.");
@@ -126,7 +151,33 @@ export function retentionApplicationIssues(loaded, record, { includeStale = true
     || !(appointment.scopeResourceIds || []).some((id) => [program.id, loaded.workspace.id, rule.id].includes(id))) fail("The actual reviewer must hold active Policy Owner authority for this Program on the review date.");
   if (!record.reviewedOn || record.reviewedOn > currentCalendarDate(loaded.workspace.timezone || "UTC") || record.reviewedOn < review.reviewedOn) fail("Record the actual applicability review date after the independent approval, never a future date.");
   if (!record.informationTypeIds?.length || record.informationTypeIds.some((id) => !(original.informationTypeIds || []).includes(id))) fail("Only Information Types already covered by the approved rule may be applied. A new category requires independent rule review.");
-  if (!record.scopeResourceIds?.length || record.scopeResourceIds.some((id) => !["system", "component", "vendor"].includes(byId.get(id)?.type))) fail("Select the actual services or systems receiving this rule.");
+  if (!record.scopeResourceIds?.length || record.scopeResourceIds.some((id) => !["system", "component", "vendor", "source-coverage"].includes(byId.get(id)?.type))) fail("Select the actual services or systems receiving this rule.");
+  for (const id of record.scopeResourceIds || []) {
+    const scopeById = firstCommit && (record.status === "retired" || !includeStale) ? eventById : byId;
+    const coverage = scopeById.get(id);
+    if (coverage?.type !== "source-coverage") continue;
+    const scopeFields = loaded.model.resources["source-coverage"].fields;
+    if (!scopeFields.coverageKind.values.includes(coverage.coverageKind)
+      || !scopeFields.sourceFamilyId.values.includes(coverage.sourceFamilyId)
+      || coverage.coverageKind === "external-component" && !coverage.componentId
+      || Object.hasOwn(coverage, "systemId") && !Object.hasOwn(scopeFields, "systemId")) {
+      fail("Select Source Coverage source fields supported by the current model before applying its preservation rule.");
+      continue;
+    }
+    const scopeTypesMatch = ["scopeResourceIds", "componentId", "systemId"].filter((field) => scopeFields[field]).every((field) => {
+      const values = Array.isArray(coverage[field]) ? coverage[field] : [coverage[field]].filter(Boolean);
+      return values.every((id) => scopeFields[field]?.relation?.includes(scopeById.get(id)?.type));
+    });
+    const relationships = recordProgramRelationships(coverage, scopeById);
+    if (coverage.status !== "active" || !program || !scopeTypesMatch || !coverage.scopeResourceIds?.length
+      || [...coverage.scopeResourceIds, coverage.componentId, coverage.systemId].filter(Boolean).some((scopeId) => !scopeById.has(scopeId)
+        || !recordBelongsToProgram(scopeById.get(scopeId), program, scopeById, loaded.model))
+      || !recordBelongsToProgram(coverage, program, scopeById, loaded.model)
+      || relationships.programIds.some((programId) => programId !== record.programId)
+      || !(coverage.retentionScheduleItemIds || []).includes(record.ruleId)) {
+      fail("Source Coverage must be active in the exact application Program and explicitly link the approved rule being applied.");
+    }
+  }
   if (CONFIRMATIONS.some((key) => record.confirmations?.[key] !== true)
     || ["purpose", "rationale", "disposalImplementation"].some((key) => !String(record[key] || "").trim())) fail("Review purpose, cutoff, complete disposition, holds and conflicting duties, and explain actual disposal before applying an approved rule. Use normal independent review when any condition does not fit.");
   if (!firstCommit || includeStale && record.status !== "retired") {
@@ -151,8 +202,8 @@ export function retentionUseWasIndependentlyReviewed(loaded, use, programId) {
       && retentionApplicationScopeRevision(prior.resource, historical) === retentionApplicationScopeRevision(use.resource, loaded)));
   });
 }
-export function applicationCoversUse(loaded, use, programId) {
-  return currentRetentionApplications(loaded).some((record) => record.programId === programId
+export function applicationCoversUse(loaded, use, programId, ruleId = null) {
+  return currentRetentionApplications(loaded).some((record) => record.programId === programId && (!ruleId || record.ruleId === ruleId)
     && record.scopeResourceIds.includes(use.resource.id) && record.informationTypeIds.includes(use.informationTypeId));
 }
 export async function scaffoldRetentionApplication(input, ruleId) {
@@ -176,7 +227,7 @@ export async function scaffoldRetentionApplication(input, ruleId) {
     scopeResourceIds: [], informationTypeIds: [], reviewedScopeRevisions: {}, reviewedById: null, authorityAppointmentId: null,
     reviewedOn: currentCalendarDate(loaded.workspace.timezone || "UTC"), purpose: null, rationale: null, disposalImplementation: null,
     confirmations: Object.fromEntries(CONFIRMATIONS.map((key) => [key, false])) },
-    scopeCandidates: loaded.resources.filter((item) => ["system", "component", "vendor"].includes(item.type) && !["retired", "terminated"].includes(item.status)).map((item) => ({ id: item.id, title: item.title, revision: retentionApplicationScopeRevision(item, loaded) })),
+    scopeCandidates: loaded.resources.filter((item) => ["system", "component", "vendor", "source-coverage"].includes(item.type) && !["retired", "terminated"].includes(item.status)).map((item) => ({ id: item.id, title: item.title, revision: retentionApplicationScopeRevision(item, loaded) })),
     guidance: "Choose actual service scope and existing rule Information Types. Complete every fit confirmation. Keep any proposed new semantic rule in independent review. apply-retention-rule preview computes exact service bindings; it never changes the original approval." };
 }
 export async function saveRetentionApplication(input, payload, { preview = false } = {}) {

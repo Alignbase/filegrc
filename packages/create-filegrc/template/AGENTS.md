@@ -276,3 +276,19 @@ an honest owner applicability decision, preview it, then save the preview with
 approved rows and approval metadata unchanged. Use normal independent review for
 material changes or when no existing rule fully fits. Include service applications
 in periodic independent retention oversight.
+
+
+Source Coverage populations can use the same owner application from FileGRC 0.20.
+Upgrade the repository dependency and lockfile to the supported 0.20 runtime before
+recording that application. This expands model v13 without a model migration.
+Choose the exact Source Coverage and existing Information Types from the approved
+rule, state the retained proof and its boundaries, and confirm the complete rule
+fits. The application binds the source family, authoritative source, population,
+collection method and preservation facts. Material changes require a new owner
+review or normal independent rule review. Adding retrieval rehearsal Evidence or
+changing an unrelated service does not rewrite an existing application.
+
+Keep source expiration separate from retained proof. A rule for preserved audit
+metadata, approvals, results or scoped exports does not extend the retention of raw
+logs, backups or deleted customer content. Do not infer a retention category from
+a source family or resource type. Preserve approved rules and prior applications.

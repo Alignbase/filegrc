@@ -1630,13 +1630,13 @@ Record Markdown: available when needed as an implicit companion file.
 
 #### `retention-application`
 
-An owner decision applying one unchanged independently approved retention rule to additional services. It preserves the original schedule approval and never changes the approved rule.
+An owner decision applying one unchanged independently approved retention rule to additional services or an explicit Source Coverage population. It preserves the original schedule approval and never changes the approved rule.
 
 Instructions: Apply the complete unchanged independently approved rule to actual services after owner review of purpose, cutoff, disposal, holds and duties.
 
 Policy basis: Apply the complete approved rule, including record purpose, cutoff, period, disposition and holds. Matching a duration alone is insufficient. New categories, conflicting duties, unsupported disposal or any changed rule require normal independent schedule approval.
 
-Timing: Review applicability when the service data use or disposal capability changes and include applications in periodic independent retention oversight. Use apply-retention-rule to scaffold exact bindings. Retire an obsolete application and record a new decision; preserve history. Requires a committed repository dependency and lockfile for FileGRC 0.19.2 or newer in the 0.19 line.
+Timing: Review applicability when service data use, the declared evidence population or disposal capability changes and include applications in periodic independent retention oversight. Use apply-retention-rule to scaffold exact bindings. Retire an obsolete application and record a new decision; preserve history. Source Coverage applications require a committed FileGRC 0.20 dependency and lockfile. Existing service applications support adopted 0.19.2 or newer runtimes.
 
 Path: `data/retention-applications/<id>.json`
 
@@ -1650,7 +1650,7 @@ Record Markdown: available when needed as an implicit companion file.
 | `approvalId` | id | Yes | Independent schedule approval References: `collection-review` |
 | `approvalRevision` | string | Yes |  |
 | `programId` | id | Yes | References: `program` |
-| `scopeResourceIds` | array of id | Yes | Services covered References: `system`, `component`, `vendor` |
+| `scopeResourceIds` | array of id | Yes | Services or evidence populations covered References: `system`, `component`, `vendor`, `source-coverage` |
 | `informationTypeIds` | array of id | Yes | References: `information-type` |
 | `reviewedScopeRevisions` | object (`string-map`) | Yes |  |
 | `reviewedById` | id | Yes | References: `person` |

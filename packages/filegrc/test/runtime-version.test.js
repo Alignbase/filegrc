@@ -72,7 +72,10 @@ test("stable runtime compatibility lines use minor before 1.0 and major thereaft
     ["1.0.0", "1.99.9", true], ["1.9.0", "1.0.0", true], ["1.0.0", "2.0.0", false],
     ["0.17.0+build.1", "0.17.9", true],
     ["0.19.0", "0.18.16", true], ["0.18.16", "0.19.0", false],
-    ["0.19.0", "0.19.2", true], ["0.19.0", "0.20.0", false]
+    ["0.19.0", "0.19.2", true], ["0.19.0", "0.20.0", false],
+    ["0.20.0", "0.18.16", true], ["0.20.0", "0.19.3", true],
+    ["0.20.0", "0.20.4", true], ["0.20.4", "0.20.0", true],
+    ["0.20.0", "0.17.9", false], ["0.20.0", "0.21.0", false]
   ]) assert.equal(assessRuntimeCompatibility(runtime, repository).compatible, compatible);
   for (const version of ["0.17.2-beta.1", "v0.17.2", "0.17", "00.17.2", "0.17.2 ", "^0.17.2", 17, "0.17.9007199254740992"]) {
     assert.equal(runtimeCompatibilityLine(version), null);
@@ -229,4 +232,46 @@ test("diagnostic CLI and server reads preserve model recovery while mutations re
   await lockWorkspace(root, incompatibleVersion);
   assert.throws(() => createFilegrcServer(root), /unsupported-compatibility-line/);
   await assert.rejects(captureCli(runCli, ["validate", root, "--json"]), /unsupported-compatibility-line/);
+});
+
+
+test("0.20 reads and operates unchanged prior-line workspaces without rewriting version or model files", async (context) => {
+  const base = await mkdtemp(join(tmpdir(), "filegrc-prior-line-readers-"));
+  context.after(() => rm(base, { recursive: true, force: true }));
+  for (const version of ["0.18.16", "0.19.3"]) {
+    const root = join(base, version);
+    await mkdir(root, { recursive: true });
+    await eventWorkspace(root);
+    await lockWorkspace(root, version);
+    const paths = ["package.json", "package-lock.json", "data/workspace.json"];
+    const before = await Promise.all(paths.map(path => readFile(join(root, path), "utf8")));
+    assert.equal(assessWorkspaceRuntimeCompatibility(root).compatible, true);
+    assert.equal((await validateWorkspace(root)).ok, true);
+    await createResource(root, { id: "person-compatibility", type: "person", title: "Compatibility reader", status: "active", affiliation: "internal", jobTitle: "Engineer" });
+    await deleteResource(root, "person", "person-compatibility");
+    assert.deepEqual(await Promise.all(paths.map(path => readFile(join(root, path), "utf8"))), before);
+  }
+});
+
+test("a 0.19 runtime rejects a 0.20 repository before parsing its model or new records", async (context) => {
+  const base = await mkdtemp(join(tmpdir(), "filegrc-old-reader-guard-"));
+  context.after(() => rm(base, { recursive: true, force: true }));
+  const packageRoot = join(base, "engine");
+  await cp(fileURLToPath(new URL("..", import.meta.url)), packageRoot, { recursive: true, filter: (path) => !path.includes("/test") });
+  const manifestPath = join(packageRoot, "package.json");
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  await writeFile(manifestPath, JSON.stringify({ ...manifest, version: "0.19.3" }));
+  const api = await import(pathToFileURL(join(packageRoot, "src/index.js")));
+  const cli = await import(pathToFileURL(join(packageRoot, "src/cli.js")));
+  const root = join(base, "workspace");
+  await mkdir(root, { recursive: true });
+  await makeWorkspace(root);
+  await lockWorkspace(root, "0.20.0");
+  await writeFile(join(root, "data/workspace.json"), "{");
+  await mkdir(join(root, "data/retention-applications"), { recursive: true });
+  await writeFile(join(root, "data/retention-applications/new-population.json"), "{");
+  assert.equal(api.assessWorkspaceRuntimeCompatibility(root).reason, "unsupported-compatibility-line");
+  await assert.rejects(cli.runCli(["validate", root]), error => error.code === "FILEGRC_VERSION_DRIFT" && error.reason === "unsupported-compatibility-line");
+  assert.throws(() => api.createFilegrcServer(root), /unsupported-compatibility-line/);
+  await assert.rejects(api.createResource(root, { id: "person-rejected", type: "person", title: "Rejected reader" }), /unsupported-compatibility-line/);
 });
