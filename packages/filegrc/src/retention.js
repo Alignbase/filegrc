@@ -1,3 +1,4 @@
+import { applicationCoversUse, retentionApplicationIssues, retentionUseWasIndependentlyReviewed } from "./retention-applications.js";
 import { calculationMemo, hasCalculationCache } from "./calculation-cache.js";
 import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
@@ -22,6 +23,7 @@ export async function assessRetentionReadiness(loaded, program, options = {}) {
   const usableRules = activeRules.filter((rule) => retentionRuleIsCurrent(rule, revisions, byId, loaded));
   const proposedRules = rules.filter(retentionRuleHasCoverageProposal);
   const uses = retentionUses(loaded, program);
+  const priorApproval = loaded.model.resources["retention-application"] && loaded.resources.some((item) => item.type === "collection-review" && item.resourceType === "retention-schedule-item" && item.status === "active");
   const items = rules.map((rule) => readinessItem(
     `retention-rule-${rule.id}`,
     usableRules.includes(rule) ? "complete" : "action",
@@ -52,10 +54,10 @@ export async function assessRetentionReadiness(loaded, program, options = {}) {
   }
   items.push(...[...usesByInformationType].map(([informationTypeId, informationTypeUses]) => {
     const absentUses = informationTypeUses.filter((use) => (
-      !proposedRules.some((rule) => ruleCoversUse(rule, use, program))
+      (!proposedRules.some((rule) => ruleCoversUse(rule, use, program)) || priorApproval && !retentionUseWasIndependentlyReviewed(loaded, use, program.id)) && !applicationCoversUse(loaded, use, program.id)
     ));
     const pendingUses = informationTypeUses.filter((use) => (
-      !usableRules.some((rule) => ruleCoversUse(rule, use, program))
+      !usableRules.some((rule) => ruleCoversUse(rule, use, program)) && !applicationCoversUse(loaded, use, program.id)
     ));
     const approvalPending = !options.scheduleApproved;
     const matches = usableRules.filter((rule) => (
@@ -89,6 +91,7 @@ export async function assessRetentionReadiness(loaded, program, options = {}) {
         retentionScheduleItemIds: matches.map(({ id }) => id),
         commands: [
           "npx filegrc guide retention-schedule-item --json",
+          ...activeRules.filter((rule) => rule.informationTypeIds?.includes(informationTypeId)).map((rule) => `npx filegrc apply-retention-rule ${rule.id} --scaffold`),
           `npx filegrc scaffold retention-schedule-item --title ${shellArgument(`Retention for ${informationTypeTitle}`)}`
         ]
       }
@@ -149,6 +152,13 @@ export async function assessRetentionReadiness(loaded, program, options = {}) {
         ]
       }
     ));
+  }
+  for (const application of loaded.resources.filter((item) => item.type === "retention-application" && item.status === "active" && item.programId === program.id)) {
+    const issues = retentionApplicationIssues(loaded, application);
+    items.push(readinessItem(`retention-application-${application.id}`, issues.length ? "action" : "complete",
+      issues.length ? `Review ${application.title}` : `${application.title} applies an approved rule`,
+      issues.length ? issues[0].message : "The owner applied the complete unchanged approved rule. Include this decision in periodic independent schedule oversight.", application,
+      { commands: [`npx filegrc get ${application.id} --json`, `npx filegrc apply-retention-rule ${application.ruleId} --scaffold`] }));
   }
   return items;
 }
@@ -635,7 +645,7 @@ function retentionRuleHasCoverageProposal(rule) {
 
 export function retentionReviewResourceIds(rule, loaded) {
   const programUseIds = [];
-  if (loaded) {
+  if (loaded && !loaded.model.resources["retention-application"]) {
     const byId = new Map(loaded.resources.map((record) => [record.id, record]));
     const informationTypeIds = new Set(rule.informationTypeIds || []);
     for (const scopeId of rule.scopeResourceIds || []) {
@@ -655,6 +665,27 @@ export function retentionReviewResourceIds(rule, loaded) {
   ].filter(Boolean))];
 }
 
+// Older program-wide rows captured the then-current inventory as source
+// bindings. Preserve only those historically reviewed inventory keys; current
+// service fit is separately assessed by owner applications.
+export function retentionLegacyInventoryBindingIds(rule, loaded) {
+  if (!loaded?.model.resources["retention-application"] || !loaded.root) return [];
+  return calculationMemo(loaded, "retention-legacy-inventory-bindings", [rule.id], () => {
+    if (!(rule.scopeResourceIds || []).some((id) => loaded.resources.some((item) => item.id === id && item.type === "program"))) return [];
+    const review = loaded.resources.find((item) => item.type === "collection-review" && item.resourceType === "retention-schedule-item" && item.status === "active" && item.populationResourceIds?.includes(rule.id));
+    if (!/^[a-f0-9]{40}$/.test(review?.scopeRevision || "")) return [];
+    const snapshot = reviewHistoricalWorkspace(reviewHistoryContext(loaded.root, loaded), review.scopeRevision);
+    const original = snapshot?.resources.find(({ id }) => id === rule.id);
+    if (!original) return [];
+    const originalScope = new Set((original.scopeResourceIds || []).flatMap((id) => {
+      const program = snapshot.resources.find((item) => item.id === id && item.type === "program");
+      return program ? retentionUses(snapshot, program).filter((use) => (original.informationTypeIds || []).includes(use.informationTypeId)).map((use) => use.resource.id) : [];
+    }));
+    return Object.keys(original.reviewedSourceRevisions || {}).filter((id) => originalScope.has(id)
+      && ["system", "component", "vendor"].includes(snapshot.resources.find((item) => item.id === id)?.type));
+  });
+}
+
 export function retentionRuleIsCurrent(rule, revisions, byId = new Map(), loaded) {
   if (!String(rule.description || "").trim()) return false;
   if (!(rule.informationTypeIds || []).length || !(rule.scopeResourceIds || []).length || !rule.scheduleDocumentId) return false;
@@ -666,7 +697,10 @@ export function retentionRuleIsCurrent(rule, revisions, byId = new Map(), loaded
   if (!["delete", "destroy", "erase", "anonymize", "transfer", "retain-permanently"].includes(rule.dispositionAction)) return false;
   if (!String(rule.dispositionInstructions || "").trim()) return false;
   const dependencyIds = retentionReviewResourceIds(rule, loaded);
-  if (Object.keys(rule.reviewedSourceRevisions).length !== dependencyIds.length) return false;
+  const legacyProgramInventoryBindings = new Set(retentionLegacyInventoryBindingIds(rule, loaded));
+  const extraIds = Object.keys(rule.reviewedSourceRevisions).filter((id) => !dependencyIds.includes(id));
+  if (extraIds.some((id) => !legacyProgramInventoryBindings.has(id))) return false;
+  if (dependencyIds.some((id) => !Object.hasOwn(rule.reviewedSourceRevisions, id))) return false;
   return dependencyIds.every((id) => (
     resourceReviewRevisionMatches(loaded, revisions, id, rule.reviewedSourceRevisions?.[id], rule)
   ));

@@ -681,6 +681,9 @@ function assertImmutableWorkflowRecord(existing, next, options = {}, loaded = nu
   const preservesExisting = (allowed = []) => [...new Set([...Object.keys(existing), ...Object.keys(next)])].every((key) => (
     allowed.includes(key) || JSON.stringify(next[key]) === JSON.stringify(existing[key])
   ));
+  if (existing.type === "retention-application" && (!preservesExisting(existing.status === "retired" ? [] : ["status", "statusTransition"]) || existing.status === "retired" && next.status !== "retired")) {
+    throw new Error("Preserve the applicability decision. Retire it and record a new owner review.");
+  }
   if (existing.type === "nonmaterial-amendment" && !preservesExisting()) {
     throw new Error("Nonmaterial amendments are immutable owner decisions. Record a new amendment instead.");
   }
@@ -971,7 +974,7 @@ async function deleteResourceUnlocked(input, type, id, options) {
   assertRevision(source, options.expectedRevision, "The record");
   const record = JSON.parse(source);
   if (
-    ["reconciliation-dismissal", "nonmaterial-amendment"].includes(record.type)
+    ["reconciliation-dismissal", "nonmaterial-amendment", "retention-application"].includes(record.type)
     || (record.type === "obligation-occurrence" && ["reconciled", "superseded"].includes(record.status))
     || (record.type === "audit-population" && ["reconciled", "not-applicable", "superseded"].includes(record.status))
     || (record.type === "obligation-event" && ["complete", "canceled"].includes(record.status))

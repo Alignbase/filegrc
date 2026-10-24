@@ -332,8 +332,10 @@ export function collectionRevisionInputs(loaded, resourceType, program, options 
       ? [program]
       : loaded.resources.filter((record) => record.type === "program" && record.status !== "retired");
     const uses = programs.flatMap((candidate) => retentionUses(loaded, candidate));
-    addIds(uses.map(({ resource }) => resource.id));
-    addIds(uses.map(({ informationTypeId }) => informationTypeId));
+    if (!options.retentionRuleSemantics) {
+      addIds(uses.map(({ resource }) => resource.id));
+      addIds(uses.map(({ informationTypeId }) => informationTypeId));
+    }
     const schedules = loaded.resources
       .filter((record) => (
         record.type === "document"
@@ -376,7 +378,7 @@ export function collectionRevisionInputs(loaded, resourceType, program, options 
           ? retentionScheduleDocumentProposalValue(record)
           : options.historicalReviewMetadata
             ? dependencyRevisionValue(resourceType, record, legacy, true, currentModel)
-            : substantiveRevisionValue(dependencyRevisionValue(resourceType, record, legacy, false, currentModel, scheduleDocumentIds, options.legacyRetentionSourceBasis), options.legacyGovernedLifecycleMetadata),
+            : substantiveRevisionValue((options.retentionRuleSemantics && ["component", "vendor", "system"].includes(record.type) ? { id: record.id, type: record.type } : dependencyRevisionValue(resourceType, record, legacy, false, currentModel, scheduleDocumentIds, options.legacyRetentionSourceBasis)), options.legacyGovernedLifecycleMetadata),
     includeContent: legacy
       || reviewedIds.has(record.id)
       || dependencyContentAffectsRevision(resourceType, record, options.historicalReviewMetadata, currentModel, scheduleDocumentIds, options.legacyRetentionSourceBasis)

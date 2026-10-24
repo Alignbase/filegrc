@@ -142,3 +142,5 @@ export { notificationContacts } from "./notifications.js";
 export { assessHostedAutomation, githubRepository, hostedAutomationForConnection } from "./hosted-automation.js";
 
 export { amendedResourceView, scaffoldNonmaterialAmendment, saveNonmaterialAmendment } from "./nonmaterial-amendments.js";
+
+export { scaffoldRetentionApplication, saveRetentionApplication, retentionApplicationIssues } from "./retention-applications.js";

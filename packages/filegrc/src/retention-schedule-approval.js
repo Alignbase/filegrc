@@ -1,3 +1,4 @@
+import { applicationCoversUse, retentionUseWasIndependentlyReviewed } from "./retention-applications.js";
 import { readFileSync } from "node:fs";
 import { openPlaceholderCount, substantiveMarkdown } from "./content-readiness.js";
 import { markdownEntries } from "./resource-markdown.js";
@@ -76,14 +77,14 @@ export function retentionScheduleApprovalIssues(loaded, program, rows, options =
     : [program];
   const uncovered = scopedPrograms.flatMap((candidate) => (
     retentionUses(loaded, candidate).map((use) => ({ ...use, programId: candidate.id }))
-  )).find((use) => !proposedRows.some((row) => (
+  )).find((use) => !applicationCoversUse(loaded, use, use.programId) && (!proposedRows.some((row) => (
     (row.informationTypeIds || []).includes(use.informationTypeId)
     && ((row.scopeResourceIds || []).includes(use.resource.id) || (row.scopeResourceIds || []).includes(use.programId))
-  )));
+  )) || options.approvalReview && !retentionUseWasIndependentlyReviewed(loaded, use, use.programId)));
   if (uncovered) {
     issues.push(issue(
       "uncovered-retention-information-use",
-      `${uncovered.resource.title} uses ${byId.get(uncovered.informationTypeId)?.title || uncovered.informationTypeId}, but no proposed retention schedule row covers both the type and scope.`
+      `${uncovered.resource.title} uses ${byId.get(uncovered.informationTypeId)?.title || uncovered.informationTypeId}, needs a reviewed retention decision for this type and scope. Apply an unchanged independently approved rule through apply-retention-rule, or propose a material rule change for independent approval.`
     ));
   }
   if (nearDuplicateInformationTypes(loaded.resources).length && !options.informationTypesReviewed) {

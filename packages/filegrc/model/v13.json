@@ -9645,6 +9645,165 @@
         "confirmations",
         "withdrawnProposalId"
       ]
+    },
+    "retention-application": {
+      "title": "Retention rule application",
+      "pluralTitle": "Retention rule applications",
+      "group": "governance",
+      "collection": "retention-applications",
+      "description": "An owner decision applying one unchanged independently approved retention rule to additional services. It preserves the original schedule approval and never changes the approved rule.",
+      "guidance": {
+        "policyBasis": "Apply the complete approved rule, including record purpose, cutoff, period, disposition and holds. Matching a duration alone is insufficient. New categories, conflicting duties, unsupported disposal or any changed rule require normal independent schedule approval.",
+        "cadence": "Review applicability when the service data use or disposal capability changes and include applications in periodic independent retention oversight. Use apply-retention-rule to scaffold exact bindings. Retire an obsolete application and record a new decision; preserve history. Requires a committed repository dependency and lockfile for FileGRC 0.19.2 or newer in the 0.19 line."
+      },
+      "required": [
+        "status",
+        "ruleId",
+        "ruleRevision",
+        "approvalId",
+        "approvalRevision",
+        "programId",
+        "scopeResourceIds",
+        "informationTypeIds",
+        "reviewedScopeRevisions",
+        "reviewedById",
+        "authorityAppointmentId",
+        "reviewedOn",
+        "purpose",
+        "rationale",
+        "disposalImplementation",
+        "confirmations",
+        "approvalCommit"
+      ],
+      "fields": {
+        "status": {
+          "type": "enum",
+          "values": [
+            "active",
+            "retired"
+          ],
+          "filter": true
+        },
+        "ruleId": {
+          "type": "id",
+          "relation": [
+            "retention-schedule-item"
+          ],
+          "label": "Approved rule"
+        },
+        "ruleRevision": {
+          "type": "string",
+          "label": "Exact rule decision"
+        },
+        "approvalId": {
+          "type": "id",
+          "relation": [
+            "collection-review"
+          ],
+          "label": "Independent schedule approval"
+        },
+        "approvalRevision": {
+          "type": "string"
+        },
+        "programId": {
+          "type": "id",
+          "relation": [
+            "program"
+          ]
+        },
+        "scopeResourceIds": {
+          "type": "array",
+          "items": "id",
+          "relation": [
+            "system",
+            "component",
+            "vendor"
+          ],
+          "label": "Services covered"
+        },
+        "informationTypeIds": {
+          "type": "array",
+          "items": "id",
+          "relation": [
+            "information-type"
+          ]
+        },
+        "reviewedScopeRevisions": {
+          "type": "object",
+          "objectType": "string-map"
+        },
+        "reviewedById": {
+          "type": "id",
+          "relation": [
+            "person"
+          ]
+        },
+        "authorityAppointmentId": {
+          "type": "id",
+          "relation": [
+            "appointment"
+          ]
+        },
+        "reviewedOn": {
+          "type": "date"
+        },
+        "purpose": {
+          "type": "string",
+          "label": "Record purpose and boundaries"
+        },
+        "rationale": {
+          "type": "string"
+        },
+        "disposalImplementation": {
+          "type": "string",
+          "label": "How the complete rule will operate"
+        },
+        "confirmations": {
+          "type": "object",
+          "objectType": "retention-application-confirmations"
+        },
+        "approvalCommit": {
+          "type": "string",
+          "label": "Committed independent approval"
+        },
+        "statusTransition": {
+          "type": "object",
+          "objectType": "status-transition",
+          "requiredWhen": {
+            "status": "retired"
+          },
+          "allowedWhen": {
+            "status": "retired"
+          }
+        }
+      },
+      "listFields": [
+        "title",
+        "status",
+        "ruleId",
+        "scopeResourceIds",
+        "reviewedOn"
+      ],
+      "formFields": [
+        "status",
+        "ruleId",
+        "ruleRevision",
+        "approvalId",
+        "approvalRevision",
+        "programId",
+        "scopeResourceIds",
+        "informationTypeIds",
+        "reviewedScopeRevisions",
+        "reviewedById",
+        "authorityAppointmentId",
+        "reviewedOn",
+        "purpose",
+        "rationale",
+        "disposalImplementation",
+        "confirmations",
+        "approvalCommit",
+        "statusTransition"
+      ]
     }
   },
   "primitives": {
@@ -11555,6 +11714,38 @@
           ]
         }
       }
+    },
+    "retention-application-confirmations": {
+      "required": [
+        "purposeMatches",
+        "cutoffMatches",
+        "dispositionFeasible",
+        "holdsPreserved",
+        "noConflictingDuties"
+      ],
+      "properties": {
+        "purposeMatches": {
+          "type": "boolean",
+          "label": "The record purpose and boundaries fit the approved rule."
+        },
+        "cutoffMatches": {
+          "type": "boolean",
+          "label": "The same cutoff event applies."
+        },
+        "dispositionFeasible": {
+          "type": "boolean",
+          "label": "The full disposition can be carried out in this service."
+        },
+        "holdsPreserved": {
+          "type": "boolean",
+          "label": "All approved holds and required records remain protected."
+        },
+        "noConflictingDuties": {
+          "type": "boolean",
+          "label": "No legal, contractual or other duty conflicts with this application."
+        }
+      },
+      "additionalProperties": false
     }
   },
   "obligationActivities": {

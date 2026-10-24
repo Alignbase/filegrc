@@ -79,6 +79,14 @@ export function collectionReviewDecisionMatches(loaded, resourceType, review, re
     return revisionsMatch("collection", collectionRevision(loaded, "obligation", options),
       collectionRevision(historical, "obligation", { program, historicalCommit: review.scopeRevision }));
   }
+  if (resourceType === "retention-schedule-item" && loaded.model.resources["retention-application"]) {
+    if (collectionRevisionMatches(loaded, resourceType, review.collectionRevision, options)) return true;
+    if (!loaded.root || !review.scopeRevision) return false;
+    const historical = reviewHistoricalWorkspace(reviewHistoryContext(loaded.root, loaded), review.scopeRevision);
+    if (!historical || !collectionRevisionMatches(historical, resourceType, review.collectionRevision, { ...options, historicalCommit: review.scopeRevision, currentRevision: undefined })) return false;
+    return revisionsMatch("collection", collectionRevision(loaded, resourceType, { ...options, retentionRuleSemantics: true }),
+      collectionRevision(historical, resourceType, { ...options, historicalCommit: review.scopeRevision, retentionRuleSemantics: true }));
+  }
   if (resourceType === "retention-schedule-item" || Number(loaded.model.modelVersion) < 11) {
     return collectionRevisionMatches(loaded, resourceType, review.collectionRevision, options);
   }
@@ -231,6 +239,7 @@ function calculateCollectionRevisionUncached(loaded, resourceType, options, lega
     historicalCommit: options.historicalCommit,
     legacyRetentionSourceBasis: options.legacyRetentionSourceBasis,
     legacyGovernedLifecycleMetadata: options.legacyGovernedLifecycleMetadata,
+    retentionRuleSemantics: options.retentionRuleSemantics,
     legacyScheduleApprovalDates: options.legacyScheduleApprovalDates
   })
     .map((input) => [input.record.id, input]));

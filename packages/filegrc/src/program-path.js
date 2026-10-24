@@ -24,6 +24,7 @@ export const RESOURCE_INSTRUCTIONS = {
   "risk-assessment": "Assess the in-scope service, record conclusions, and obtain an independent review.",
   risk: "Name the threat and impact, assign an owner, rate the risk, and record its response.",
   obligation: "Read the linked Policy and Control, fill the owner, cadence or trigger, deadline, and proof from those sources, then enable the rule when its Control is ready. Ask only for an unresolved management choice.",
+  "retention-application": "Apply the complete unchanged independently approved rule to actual services after owner review of purpose, cutoff, disposal, holds and duties.",
   "retention-schedule-item": "Set the Information Types, scope, cutoff, period, disposition, and sources for one retention rule.",
   "obligation-event": "Record the actual event date and subject, then complete its linked Work Queue actions.",
   "policy-review": "Record the review date, reviewer, decision, and any required follow-up.",
@@ -74,6 +75,7 @@ export const RESOURCE_OUTPUTS = {
   "risk-assessment": "A completed, independently reviewed Risk Assessment with its conclusions.",
   risk: "A rated Risk with an owner, response, and linked treatment Controls.",
   obligation: "An enabled schedule or event rule with an owner, deadline, and required proof.",
+  "retention-application": "An exact owner applicability decision preserving the independently approved rule and recording actual service disposal fit.",
   "retention-schedule-item": "A reviewed retention row with its scope, cutoff, period, disposition, and sources.",
   "obligation-event": "A dated Policy Event with its linked Work Queue actions.",
   "policy-review": "A dated review with its decision, reviewer, and follow-up.",
@@ -420,6 +422,7 @@ function agentCommand(command) {
 }
 
 export function resourceProgramContext(type, model) {
+  if (type === "retention-application" && model?.resources?.[type]) return resourceProgramContext("retention-schedule-item", model);
   const stage = programPathForModel(model).find((candidate) => (
     candidate.resourceTypes.includes(type) || (candidate.supportingResourceTypes || []).includes(type)
   ));

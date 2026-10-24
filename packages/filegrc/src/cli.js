@@ -1,3 +1,4 @@
+import { scaffoldRetentionApplication, saveRetentionApplication } from "./retention-applications.js";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { readFile, writeFile } from "node:fs/promises";
@@ -600,6 +601,22 @@ export async function runCli(argv = process.argv.slice(2)) {
       return result;
     }
     throw new Error("Use reporting-route-set scaffold [approve|cancel|successor], propose ROUTE_SET_ID, approve PAYLOAD.json, or cancel PAYLOAD.json.");
+  }
+  if (command === "apply-retention-rule") {
+    const ruleId = positionals[0];
+    if (!ruleId) throw new Error("Pass an independently approved retention rule ID.");
+    if (flags.scaffold) {
+      const result = await scaffoldRetentionApplication(root, ruleId);
+      console.log(JSON.stringify(result, null, 2));
+      return result;
+    }
+    if (!positionals[1] || !flags.preview && !flags.yes) throw new Error("Pass a completed applicability payload and --preview or --yes.");
+    const payload = JSON.parse(await readFile(resolve(positionals[1]), "utf8"));
+    if (payload.record?.ruleId !== ruleId) throw new Error("The application must name the requested rule.");
+    const result = flags.preview ? await saveRetentionApplication(root, payload, { preview: true })
+      : await withWorkflowDelta(root, () => saveRetentionApplication(root, payload));
+    console.log(JSON.stringify(result, null, 2));
+    return result;
   }
   if (command === "amend-nonmaterial") {
     const targetId = positionals[0];
@@ -1433,6 +1450,8 @@ Usage:
   filegrc automation [--json] [--open] [--root PATH]
   filegrc obligations [--program program-id] [--as-of YYYY-MM-DD] [--from YYYY-MM-DD] [--through YYYY-MM-DD] [--now RFC3339] [--complete] [--json]
   filegrc program-readiness [--as-of YYYY-MM-DD] [--require-ready] [--summary | --control CONTROL_ID] [--json]
+  filegrc apply-retention-rule <rule-id> --scaffold
+  filegrc apply-retention-rule <rule-id> <application.json> --preview|--yes [--json]
   filegrc amend-nonmaterial <source-resource-id> --scaffold [--category label-correction|reporting-email-alias] [--field field.path]
   filegrc amend-nonmaterial <source-resource-id> <amendment.json> --preview|--yes [--json]
   filegrc program-amendment <source-resource-id> [--json]
@@ -1786,6 +1805,7 @@ function agentOverview(model, connection) {
     search: "filegrc search <query> --json",
     obligations: "filegrc obligations --json",
     programReadiness: "filegrc program-readiness --json",
+    applyRetentionRule: "filegrc apply-retention-rule RULE_ID --scaffold",
     nonmaterialAmendment: "filegrc amend-nonmaterial RESOURCE_ID --scaffold",
     programAmendment: "filegrc program-amendment <source-resource-id> --json",
     reviewBindings: "filegrc review-bindings <retention-or-mapping-id> --json",

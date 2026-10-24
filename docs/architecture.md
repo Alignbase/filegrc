@@ -819,3 +819,27 @@ Operating ownership can use existing implemented Control procedures and approved
 Tokenized resource navigation projects the same snapshot-scoped workflow section used by root navigation. Previously, detail requests repeated full synchronous workflow and Git-history work on the HTTP thread after the shared worker had already calculated it. Detail now joins or reuses that worker calculation, retains each caller's deadline and verifies live file and Git signatures before responding. The 10-second request budgets remain unchanged. Tests cover warm computation bounds, concurrent cold requests, recovery after an earlier caller deadline, transient Git failures and invalidation after source changes.
 
 Finalized operating proof freezes explicit completion, Evidence, Exception and Attestation relationships at the owner's first finalized Git revision. Evidence source-resource links describe context, so current Controls, inventories and ongoing reviews can evolve without rewriting that proof. Source links to Evidence, Exceptions and Attestations still protect those proof records. Mutation guards and historical validation share the same traversal; historical validation resolves the traversal from committed records rather than current links. Evidence packets retain committed source versions alongside current context.
+
+## Retention rule applications
+
+The independent Data Retention Schedule review binds rule semantics and governing
+sources. Its original committed revision remains verifiable after routine service
+inventory growth. Owner-reviewed `retention-application` records separately bind
+an approved rule to service data use, purpose and practical disposal. They name the
+actual Policy Owner, authority and review date, retain the committed independent
+approval, and confirm the full cutoff, disposition, holds and duties.
+
+The shared domain verifies the original approval before comparing rule semantics.
+Changed rule notes, Markdown or governing decisions require independent review.
+New or materially changed service uses require an explicit applicability decision;
+provider or agreement changes invalidate prior disposal-fit review. Service labels
+and unrelated metadata do not change the fit. Applications do not change original
+approved rows and do not add approval requirements for equivalent service mappings.
+Periodic independent schedule review exposes the current applications for oversight.
+
+Model v13 adds these optional records in FileGRC 0.19.2. Shared validation rejects
+adoption until the consumer manifest and lockfile support them, including generic
+CRUD and hand-edited source files. Hosted runtimes must upgrade before repositories
+publish applications. Preview binds current service facts; save rejects changed
+bindings. Retirement records the actual owner, date and reason, preserves the
+original decision and cannot reactivate an old application.
