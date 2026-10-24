@@ -728,6 +728,16 @@ Key format: `namespace`.
 | --- | --- | --- | --- |
 | `amendmentId` | id | Yes | References: `nonmaterial-amendment` |
 
+### `retention-application-confirmations`
+
+| Property | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `purposeMatches` | boolean | Yes | The record purpose and boundaries fit the approved rule. |
+| `cutoffMatches` | boolean | Yes | The same cutoff event applies. |
+| `dispositionFeasible` | boolean | Yes | The full disposition can be carried out in this service. |
+| `holdsPreserved` | boolean | Yes | All approved holds and required records remain protected. |
+| `noConflictingDuties` | boolean | Yes | No legal, contractual or other duty conflicts with this application. |
+
 ## Common fields
 
 | Field | Type | Required | Meaning |
@@ -1617,6 +1627,41 @@ Record Markdown: available when needed as an implicit companion file.
 | `evidenceIds` | array of id | No | References: `evidence` |
 | `confirmations` | object (`nonmaterial-amendment-confirmations`) | No |  |
 | `withdrawnProposalId` | id | No | References: `reporting-route-set` |
+
+#### `retention-application`
+
+An owner decision applying one unchanged independently approved retention rule to additional services. It preserves the original schedule approval and never changes the approved rule.
+
+Instructions: Apply the complete unchanged independently approved rule to actual services after owner review of purpose, cutoff, disposal, holds and duties.
+
+Policy basis: Apply the complete approved rule, including record purpose, cutoff, period, disposition and holds. Matching a duration alone is insufficient. New categories, conflicting duties, unsupported disposal or any changed rule require normal independent schedule approval.
+
+Timing: Review applicability when the service data use or disposal capability changes and include applications in periodic independent retention oversight. Use apply-retention-rule to scaffold exact bindings. Retire an obsolete application and record a new decision; preserve history. Requires a committed repository dependency and lockfile for FileGRC 0.19.2 or newer in the 0.19 line.
+
+Path: `data/retention-applications/<id>.json`
+
+Record Markdown: available when needed as an implicit companion file.
+
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `status` | enum | Yes | Values: `active`, `retired` |
+| `ruleId` | id | Yes | Approved rule References: `retention-schedule-item` |
+| `ruleRevision` | string | Yes | Exact rule decision |
+| `approvalId` | id | Yes | Independent schedule approval References: `collection-review` |
+| `approvalRevision` | string | Yes |  |
+| `programId` | id | Yes | References: `program` |
+| `scopeResourceIds` | array of id | Yes | Services covered References: `system`, `component`, `vendor` |
+| `informationTypeIds` | array of id | Yes | References: `information-type` |
+| `reviewedScopeRevisions` | object (`string-map`) | Yes |  |
+| `reviewedById` | id | Yes | References: `person` |
+| `authorityAppointmentId` | id | Yes | References: `appointment` |
+| `reviewedOn` | date | Yes |  |
+| `purpose` | string | Yes | Record purpose and boundaries |
+| `rationale` | string | Yes |  |
+| `disposalImplementation` | string | Yes | How the complete rule will operate |
+| `confirmations` | object (`retention-application-confirmations`) | Yes |  |
+| `approvalCommit` | string | Yes | Committed independent approval |
+| `statusTransition` | object (`status-transition`) | Conditional | Required when `status` is `retired`. Allowed when `status` is `retired`. |
 
 ### Risk
 

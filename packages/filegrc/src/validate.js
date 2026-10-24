@@ -1,3 +1,5 @@
+import { withAssessmentCache } from "./calculation-cache.js";
+import { retentionApplicationIssues } from "./retention-applications.js";
 import { nonmaterialAmendmentIssues } from "./nonmaterial-amendments.js";
 import { completionMatchesMember, assessCompletionForObligation, obligationScheduleRecurrence, calendarWindow } from "./obligations.js";
 import { reportingCutoverIssues, scheduleCutoverIssues, historicalContentCutover } from "./activation-readiness.js";
@@ -22,7 +24,7 @@ import {
   parseCalendarDate,
   validCalendarRecurrence
 } from "./recurrence.js";
-import { resourceReviewRevisionMatches, resourceReviewRevisions, retentionReviewResourceIds } from "./retention.js";
+import { resourceReviewRevisionMatches, resourceReviewRevisions, retentionReviewResourceIds, retentionLegacyInventoryBindingIds } from "./retention.js";
 import { retentionScheduleApprovalIssues } from "./retention-schedule-approval.js";
 import { obligationIsEnabled, obligationRuleIsEnabled } from "./program-lifecycle.js";
 import { currentPartyPeople, partyPeople } from "./parties.js";
@@ -81,7 +83,7 @@ const DEFERRED_VALIDATION_CONCURRENCY = 16;
 export async function validateWorkspace(input = process.cwd()) {
   const timingStarted = performance.now();
   try {
-    return await validateWorkspaceUnmeasured(input);
+    return await withAssessmentCache(() => validateWorkspaceUnmeasured(input));
   } finally {
     recordTiming("validation", performance.now() - timingStarted);
   }
@@ -122,6 +124,9 @@ async function validateWorkspaceUnmeasured(input) {
 
   for (const entry of loaded.entries) {
     const { record } = entry;
+    if (record.type === "retention-application") {
+      diagnostics.push(...retentionApplicationIssues(loaded, record, { includeStale: false }).map((item) => ({ ...item, path: `data/${entry.relativePath}` })));
+    }
     if (record.type === "nonmaterial-amendment") {
       diagnostics.push(...nonmaterialAmendmentIssues(loaded, record).map((item) => ({ ...item, path: `data/${entry.relativePath}` })));
     }
@@ -1412,7 +1417,9 @@ function validateCollectionReview(record, loaded, byId, path, diagnostics) {
       )),
       approvalReview: record
     })) {
-      diagnostics.push(error(issue.code, path, issue.message));
+      if (issue.code === "uncovered-retention-information-use" && !originalPopulationCurrent && model.resources["retention-application"]) {
+        diagnostics.push(warning(issue.code, path, issue.message));
+      } else diagnostics.push(error(issue.code, path, issue.message));
     }
     const owners = new Set();
     for (const candidate of loaded.resources.filter((candidate) => (
@@ -2083,9 +2090,10 @@ function validateRetentionScheduleItem(record, loaded, byId, currentReviewRevisi
   }
   const sources = retentionReviewResourceIds(record, loaded);
   const revisions = record.reviewedSourceRevisions || {};
+  const legacyBindings = new Set(retentionLegacyInventoryBindingIds(record, loaded));
   const missing = sources.filter((id) => (
     !resourceReviewRevisionMatches(loaded, currentReviewRevisions, id, revisions[id], record)
-  )).concat(Object.keys(revisions).filter((id) => !sources.includes(id)));
+  )).concat(Object.keys(revisions).filter((id) => !sources.includes(id) && !legacyBindings.has(id)));
   if (missing.length) {
     diagnostics.push(error(
       "stale-retention-review",

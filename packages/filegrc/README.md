@@ -131,3 +131,29 @@ Choose a tested runtime in the repository's line that supports its model and the
 Patch releases must preserve readable records and generated records across their compatibility line. An incompatible record format, model requirement, or API contract needs a new compatibility line and an explicit upgrade path, rather than relaxed validation.
 
 Model v13 adds scoped source retrieval, proof preservation, baseline execution and operating ownership checks. Existing v12 programs explicitly preview `npx filegrc migrate --to-model 13 --preview --json` before applying the upgrade. Use `npx filegrc program-readiness --json` for the missing facts, existing records, tangible checks and read/scaffold/preview/save commands shared with the browser. Active programs repair current gaps using actual dates and preserve historical activation and Control oversight. Reuse unchanged approvals; new or changed governed content, schedules and retention decisions use their existing independent reviews. See the [model v13 upgrade guide](https://github.com/Alignbase/filegrc/blob/main/docs/upgrading-to-model-v13.md).
+
+### Apply an approved retention rule
+
+Independent review approves the retention decision: data category and purpose,
+cutoff, period, disposition, holds and required duties. The Policy Owner can apply
+that complete unchanged rule to another service without approving the schedule
+again. Matching a duration alone does not establish a fit.
+
+```sh
+npx filegrc apply-retention-rule RULE_ID --scaffold > application.json
+# Fill the service scope, existing Information Types, actual owner authority,
+# purpose, disposal implementation and every fit confirmation.
+npx filegrc apply-retention-rule RULE_ID application.json --preview > reviewed-application.json
+npx filegrc apply-retention-rule RULE_ID reviewed-application.json --yes
+```
+
+Preview binds the current service facts. Save rejects a changed service, rule or
+approval instead of silently updating the decision. The browser's **Apply approved
+rule** action uses the same checks. Original rule and approval records stay intact;
+new applications retain the actual owner, date and exact approved source. Review
+applications during periodic independent schedule oversight.
+
+Use normal independent schedule review for a new category or purpose, a changed
+cutoff or period, conflicting duties, unsupported disposal, or a material exception.
+An application cannot supply missing independent approval. Retire an obsolete
+application and record a new owner decision when the service facts change.

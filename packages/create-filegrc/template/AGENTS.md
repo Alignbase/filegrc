@@ -264,3 +264,15 @@ Model v13 checks completed full-program risk assessment, current workforce train
 Use `npx filegrc amend-nonmaterial RESOURCE_ID --scaffold` for a model-supported administrative label correction or verified equivalent reporting email alias. Fill the actual owner, scoped authority, rationale, time and supporting fixed evidence; preview with `--preview`, then save with `--yes` and commit. The source record, Markdown and independent approval remain unchanged. `get RESOURCE_ID --workflow --json` includes the current administrative view and amendment IDs. The browser exposes the same action on supported record pages.
 
 Email aliases require the owner to confirm the same underlying destination, recipients, access boundaries, availability and dependencies. This decision does not independently verify its Evidence or create a new independent approval. A matching proposed alias successor may be withdrawn atomically. Never use an amendment for changed commitments, recipients, access, scope, retention periods, cadence, deadlines, governed prose or evidence conclusions. Keep those normal reviews. Preserve committed amendments and the observations and captures supporting them; correct them through a subsequent amendment. Later independent verification may add verification metadata without rewriting those observations.
+
+## Applying approved retention rules to services
+
+The independent schedule review governs the complete retention rule. Adding a
+service does not require another independent approval when the owner can apply
+that exact rule without changing its category, purpose, cutoff, period, disposition,
+holds or required duties. Use `filegrc apply-retention-rule RULE_ID --scaffold`, fill
+an honest owner applicability decision, preview it, then save the preview with
+`--yes`. The browser offers **Apply approved rule** on an active rule. Keep original
+approved rows and approval metadata unchanged. Use normal independent review for
+material changes or when no existing rule fully fits. Include service applications
+in periodic independent retention oversight.

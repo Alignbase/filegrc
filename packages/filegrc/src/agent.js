@@ -84,6 +84,7 @@ export function buildAgentGuide(loaded, type, options = {}) {
 
   return {
     type,
+    ...(type === "retention-schedule-item" && loaded.model.resources["retention-application"] ? { applyApprovedRule: "npx filegrc apply-retention-rule RULE_ID --scaffold" } : {}),
     nonmaterialAmendments: Object.fromEntries(Object.entries(loaded.model.nonmaterialAmendments || {}).filter(([, rule]) => rule.resourceTypes.includes(type))),
     ...(options.preparationChecks ? { preparationChecks: options.preparationChecks } : {}),
     title: definition.title,

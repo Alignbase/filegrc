@@ -1,3 +1,4 @@
+import { scaffoldRetentionApplication, saveRetentionApplication } from "./retention-applications.js";
 import { firstOperatingTasks } from "./operating-preparation.js";
 import { createStateCalculator } from "./state-calculator.js";
 import { withCalculationCache } from "./calculation-cache.js";
@@ -380,6 +381,19 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
         return json(response, 201, await browserMutation(input, requestOptions, {
           message: (result) => `Create policy event: ${result.event?.title || payload.title || payload.eventType}`
         }, () => createObligationEvent(input, { ...payload, programId: payload.programId || requestOptions.programId })));
+      }
+      if (request.method === "POST" && url.pathname === "/api/retention-applications/scaffold") {
+        const payload = await readJson(request);
+        return json(response, 200, await scaffoldRetentionApplication(input, payload.ruleId));
+      }
+      if (request.method === "POST" && url.pathname === "/api/retention-applications/preview") {
+        return json(response, 200, await saveRetentionApplication(input, await readJson(request), { preview: true }));
+      }
+      if (request.method === "POST" && url.pathname === "/api/retention-applications") {
+        const payload = await readJson(request);
+        return json(response, 201, await browserMutation(input, requestOptions, {
+          message: () => `Apply approved retention rule: ${payload.record?.title}`
+        }, () => saveRetentionApplication(input, payload)));
       }
       if (request.method === "POST" && url.pathname === "/api/nonmaterial-amendments/scaffold") {
         const payload = await readJson(request);
@@ -1407,6 +1421,7 @@ function urlHost(host) {
 }
 
 function statusFor(error) {
+  if (error?.code === "FILEGRC_RETENTION_APPLICATION") return 400;
   if (error?.code === "FILEGRC_ACTIVATION_NOT_READY") return 400;
   if (error?.code === "FILEGRC_STATE_EXPIRED") return 409;
   if (error?.code === "FILEGRC_STATE_CAPACITY") return 429;

@@ -154,6 +154,7 @@ function assessCollectionReviewUncached(loaded, resourceType, options) {
     configuration,
     records,
     recordCount: records.length,
+    ...(resourceType === "retention-schedule-item" ? { retentionApplications: loaded.resources.filter((item) => item.type === "retention-application" && item.status === "active").map((item) => ({ id: item.id, title: item.title, ruleId: item.ruleId, scopeResourceIds: item.scopeResourceIds, reviewedById: item.reviewedById, reviewedOn: item.reviewedOn })) } : {}),
     review,
     reviewRevision: reviewEntry
       ? calculateRevision("content", reviewEntry.source)
@@ -220,6 +221,7 @@ export async function scaffoldCollectionReview(input = process.cwd(), options = 
     ...(resourceType === "obligation" ? { programId: program.id, firstOperatingTasks: firstOperatingTasks(loaded, program) } : {}),
     ...(resourceType === "obligation" ? { scheduleDecisions: assessment.records.map((record) => ({ obligationId: record.id, disposition: null, ...(record.activeRuleId ? { ruleId: record.activeRuleId } : {}), rationale: null })) } : {}),
     ...(assessment.changesSinceReview ? { changesSinceReview: assessment.changesSinceReview } : {}),
+    ...(resourceType === "retention-schedule-item" ? { retentionApplications: assessment.retentionApplications, applicationOversight: "Review current owner applications during periodic independent schedule oversight. These decisions preserve unchanged approved rules and do not create a new approval request for each service." } : {}),
     decision: priorDecisionStillValid ? priorReview.decision : (assessment.records.length
       ? "complete"
       : allowedDecisions.includes("zero-population") ? "zero-population" : null),

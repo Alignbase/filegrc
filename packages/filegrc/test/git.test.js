@@ -3229,7 +3229,8 @@ test("validation and static build report malformed history without repeated full
   assert.ok(build.state.validation.diagnostics.some(({ message }) => /unreadable data record.*raw.json/.test(message)));
   assert.equal(calls.filter((args) => args[0] === "log" && args.includes("--name-status")).length, 1);
   assert.equal(calls.filter((args) => args[0] === "ls-tree").length, 0);
-  assert.ok(calls.length < 150, `unexpected repeated Git calculations: ${calls.length}`);
+  // Allow bounded per-resource work as the model gains an optional collection.
+  assert.ok(calls.length < 160, `unexpected repeated Git calculations: ${calls.length}`);
 });
 
 test("opaque evidence-like JSON cannot declare attachment ownership", async (context) => {
