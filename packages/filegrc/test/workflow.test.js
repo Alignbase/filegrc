@@ -788,3 +788,44 @@ test("Program workflow excludes unrelated source deadlines and does not recreate
   assert.equal(workflow.workItems.find(({ source }) => source.id === "evidence-audit-selected")?.state, "overdue");
   assert.equal(workflow.workItems.some(({ source }) => source.id === "evidence-audit-unrelated"), false);
 });
+
+test("approved Exception expiry remains actionable through its lifecycle and Program scope", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-exception-deadline-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeComprehensiveWorkspace(root, "13");
+  const loaded = await loadWorkspace(root);
+  const exception = loaded.resources.find(({ type }) => type === "exception");
+  const system = loaded.resources.find(({ type }) => type === "system");
+  const record = { ...exception, status: "approved", scopeResourceIds: [system.id],
+    approval: { approvedByIds: ["person-example"], approvedOn: "2026-07-01", expiresOn: "2026-07-10" } };
+  const path = join(root, "data", "exceptions", `${record.id}.json`);
+  await writeJson(path, record);
+  await writeJson(join(root, "data", "systems", "system-unrelated.json"), { ...system, id: "system-unrelated" });
+  await writeJson(join(root, "data", "exceptions", "exception-unrelated.json"), { ...record, id: "exception-unrelated", scopeResourceIds: ["system-unrelated"] });
+  const assess = (asOf, includeComplete = false) => assessWorkflow(root, { asOf, includeComplete, evaluatedAt: `${asOf}T12:00:00Z` });
+  for (const [asOf, state] of [["2026-07-09", "scheduled"], ["2026-07-10", "due"], ["2026-07-11", "overdue"]]) {
+    const workflow = await assess(asOf);
+    const items = workflow.workItems.filter(({ source }) => source.id === record.id);
+    assert.equal(items.length, 1);
+    const item = items[0];
+    assert.equal(item.state, state);
+    assert.equal(item.dueOn, record.approval.expiresOn);
+    assert.equal(item.kind, "source-deadline");
+    assert.deepEqual(item.ownerIds, record.ownerIds);
+    assert.deepEqual(item.scope, record.scopeResourceIds);
+    assert.equal(item.requiredCompletionProfile, "exception-expiry-and-compensating-control-review");
+    assert.equal(item.nextAction.command.includes("trigger exception-expired"), state === "overdue");
+    assert.equal(workflow.workItems.some(({ source }) => source.id === "exception-unrelated"), false);
+  }
+  for (const status of ["closed", "revoked"]) {
+    await writeJson(path, { ...record, status, resolution: { resolvedByIds: ["person-example"], resolvedOn: "2026-07-09", rationale: "Departure ended." } });
+    assert.equal((await assess("2026-07-11")).workItems.some(({ source }) => source.id === record.id), false);
+    const completed = (await assess("2026-07-11", true)).workItems.find(({ source }) => source.id === record.id);
+    assert.equal(completed.state, "complete");
+    assert.equal(completed.nextAction.command.includes("trigger exception-expired"), false);
+  }
+  const requested = { ...record, status: "requested" };
+  delete requested.approval;
+  await writeJson(path, requested);
+  assert.equal((await assess("2026-07-11")).workItems.some(({ source }) => source.id === record.id), false);
+});

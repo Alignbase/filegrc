@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { attestationBindingIssue } from "./attestation-integrity.js";
 import { preparationEvidenceIssues } from "./preparation-evidence.js";
 import { assertHistoricalRecordValid } from "./validate.js";
 import { markdownEntries, resourceDataPath } from "./resource-markdown.js";
@@ -1260,6 +1261,11 @@ function occurrenceProofDate(occurrence, asOf, timezone = "UTC") {
 
 function completionPassesActivity(record, activity, model, byId, asOf, timezone = "UTC") {
   const assessmentDate = asOf || currentCalendarDate(timezone);
+  if (record.type === "attestation") {
+    if (record.status !== "completed" || !record.completedOn || record.completedOn > assessmentDate
+      || attestationBindingIssue(record, model, byId)) return false;
+    try { assertHistoricalRecordValid(record, model, resourceDataPath(model, record)); } catch { return false; }
+  }
   if (model && modelSupports(model, "operating-preparation") && model.operatingPreparation?.completionRecords?.[record.type]) {
     const spec = model.operatingPreparation.completionRecords[record.type];
     if (byId && (record.type === "evidence"
@@ -1284,6 +1290,16 @@ function completionPassesActivity(record, activity, model, byId, asOf, timezone 
 }
 
 export function completionMatchesMember(record, field, resourceId, model, byId, obligation) {
+  if (record?.type === "attestation") {
+    const { expectedPeople, requiredSubjects } = attestationCompletionScope(obligation, byId);
+    if (expectedPeople.length && !expectedPeople.includes(record.personId)) return false;
+    const subjects = new Set(record.subjectResourceIds || []);
+    if (!requiredSubjects.length || requiredSubjects.some((id) => !subjects.has(id))) return false;
+    const memberType = byId?.get(resourceId)?.type;
+    if (memberType === "person") return record.personId === resourceId;
+    return Boolean(model?.resources.attestation?.fields.subjectResourceIds?.relation?.includes(memberType)
+      && subjects.has(resourceId));
+  }
   if (byId?.get(resourceId)?.type === "workspace" && !obligation?.scopeResourceIds?.length
     && record.obligationId === obligation?.id) return true;
   const includes = (value) => Array.isArray(value) ? value.includes(resourceId) : value === resourceId;
@@ -1400,25 +1416,25 @@ function assertExpectedCompletionType(obligation, record, model) {
   }
 }
 
-function assertAttestationCompletionScope(obligation, record, resources, event = null) {
-  if (record?.type !== "attestation") return;
-  const byId = resourceIndex(resources).byId;
+function attestationCompletionScope(obligation = {}, byId = new Map(), event = null) {
   const eventPeople = (event?.subjectResourceIds || []).filter((id) => byId.get(id)?.type === "person");
   const expectedPeople = eventPeople.length
     ? eventPeople
     : (obligation.scopeResourceIds || []).filter((id) => byId.get(id)?.type === "person");
+  const primarySubjects = [obligation.templateResourceId, ...(obligation.scopeResourceIds || [])]
+    .filter((id) => ["policy", "document", "training", "action-item"].includes(byId.get(id)?.type));
+  return { expectedPeople, requiredSubjects: primarySubjects.length ? primarySubjects : obligation.policyIds || [] };
+}
+
+function assertAttestationCompletionScope(obligation, record, resources, event = null) {
+  if (record?.type !== "attestation") return;
+  const { expectedPeople, requiredSubjects } = attestationCompletionScope(obligation, resourceIndex(resources).byId, event);
   if (expectedPeople.length && !expectedPeople.includes(record.personId)) {
     throw new Error(`Attestation personId must name the Person in scope for Obligation "${obligation.id}".`);
   }
-  const primarySubjects = [obligation.templateResourceId, ...(obligation.scopeResourceIds || [])]
-    .filter((id) => ["policy", "document", "training", "action-item"].includes(byId.get(id)?.type));
-  const allowedSubjects = new Set(primarySubjects.length ? primarySubjects : obligation.policyIds || []);
   const actualSubjects = new Set(record.subjectResourceIds || []);
-  if (
-    actualSubjects.size !== allowedSubjects.size
-    || [...actualSubjects].some((id) => !allowedSubjects.has(id))
-  ) {
-    throw new Error(`Attestation subjects must name the exact authored content in scope for Obligation "${obligation.id}".`);
+  if (!requiredSubjects.length || requiredSubjects.some((id) => !actualSubjects.has(id))) {
+    throw new Error(`Attestation subjects must include every authored subject in scope for Obligation "${obligation.id}".`);
   }
 }
 

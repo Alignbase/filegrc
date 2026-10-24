@@ -1,3 +1,4 @@
+import { attestationBindingIssue } from "./attestation-integrity.js";
 import { withAssessmentCache } from "./calculation-cache.js";
 import { retentionApplicationIssues } from "./retention-applications.js";
 import { nonmaterialAmendmentIssues } from "./nonmaterial-amendments.js";
@@ -2249,7 +2250,6 @@ async function validateAttestationBinding(record, model, root, byId, path, diagn
     || (record.attestationMethod !== "git-approval" && !modelSupports(model, "complete-operating-baseline"))
     || !record.contentRevisions
   ) return;
-  const expectedPaths = new Set();
   const subjectPaths = new Map();
   for (const id of record.subjectResourceIds || []) {
     const subject = byId.get(id);
@@ -2263,41 +2263,9 @@ async function validateAttestationBinding(record, model, root, byId, path, diagn
       }
     }
     subjectPaths.set(id, paths);
-    for (const item of paths) expectedPaths.add(item);
   }
-  const actualPaths = Object.keys(record.contentRevisions);
-  if (!expectedPaths.size) {
-    diagnostics.push(error(
-      "invalid-attestation-binding",
-      path,
-      "A git-approval Attestation must reference authored Policy, Document, or Training content."
-    ));
-    return;
-  }
-  if (!actualPaths.length) {
-    diagnostics.push(error(
-      "invalid-attestation-binding",
-      path,
-      "A git-approval Attestation must bind at least one subject Markdown file."
-    ));
-    return;
-  }
-  const invalid = actualPaths.filter((item) => (
-    !expectedPaths.has(item)
-    || !revisionDigest("content", record.contentRevisions[item])
-  ));
-  const unboundSubjects = [...subjectPaths].filter(([, paths]) => (
-    paths.length && !paths.some((item) => actualPaths.includes(item))
-  )).map(([id]) => id);
-  if (invalid.length || unboundSubjects.length) {
-    diagnostics.push(error(
-      "invalid-attestation-binding",
-      path,
-      unboundSubjects.length
-        ? `Attestation contentRevisions must bind authored Markdown for every subject; missing ${unboundSubjects.join(", ")}.`
-        : "Attestation contentRevisions must contain valid SHA-256 hashes for subject Markdown paths and no unrelated paths."
-    ));
-  }
+  const issue = attestationBindingIssue(record, model, byId, subjectPaths);
+  if (issue) diagnostics.push(error("invalid-attestation-binding", path, issue));
 }
 
 function validateReportingRouteBinding(record, loaded, path, diagnostics) {
