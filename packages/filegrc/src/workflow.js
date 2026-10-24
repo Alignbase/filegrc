@@ -1583,6 +1583,7 @@ function activeWork(item) {
 }
 
 function firstDate(record) {
+  if (record.type === "exception" && typeof record.approval?.expiresOn === "string") return record.approval.expiresOn;
   if (record.completionWindow?.dueAt) return record.completionWindow.dueAt;
   if (record.completionWindow?.dueOn) return record.completionWindow.dueOn;
   for (const field of DATE_FIELDS) {
@@ -1619,8 +1620,9 @@ function sourceCompletionProfile(record) {
 }
 
 function sourceNextAction(record, due, asOf, records) {
-  const eventType = due <= asOf ? {
-    exception: "exception-expired",
+  const eventType = record.type === "exception"
+    ? (record.status === "approved" && due < asOf ? "exception-expired" : null)
+    : due <= asOf ? {
     "service-account": "service-account-expired",
     vulnerability: "vulnerability-overdue"
   }[record.type] : null;
@@ -1650,7 +1652,8 @@ function firstOwners(record) {
 }
 
 function sourceWorkState(record, due, asOf) {
-  if (TERMINAL_STATUSES.has(record.status)) return "complete";
+  if (record.type === "exception" && ["closed", "revoked"].includes(record.status)) return "complete";
+  if (!(record.type === "exception" && record.status === "approved") && TERMINAL_STATUSES.has(record.status)) return "complete";
   if (["canceled", "superseded"].includes(record.status)) return record.status;
   if (["draft", "in-review", "partially-implemented", "planned", "proposed"].includes(record.status)) {
     return "proposed";
