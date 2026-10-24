@@ -843,3 +843,22 @@ CRUD and hand-edited source files. Hosted runtimes must upgrade before repositor
 publish applications. Preview binds current service facts; save rejects changed
 bindings. Retirement records the actual owner, date and reason, preserves the
 original decision and cannot reactivate an old application.
+
+
+FileGRC 0.20 extends the model v13 application scope to explicit Source Coverage
+populations. It introduces a compatibility line because older readers reject that
+scope relationship, while preserving every existing field and record. Core 0.20
+continues to read and operate unchanged 0.18 and 0.19 repositories with API contract
+1. Adoption of a Source Coverage application requires the repository manifest and
+lockfile to select 0.20 before its first committed decision. Upgrading later does
+not legitimize an application created under an unsupported runtime.
+
+Source Coverage applications use a separate exact projection of the source family,
+coverage kind, source Component, declared population, collection and retrieval
+methods, validity and preservation decisions. The existing service projections
+remain unchanged so prior applications keep their exact bindings. Shared retention
+resolution serves retention readiness, evidence-source completeness and operating
+preparation; no interface infers proof retention from a resource type. Source data
+expiration remains separate from retained control proof. The application names the
+approved Information Types, purpose, cutoff fit, disposal implementation and holds,
+without editing the rule or its independent approval.

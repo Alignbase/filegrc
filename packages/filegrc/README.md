@@ -122,7 +122,7 @@ Model v12 requires a complete Program Obligation schedule-set review before acti
 
 ## Hosted runtime compatibility
 
-A hosted application can run one tested stable patch per supported compatibility line. Before 1.0, the line is the minor version, such as `0.17.x`. From 1.0 onward, it is the major version, such as `1.x`. Core accepts stable repository versions in its own line, including both older and newer patches, while retaining workspace model, record validation, and API contract checks. Prereleases, malformed versions, and other lines are rejected. Build metadata does not change the line. Diagnostic views remain available for model errors, with failed validation; ordinary mutations stay blocked.
+A hosted application can run one tested stable patch per supported compatibility line. Before 1.0, the line is the minor version, such as `0.17.x`. From 1.0 onward, it is the major version, such as `1.x`. Core accepts stable repository versions in its own line, including both older and newer patches, while retaining workspace model, record validation, and API contract checks. The 0.20 runtime also reads unchanged repositories in the supported 0.18 and 0.19 lines; older runtimes reject repositories that adopt 0.20. Prereleases, malformed versions, and other lines are rejected. Build metadata does not change the line. Diagnostic views remain available for model errors, with failed validation; ordinary mutations stay blocked.
 
 Use `assessWorkspaceRuntimeCompatibility(root, { requiredApiContractVersion: 1 })` before presenting hosted operations. It returns `compatible`, `installedVersion`, `repositoryVersion`, `supportedLine`, `repositoryLine`, `dataModelVersion`, `supportedModelVersions`, `apiContractVersion`, and a nullable `reason`. Failures include a repair message. `workspaceEngineVersion` remains the raw lockfile reader; `assertWorkspaceEngineVersion` uses the compatibility policy and attaches the result to `error.compatibility` when rejecting an operation. Unmanaged workspaces may omit package files; package-managed workspaces still require a readable lockfile with a resolved version, including linked dependency targets.
 
@@ -157,3 +157,22 @@ Use normal independent schedule review for a new category or purpose, a changed
 cutoff or period, conflicting duties, unsupported disposal, or a material exception.
 An application cannot supply missing independent approval. Retire an obsolete
 application and record a new owner decision when the service facts change.
+
+
+From FileGRC 0.20, an owner can also select an exact Source Coverage population in
+an approved rule application. Upgrade the repository dependency and lockfile to
+0.20 before previewing or saving this decision. Model v13 remains supported without
+a migration. Hosted services must install a runtime supporting 0.20 before the
+repository adopts that line.
+
+Select the retained proof and its existing approved Information Types explicitly.
+Preview binds its source family, authoritative Component, declared population,
+collection and retrieval method, validity dates and preservation facts. Changes to
+those facts require a fresh applicability review; unrelated metadata and retrieval
+rehearsal Evidence do not replace the approved decision. Original rules and
+independent approval records remain unchanged.
+
+A preservation rule covers the declared proof, such as control metadata, approvals,
+results or scoped exports. It does not extend raw log retention or restore deleted
+customer content. Keep those source retention decisions separate and use normal
+independent review when a new category, purpose or period is needed.

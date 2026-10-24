@@ -17,9 +17,10 @@ export function runtimeCompatibilityLine(version) {
 export function assessRuntimeCompatibility(runtimeVersion, repositoryVersion, options = {}) {
   const supportedLine = runtimeCompatibilityLine(runtimeVersion);
   const repositoryLine = runtimeCompatibilityLine(repositoryVersion);
-  // 0.19 adds optional nonmaterial-amendment records. It reads existing 0.18
-  // workspaces unchanged; 0.18 runtimes must reject the new release line.
-  const supportedRepositoryLines = supportedLine === "0.19.x" ? ["0.18.x", "0.19.x"] : [supportedLine];
+  // New optional record shapes require explicit adoption of their release line.
+  // Newer readers preserve unchanged workspaces from the supported prior lines.
+  const supportedRepositoryLines = supportedLine === "0.20.x" ? ["0.18.x", "0.19.x", "0.20.x"]
+    : supportedLine === "0.19.x" ? ["0.18.x", "0.19.x"] : [supportedLine];
   const dataModelVersion = options.dataModelVersion ?? null;
   const requiredApiContractVersion = Object.hasOwn(options, "requiredApiContractVersion") ? options.requiredApiContractVersion : RUNTIME_API_CONTRACT_VERSION;
   const reason = !supportedLine ? "invalid-runtime-version"

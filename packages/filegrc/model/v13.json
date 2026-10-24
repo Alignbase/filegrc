@@ -9651,10 +9651,10 @@
       "pluralTitle": "Retention rule applications",
       "group": "governance",
       "collection": "retention-applications",
-      "description": "An owner decision applying one unchanged independently approved retention rule to additional services. It preserves the original schedule approval and never changes the approved rule.",
+      "description": "An owner decision applying one unchanged independently approved retention rule to additional services or an explicit Source Coverage population. It preserves the original schedule approval and never changes the approved rule.",
       "guidance": {
         "policyBasis": "Apply the complete approved rule, including record purpose, cutoff, period, disposition and holds. Matching a duration alone is insufficient. New categories, conflicting duties, unsupported disposal or any changed rule require normal independent schedule approval.",
-        "cadence": "Review applicability when the service data use or disposal capability changes and include applications in periodic independent retention oversight. Use apply-retention-rule to scaffold exact bindings. Retire an obsolete application and record a new decision; preserve history. Requires a committed repository dependency and lockfile for FileGRC 0.19.2 or newer in the 0.19 line."
+        "cadence": "Review applicability when service data use, the declared evidence population or disposal capability changes and include applications in periodic independent retention oversight. Use apply-retention-rule to scaffold exact bindings. Retire an obsolete application and record a new decision; preserve history. Source Coverage applications require a committed FileGRC 0.20 dependency and lockfile. Existing service applications support adopted 0.19.2 or newer runtimes."
       },
       "required": [
         "status",
@@ -9717,9 +9717,10 @@
           "relation": [
             "system",
             "component",
-            "vendor"
+            "vendor",
+            "source-coverage"
           ],
-          "label": "Services covered"
+          "label": "Services or evidence populations covered"
         },
         "informationTypeIds": {
           "type": "array",

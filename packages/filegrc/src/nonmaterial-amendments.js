@@ -20,7 +20,7 @@ function hasAmendmentRuntimePin(loaded, commit = null) {
       ? runGitCommandSync(loaded.root, ["show", `${commit}:./package-lock.json`], { timeout: 5_000, maxBuffer: 2_000_000 })
       : readFileSync(join(loaded.root, "package-lock.json"), "utf8");
     const engine = JSON.parse(source)?.packages?.["node_modules/filegrc"];
-    return !engine?.link && runtimeCompatibilityLine(engine?.version) === "0.19.x";
+    return !engine?.link && ["0.19.x", "0.20.x"].includes(runtimeCompatibilityLine(engine?.version));
   } catch { return false; }
 }
 
@@ -56,14 +56,14 @@ export function nonmaterialAmendmentIssues(loaded, amendment) {
   const issues = [];
   const fail = (message) => issues.push({ severity: "error", code: "invalid-nonmaterial-amendment", resourceId: amendment.id, message });
   if (!hasAmendmentRuntimePin(loaded)) {
-    fail("Upgrade and commit the repository dependency and lockfile to FileGRC 0.19 before adopting nonmaterial amendments. The 0.19 runtime can read older repositories but cannot add these records to an older pin.");
+    fail("Upgrade and commit the repository dependency and lockfile to the supported FileGRC 0.19 or 0.20 line before adopting nonmaterial amendments. Reading an older repository does not authorize new records under an older pin.");
     return issues;
   }
   const rule = loaded.model.nonmaterialAmendments?.[amendment.category];
   const head = getGitSummary(loaded.root).commit;
   const eventCommit = firstCommit(loaded, amendment.id);
   if (eventCommit && !hasAmendmentRuntimePin(loaded, eventCommit)) {
-    fail("The repository must adopt the 0.19 dependency and lockfile no later than its first amendment commit.");
+    fail("The repository must adopt a supported 0.19 or 0.20 dependency and lockfile no later than its first amendment commit.");
     return issues;
   }
   const source = /^[a-f0-9]{40}$/.test(amendment.sourceCommit || "") && head
@@ -201,7 +201,7 @@ export function amendedResourceView(loaded, target, options = {}) {
 
 export async function scaffoldNonmaterialAmendment(input, targetId, options = {}) {
   const loaded = input?.resources ? input : await loadWorkspace(input);
-  if (!hasAmendmentRuntimePin(loaded)) throw new Error("Upgrade and commit the repository dependency and lockfile to FileGRC 0.19 before adopting nonmaterial amendments.");
+  if (!hasAmendmentRuntimePin(loaded)) throw new Error("Upgrade and commit the repository dependency and lockfile to FileGRC 0.19 or 0.20 before adopting nonmaterial amendments.");
   const entry = loaded.entries.find(({ record }) => record.id === targetId);
   if (!entry) throw new Error(`Resource "${targetId}" was not found.`);
   const head = getGitSummary(loaded.root).commit;

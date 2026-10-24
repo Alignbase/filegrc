@@ -1,4 +1,4 @@
-import { resourceReviewRevisions, retentionReviewResourceIds, retentionRuleIsCurrent } from "./retention.js";
+import { resolveSourceCoverageRetention } from "./retention.js";
 import { retentionScheduleIsAuthoritative } from "./collection-review.js";
 import { modelSupports } from "../model/index.js";
 import { resolveProgram } from "./program.js";
@@ -13,15 +13,8 @@ export async function sourceCoverageComplete(record, loaded, program = loaded.wo
       ? resolveProgram(loaded, program?.type === "program" ? program.id : undefined)
       : program;
     if (!retentionScheduleIsAuthoritative(loaded, retentionProgram)) return false;
-    const linkedRules = (record.retentionScheduleItemIds || []).map((id) => (
-      loaded.resources.find((resource) => resource.id === id && resource.type === "retention-schedule-item")
-    ));
-    const revisions = await resourceReviewRevisions(loaded, linkedRules.filter(Boolean).flatMap((rule) => retentionReviewResourceIds(rule, loaded)));
-    if (!linkedRules.some((rule) => (
-      rule?.status === "active"
-      && (rule.scopeResourceIds || []).includes(record.id)
-      && retentionRuleIsCurrent(rule, revisions, new Map(loaded.resources.map((resource) => [resource.id, resource])), loaded)
-    ))) return false;
+    const retained = await resolveSourceCoverageRetention(loaded, record, retentionProgram);
+    if (!retained.rules.length) return false;
   } else if (!record.retention) return false;
   const external = record.coverageKind === "external-system" || record.coverageKind === "external-component";
   const sourceId = record.componentId || record.systemId;
@@ -125,10 +118,8 @@ export async function sourcePreparationFacts(loaded, record, program, context = 
     return record.coverageKind !== "zero-population" || proof.artifactKind === "population-export" && proof.populationCount === 0 && proof.completenessValidation?.trim() && proof.accuracyValidation?.trim();
   });
   if (!evidenceIds.length) add("readinessTestEvidenceIds", "Run the documented retrieval with actual access for this source and scope. Keep a safe example or a checked zero-result export, record its actual date and collector, source Component, covered family, affected Control and System IDs, access confirmation and passed result, then link the Evidence. An applicability decision is not a successful retrieval.");
-  const rules = (record.retentionScheduleItemIds || []).map((id) => byId.get(id)).filter((rule) => rule?.type === "retention-schedule-item");
-  const revisions = await resourceReviewRevisions(loaded, rules.flatMap((rule) => retentionReviewResourceIds(rule, loaded)));
-  const retentionRuleIds = rules.filter((rule) => rule.status === "active" && rule.scopeResourceIds?.includes(record.id)
-    && retentionRuleIsCurrent(rule, revisions, byId, loaded)).map(({ id }) => id);
+  const retained = await resolveSourceCoverageRetention(loaded, record, program);
+  const retentionRuleIds = retained.rules.map(({ id }) => id);
   if (!retentionRuleIds.length) add("retentionScheduleItemIds", "Link an existing current preservation row covering this Source Coverage, or define the proof, cutoff, period and disposition that are actually needed. Preserve control metadata, approvals, results or scoped exports without retaining all logs or deleted customer content.");
   if (!retentionScheduleIsAuthoritative(loaded, program)) add("retention-schedule-approval", "Finish the existing Data Retention Schedule workflow. A separate eligible reviewer approves only a new or changed schedule; keep an unchanged exact approval.");
   return { complete: !issues.length, issues, evidenceIds, retentionRuleIds };
