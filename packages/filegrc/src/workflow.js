@@ -1312,6 +1312,12 @@ function obligationWorkItem(item, byId, asOf, programId) {
     scope: item.scopeResourceIds || (subjectId ? [subjectId] : []),
     blockingReason: item.blockingReason || item.reason || null,
     dependencies: blockingDependencies(item.blockingResourceIds, byId),
+    ...(item.ruleId ? {
+      membershipFinal: item.membershipFinal,
+      membershipCutoffAt: item.membershipCutoffAt,
+      memberWorkComplete: item.memberWorkComplete,
+      awaitingPopulationCutoff: item.awaitingPopulationCutoff
+    } : {}),
     requiredCompletionProfile: item.completionProfile || item.activityType || null,
     completionProfile: {
       activityType: item.activityType || null,
@@ -1351,6 +1357,7 @@ function obligationNextAction(item, programId) {
   if (item.ruleId) {
     return {
       kind: "command",
+      ...(item.awaitingPopulationCutoff ? { message: `Work is recorded for the current population. Reconcile after ${item.membershipCutoffAt}; include any additional eligible members through that cutoff.` } : {}),
       command: `npx filegrc reconcile-obligation ${shellArgument(item.obligationId)} --scaffold --window-start ${shellArgument(item.dueWindowStart)}${item.status === "complete" ? " --correct-finalized" : ""}${programOption}`
     };
   }

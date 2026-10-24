@@ -1,7 +1,7 @@
 import { withAssessmentCache } from "./calculation-cache.js";
 import { retentionApplicationIssues } from "./retention-applications.js";
 import { nonmaterialAmendmentIssues } from "./nonmaterial-amendments.js";
-import { completionMatchesMember, assessCompletionForObligation, obligationScheduleRecurrence, calendarWindow } from "./obligations.js";
+import { completionMatchesMember, assessCompletionForObligation, obligationScheduleRecurrence, calendarWindow, membershipIsFinal } from "./obligations.js";
 import { reportingCutoverIssues, scheduleCutoverIssues, historicalContentCutover } from "./activation-readiness.js";
 import { scheduleSetIssues, scheduleReviewerConflicts } from "./schedule-set.js";
 import { createHash } from "node:crypto";
@@ -752,7 +752,10 @@ function validateObligationOccurrence(record, model, resources, entries, root, w
       "An occurrence reconciliation time cannot be in the future."
     ));
   }
-  const populationStillOpen = Boolean(rule?.selector) && reconciledOn <= record.membershipCutoffAt;
+  const populationStillOpen = !membershipIsFinal(rule?.selector, {
+    dueWindowStart: record.coverage?.startsOn,
+    dueWindowEnd: record.coverage?.endsOn
+  }, reconciledOn);
   if (reconciledOn && populationStillOpen) {
     diagnostics.push(error(
       "obligation-population-still-open",
