@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, readFile, writeFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import { mkdtemp, mkdir, rm, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { makeComprehensiveWorkspace } from "./fixtures.js";
+import { reviewHistoryContext } from "../src/historical-workspace.js";
 import { loadWorkspace } from "../src/workspace.js";
 import { assessOperatingPreparation } from "../src/operating-preparation.js";
 import { contentRevision } from "../src/files.js";
@@ -12,7 +14,7 @@ import { assessProgramReadiness } from "../src/program-readiness.js";
 import { runCli } from "../src/cli.js";
 import { captureCli } from "./helpers.js";
 import { planModelMigration } from "../src/model-migration.js";
-import { planObligations } from "../src/obligations.js";
+import { assessCompletionForObligation, planObligations } from "../src/obligations.js";
 
 async function fixture(context, code) {
   const root = await mkdtemp(join(tmpdir(), "filegrc-full-baseline-"));
@@ -445,4 +447,193 @@ test("setup eligibility retains the planner's rule, activation anchor and offset
       assert.equal(result.complete, expected, JSON.stringify(result.candidateResults));
     });
   }
+});
+
+
+test("committed access populations survive later closure while current scope and identities stay required", async (context) => {
+  const { root, loaded, get, baseline } = await fixture(context, "IAM-01");
+  const review = get("access-review"), grant = get("access-grant"), proof = get("evidence"), service = get("service-account");
+  const component = get("component");
+  const serviceGrant = { ...grant, id: "access-grant-historical-service", subjectId: service.id };
+  loaded.resources.push(serviceGrant);
+  Object.assign(service, { componentIds: [component.id], ownerIds: [get("person").id] });
+  Object.assign(review, { completedOn: "2026-07-01", approvedOn: "2026-07-02", populationCount: 2, exceptionCount: 0,
+    grantDecisions: [grant, serviceGrant].map(({ id }) => ({ accessGrantId: id, decision: "retain" })),
+    sourceReconciliations: [{ componentId: component.id, boundary: "direct", populationEvidenceId: proof.id,
+      accounts: [grant, serviceGrant].map((item, index) => ({ accountReference: `account-${index}`, disposition: "authorized",
+        subjectId: item.subjectId, authorizationKind: "access-grant", accessGrantIds: [item.id] })) }] });
+  Object.assign(proof, { artifactKind: "population-export", sourceKind: "component", sourceComponentId: component.id,
+    collectedOn: "2026-07-01", verifiedOn: "2026-07-01", generatedAt: "2026-07-01T10:00:00Z", timezone: "UTC",
+    externalReference: { url: "https://evidence.example.com/accounts" }, queryDescription: "All provider accounts",
+    populationCount: 2, completenessValidation: "Checked all account classes", accuracyValidation: "Matched subjects and permissions",
+    coverage: { kind: "as-of", on: "2026-07-01" } });
+  delete proof.filePaths;
+  const noStore = { ...component, id: "component-no-account-store" };
+  loaded.resources.push(noStore); review.componentIds.push(noStore.id); proof.componentIds = [component.id, noStore.id];
+  review.sourceReconciliations.push({ componentId: noStore.id, boundary: "no-account-store", rationale: "This capability has no separate identity store", boundaryEvidenceIds: [proof.id] });
+  for (const record of [review, grant, serviceGrant, proof, service, noStore]) await writeFile(join(root, "data", resourceDataPath(loaded.model, record)), JSON.stringify(record));
+  const git = (...args) => execFileSync("git", args, { cwd: root, encoding: "utf8" });
+  git("init", "--initial-branch=main"); git("config", "user.name", "Example Owner"); git("config", "user.email", "owner@example.com");
+  git("add", "data/access-reviews"); git("commit", "-m", "Record completed provider review");
+  git("add", "data"); git("commit", "-m", "Retain provider review supporting records");
+  assert.equal((await baseline("provider-access")).complete, true);
+  const revoke = (item) => Object.assign(item, { status: "revoked", deprovisionedOn: "2026-08-01",
+    deprovisionedByIds: [get("person").id], deprovisionReason: "Closed after the reviewed population" });
+  const serviceGrantBeforeClosure = structuredClone(serviceGrant);
+  serviceGrant.status = "requested";
+  assert.equal((await baseline("provider-access")).complete, false, "Requested or approved access is not proved closed");
+  Object.assign(serviceGrant, serviceGrantBeforeClosure);
+  revoke(serviceGrant); serviceGrant.deprovisionedOn = "2026-12-01";
+  assert.equal((await baseline("provider-access")).complete, false, "A future revocation does not close today's access");
+  serviceGrant.deprovisionedOn = "2026-06-01";
+  assert.equal((await baseline("provider-access")).complete, false, "Backdating closure before the active reviewed grant is not a later lifecycle change");
+  revoke(serviceGrant); service.status = "disabled";
+  let result = await baseline("provider-access");
+  assert.equal(result.complete, true, JSON.stringify(result.candidateResults));
+  assert.equal(review.grantDecisions[1].decision, "retain");
+  assert.equal(review.populationCount, 2);
+  Object.assign(component, { status: "retired", statusTransition: { changedOn: "2026-08-01", changedByIds: [get("person").id], reason: "Service retired" } });
+  assert.equal((await baseline("provider-access")).complete, false, "Active access to a retired service still needs resolution");
+  const control = get("control"), originalComponentIds = control.componentIds, originalSourceIds = control.evidenceSourceComponentIds;
+  control.componentIds = []; control.evidenceSourceComponentIds = [];
+  const orphan = (await baseline("provider-access")).candidateResults[0];
+  assert.ok(orphan.missingFacts.includes("current-authorized-access"), "Removing retired provider links must not conceal still-active access");
+  control.componentIds = originalComponentIds; control.evidenceSourceComponentIds = originalSourceIds;
+  revoke(grant);
+  result = await baseline("provider-access");
+  assert.equal(result.complete, true, JSON.stringify(result.candidateResults));
+  assert.deepEqual(result.candidateResults[0].issues, []);
+  const historyContext = reviewHistoryContext(root, loaded), originalIndex = historyContext.index;
+  historyContext.index = null;
+  assert.equal((await baseline("provider-access")).complete, true, "Bounded-index recovery falls back to committed Git history");
+  historyContext.index = originalIndex;
+  assert.equal(review.sourceReconciliations.length, 2);
+  const actors = loaded.resources.filter(({ type }) => type === "person");
+  const actorCopies = actors.map((actor) => structuredClone(actor));
+  for (const actor of actors) Object.assign(actor, { status: "inactive", endDate: "2026-08-01" });
+  assert.equal((await baseline("provider-access")).complete, true, "Dated reviewer, approver and collector work survives later departure");
+  actors.forEach((actor, index) => { delete actor.endDate; Object.assign(actor, actorCopies[index]); });
+  const obligation = get("obligation"), originalObligation = structuredClone(get("obligation"));
+  Object.assign(obligation, { activityType: "access-review", scopeResourceIds: [] });
+  delete obligation.selector;
+  const rule = loaded.resources.find(({ id }) => id === obligation.activeRuleId);
+  const originalRule = rule && structuredClone(rule);
+  if (rule) delete rule.selector;
+  assert.equal(assessCompletionForObligation(review, obligation, loaded, { asOf: "2026-10-13", programId: get("program").id }).complete, true,
+    "Recurring completion must receive the same history context as setup readiness");
+  Object.assign(obligation, originalObligation);
+  if (rule) Object.assign(rule, originalRule);
+  const nextComponent = { ...component, id: "component-new-provider", status: "active" };
+  delete nextComponent.statusTransition;
+  loaded.resources.push(nextComponent);
+  assert.equal((await baseline("provider-access")).complete, false, "A newly active provider is not covered by the old snapshot");
+  loaded.resources.pop(); component.status = "active"; delete component.statusTransition;
+  serviceGrant.status = "active"; delete serviceGrant.deprovisionedOn; delete serviceGrant.deprovisionedByIds; delete serviceGrant.deprovisionReason;
+  assert.equal((await baseline("provider-access")).complete, false, "A live grant to a disabled identity cannot inherit old authorization");
+  service.status = "active";
+  service.reviewDueOn = "2026-09-01";
+  assert.equal((await baseline("provider-access")).complete, false, "A live identity still needs its current review");
+  delete service.reviewDueOn;
+  assert.equal((await baseline("provider-access")).complete, true);
+  serviceGrant.accessLevel = "New elevated authority";
+  assert.equal((await baseline("provider-access")).complete, false, "Material grant changes need current review");
+  serviceGrant.accessLevel = grant.accessLevel;
+  const outside = { ...component, id: "component-outside-program", systemUses: [] };
+  loaded.resources.push(outside); serviceGrant.componentId = outside.id;
+  assert.equal((await baseline("provider-access")).complete, false, "Moving reviewed access out of scope cannot conceal its changed authority");
+  loaded.resources.pop(); serviceGrant.componentId = component.id;
+  const extraGrant = { ...serviceGrant, id: "access-grant-added-after-review" };
+  loaded.resources.push(extraGrant);
+  assert.equal((await baseline("provider-access")).complete, false, "A new active grant requires its own decision and account mapping");
+  loaded.resources.pop(); revoke(serviceGrant); service.status = "disabled";
+  review.populationCount = 1;
+  assert.equal((await baseline("provider-access")).complete, false, "An edited completed review cannot reuse the unchanged committed approval");
+});
+
+test("historical access reuse still checks retained removal proof", async (context) => {
+  const { root, loaded, get, baseline } = await fixture(context, "IAM-01");
+  const review = get("access-review"), grant = get("access-grant"), proof = get("evidence"), component = get("component");
+  Object.assign(grant, { status: "revoked", deprovisionedOn: "2026-07-01", deprovisionedByIds: [get("person").id], deprovisionReason: "Removed during review" });
+  const resolution = { ...proof, id: "evidence-account-removal", artifactKind: "business-record", sourceKind: "component", sourceComponentId: component.id,
+    collectedOn: "2026-07-01", verifiedOn: "2026-07-01", generatedAt: "2026-07-01T12:00:00Z", externalReference: { url: "https://evidence.example.com/removal" } };
+  delete resolution.filePaths;
+  loaded.resources.push(resolution);
+  Object.assign(review, { completedOn: "2026-07-01", approvedOn: "2026-07-02", populationCount: 1, exceptionCount: 0,
+    evidenceIds: [proof.id, resolution.id], grantDecisions: [{ accessGrantId: grant.id, decision: "remove" }],
+    sourceReconciliations: [{ componentId: component.id, boundary: "direct", populationEvidenceId: proof.id, accounts: [{
+      accountReference: "removed-account", disposition: "removed", subjectId: grant.subjectId, accessGrantIds: [grant.id],
+      rationale: "Removed excess access", resolutionEvidenceIds: [resolution.id]
+    }] }] });
+  Object.assign(proof, { artifactKind: "population-export", sourceKind: "component", sourceComponentId: component.id,
+    collectedOn: "2026-07-01", verifiedOn: "2026-07-01", generatedAt: "2026-07-01T10:00:00Z", timezone: "UTC",
+    externalReference: { url: "https://evidence.example.com/accounts" }, queryDescription: "All provider accounts", populationCount: 1,
+    completenessValidation: "All account classes checked", accuracyValidation: "Matched actual account and permission",
+    coverage: { kind: "as-of", on: "2026-07-01" } });
+  delete proof.filePaths;
+  for (const record of [review, grant, proof, resolution]) {
+    const path = join(root, "data", resourceDataPath(loaded.model, record));
+    await mkdir(join(path, ".."), { recursive: true });
+    await writeFile(path, JSON.stringify(record));
+  }
+  const git = (...args) => execFileSync("git", args, { cwd: root, encoding: "utf8" });
+  git("init", "--initial-branch=main"); git("config", "user.name", "Example Owner"); git("config", "user.email", "owner@example.com");
+  git("add", "data"); git("commit", "-m", "Complete access removal review");
+  assert.equal((await baseline("provider-access")).complete, true);
+  resolution.status = "draft";
+  const invalid = (await baseline("provider-access")).candidateResults[0];
+  assert.equal(invalid.complete, false);
+  assert.ok(invalid.missingFacts.includes("resolved-provider-account-removals"));
+  resolution.status = "verified"; resolution.expiresOn = "2026-09-01";
+  assert.equal((await baseline("provider-access")).complete, false);
+});
+
+test("revoking one permission preserves a historically reviewed multi-grant account", async (context) => {
+  const { root, loaded, get, baseline } = await fixture(context, "IAM-01");
+  const review = get("access-review"), grant = get("access-grant"), proof = get("evidence"), component = get("component");
+  const second = { ...grant, id: "access-grant-second-permission" };
+  loaded.resources.push(second);
+  Object.assign(review, { completedOn: "2026-07-01", approvedOn: "2026-07-02", populationCount: 1, exceptionCount: 0,
+    grantDecisions: [grant, second].map(({ id }) => ({ accessGrantId: id, decision: "retain" })),
+    sourceReconciliations: [{ componentId: component.id, boundary: "direct", populationEvidenceId: proof.id, accounts: [{
+      accountReference: "one-account", disposition: "authorized", subjectId: grant.subjectId, authorizationKind: "access-grant", accessGrantIds: [grant.id, second.id]
+    }] }] });
+  Object.assign(proof, { artifactKind: "population-export", sourceKind: "component", sourceComponentId: component.id,
+    collectedOn: "2026-07-01", verifiedOn: "2026-07-01", generatedAt: "2026-07-01T10:00:00Z", timezone: "UTC",
+    externalReference: { url: "https://evidence.example.com/accounts" }, queryDescription: "All provider accounts", populationCount: 1,
+    completenessValidation: "All accounts checked", accuracyValidation: "Matched both permissions",
+    coverage: { kind: "as-of", on: "2026-07-01" } });
+  delete proof.filePaths;
+  for (const record of [review, grant, second, proof]) await writeFile(join(root, "data", resourceDataPath(loaded.model, record)), JSON.stringify(record));
+  const git = (...args) => execFileSync("git", args, { cwd: root, encoding: "utf8" });
+  git("init", "--initial-branch=main"); git("config", "user.name", "Example Owner"); git("config", "user.email", "owner@example.com");
+  git("add", "data"); git("commit", "-m", "Review multi-permission account");
+  assert.equal((await baseline("provider-access")).complete, true);
+  Object.assign(second, { status: "revoked", deprovisionedOn: "2026-08-01", deprovisionedByIds: [get("person").id], deprovisionReason: "Removed one permission" });
+  const result = await baseline("provider-access");
+  assert.equal(result.complete, true, JSON.stringify(result.candidateResults));
+  assert.deepEqual(review.sourceReconciliations[0].accounts[0].accessGrantIds, [grant.id, second.id]);
+  assert.equal(review.populationCount, 1);
+});
+
+test("a committed real zero-account review can omit optional grant decisions", async (context) => {
+  const { root, loaded, get, baseline } = await fixture(context, "IAM-01");
+  const review = get("access-review"), grant = get("access-grant"), proof = get("evidence"), component = get("component");
+  Object.assign(grant, { status: "revoked", deprovisionedOn: "2026-06-30", deprovisionedByIds: [get("person").id], deprovisionReason: "Access ended before the checked zero population" });
+  Object.assign(review, { completedOn: "2026-07-01", approvedOn: "2026-07-02", populationCount: 0, exceptionCount: 0,
+    sourceReconciliations: [{ componentId: component.id, boundary: "direct", populationEvidenceId: proof.id, accounts: [] }] });
+  delete review.grantDecisions;
+  Object.assign(proof, { artifactKind: "population-export", sourceKind: "component", sourceComponentId: component.id,
+    collectedOn: "2026-07-01", verifiedOn: "2026-07-01", generatedAt: "2026-07-01T10:00:00Z", timezone: "UTC",
+    externalReference: { url: "https://evidence.example.com/zero-accounts" }, queryDescription: "All account classes, including disabled and service identities",
+    populationCount: 0, completenessValidation: "Confirmed real zero source count", accuracyValidation: "Checked source scope and filters",
+    coverage: { kind: "as-of", on: "2026-07-01" } });
+  delete proof.filePaths;
+  for (const record of [review, grant, proof]) await writeFile(join(root, "data", resourceDataPath(loaded.model, record)), JSON.stringify(record));
+  const git = (...args) => execFileSync("git", args, { cwd: root, encoding: "utf8" });
+  git("init", "--initial-branch=main"); git("config", "user.name", "Example Owner"); git("config", "user.email", "owner@example.com");
+  git("add", "data"); git("commit", "-m", "Review actual zero-account population");
+  const result = await baseline("provider-access");
+  assert.equal(result.complete, true, JSON.stringify(result.candidateResults));
+  assert.ok(result.candidateResults[0].historicalReviewCommit);
+  assert.equal(review.grantDecisions, undefined);
 });

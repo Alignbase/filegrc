@@ -1,3 +1,4 @@
+import { reviewHistoryContext, reviewHistoricalWorkspace, reviewHistoryCommits } from "./historical-workspace.js";
 import { assessProviderAccessReconciliation } from "./provider-access-reconciliation.js";
 import { preparationEvidenceIssues } from "./preparation-evidence.js";
 import { personWasActiveOn } from "./soc2.js";
@@ -30,8 +31,87 @@ export function providerAccessPopulation(loaded, program, controls) {
 // Keep provider scope, grant decisions and source proof identical for setup and
 // program-wide recurring work. The caller owns its allowed completion window.
 export function assessProgramAccessReview(candidate, loaded, program, controls, asOf, options = {}) {
+  // A completed review proves a dated population, while readiness also asks
+  // whether today's providers and active access are covered. Do not rewrite
+  // old retain decisions or account totals after an account is later closed.
+  if (!options.historicalAssessment && loaded.root && !loaded.historicalCommit && candidate.status === "complete") {
+    const context = reviewHistoryContext(loaded.root, loaded);
+    const commits = reviewHistoryCommits(context);
+    // A review and its supporting grants or Evidence can land in separate
+    // commits. Start at its exact committed revision, then consider later
+    // source snapshots as well, while requiring that revision to stay intact.
+    const firstMatch = context.index?.available
+      ? [...context.index.historiesById.get(candidate.id) || []].reverse().find(({ commit }) =>
+        JSON.stringify(context.index.recordsByCommit.get(commit)?.get(candidate.id)?.record) === JSON.stringify(candidate))?.commit
+      : null;
+    const start = context.index?.available ? commits.indexOf(firstMatch) : 0;
+    for (const commit of start < 0 ? [] : commits.slice(start)) {
+      const snapshot = reviewHistoricalWorkspace(context, commit);
+      if (JSON.stringify(snapshot?.byId.get(candidate.id)) !== JSON.stringify(candidate)) continue;
+      const priorProgram = snapshot.byId.get(program.id);
+      if (!priorProgram) continue;
+      const historical = assessProgramAccessReview(candidate, snapshot, priorProgram,
+        providerAccessControls(snapshot, priorProgram), candidate.approvedOn, { ...options, historicalAssessment: true });
+      if (!historical.complete) continue;
+      const liveOptions = { ...options, historicalAssessment: true, historicalComponentIds: historical.reviewedComponentIds };
+      const current = assessProgramAccessReview(candidate, loaded, program, controls, asOf, liveOptions);
+      // Only these dated-population differences are superseded by the exact
+      // historical assessment. Every other current or future failure survives.
+      const historicalDifferences = new Set(["supported-grant-decisions", "accountable-provider-identities",
+        "account-grant-mappings", "reconciled-account-counts", "unique-scoped-provider-reconciliations"]);
+      const missingFacts = current.missingFacts.filter((fact) => !historicalDifferences.has(fact));
+      const currentById = new Map(loaded.resources.map((record) => [record.id, record]));
+      const invalidClosures = (candidate.grantDecisions || []).map(({ accessGrantId }) => accessGrantId).filter((id) => {
+        if (snapshot.byId.get(id)?.status !== "active") return false;
+        const grant = currentById.get(id);
+        if (grant?.status === "active") return false;
+        try { assertHistoricalRecordValid(grant, loaded.model, resourceDataPath(loaded.model, grant)); } catch { return true; }
+        return !["revoked", "expired"].includes(grant.status) || !grant.deprovisionedOn
+          || grant.deprovisionedOn < candidate.completedOn || grant.deprovisionedOn > asOf;
+      });
+      if (invalidClosures.length) missingFacts.push("current-authorized-access");
+      // Current active grants may not acquire different authority, subject or provider
+      // under the identity of an already reviewed grant.
+      const liveComponentIds = new Set([...providerAccessPopulation(loaded, program, controls).componentIds, ...historical.reviewedComponentIds]);
+      const reviewedGrantIds = new Set((candidate.grantDecisions || []).map(({ accessGrantId }) => accessGrantId));
+      const grants = loaded.resources.filter((record) => record.type === "access-grant" && record.status === "active"
+        && (liveComponentIds.has(record.componentId) || reviewedGrantIds.has(record.id)));
+      const changed = grants.filter((grant) => {
+        const prior = snapshot.byId.get(grant.id);
+        return prior && (["subjectId", "componentId", "accessLevel", "role", "privileged"].some((field) => prior[field] !== grant[field]));
+      }).map(({ id }) => id);
+      if (changed.length) missingFacts.push("current-authorized-access");
+      // Closed accounts remain historical. Still-live identities without a
+      // separate grant (for example an inventoried service identity) retain
+      // their current ownership, expiry and review requirements.
+      if (candidate.sourceReconciliations) {
+        const activeIds = new Set(grants.map(({ id }) => id));
+        const liveCandidate = { ...candidate,
+          grantDecisions: (candidate.grantDecisions || []).filter(({ accessGrantId, decision }) => activeIds.has(accessGrantId) || decision === "remove"),
+          sourceReconciliations: candidate.sourceReconciliations.map((row) => row.accounts === undefined ? row : ({ ...row,
+          accounts: row.accounts?.filter((account) => account.disposition !== "authorized"
+            || (account.accessGrantIds?.length ? account.accessGrantIds.some((id) => activeIds.has(id))
+            : loaded.resources.find(({ id }) => id === account.subjectId)?.status === "active"))
+            .map((account) => account.disposition === "authorized" && account.accessGrantIds?.length
+              ? { ...account, accessGrantIds: account.accessGrantIds.filter((id) => activeIds.has(id)) } : account)
+        })) };
+        const live = assessProgramAccessReview(liveCandidate, loaded, program, controls, asOf, liveOptions);
+        // Projected account totals differ from the retained original exports;
+        // their completeness/proof checks were enforced above on the full rows.
+        const projectionDifferences = new Set(["reconciled-account-counts", "actual-provider-population-and-results"]);
+        missingFacts.push(...live.missingFacts.filter((fact) => !projectionDifferences.has(fact)));
+      }
+      return { ...historical, ...current, complete: missingFacts.length === 0, missingFacts: unique(missingFacts),
+        historicalReviewCommit: commit, issues: unique(missingFacts),
+        reviewedComponentIds: historical.reviewedComponentIds, invalidGrantIds: unique([...current.invalidGrantIds, ...changed, ...invalidClosures]),
+        missingSourceIds: [], missingMappedGrantIds: [], unresolvedAccountReferences: [] };
+    }
+  }
   const byId = new Map(loaded.resources.map((record) => [record.id, record]));
-  const { componentIds, grants } = providerAccessPopulation(loaded, program, controls);
+  const population = providerAccessPopulation(loaded, program, controls);
+  const componentIds = unique([...population.componentIds, ...options.historicalComponentIds || []]);
+  const grants = options.historicalComponentIds ? loaded.resources.filter((record) => record.type === "access-grant"
+    && record.status === "active" && componentIds.includes(record.componentId)) : population.grants;
   const valid = (record) => {
     try { assertHistoricalRecordValid(record, loaded.model, resourceDataPath(loaded.model, record)); return true; }
     catch { return false; }
@@ -52,7 +132,7 @@ export function assessProgramAccessReview(candidate, loaded, program, controls, 
   const decisions = candidate.grantDecisions || [];
   const invalidGrantIds = grants.filter((grant) => {
     const subject = byId.get(grant.subjectId);
-    return !valid(grant) || grant.expiresOn && grant.expiresOn < asOf || !grant.provisionedOn || grant.provisionedOn > candidate.completedOn
+    return byId.get(grant.componentId)?.status !== "active" || !valid(grant) || grant.expiresOn && grant.expiresOn < asOf || !grant.provisionedOn || grant.provisionedOn > candidate.completedOn
       || !subject || subject.type === "person" && !personWasActiveOn(subject, asOf)
       || subject.type === "service-account" && (subject.status !== "active" || currentPartyPeople(subject.ownerIds || [], byId).size === 0);
   }).map(({ id }) => id);
@@ -107,5 +187,5 @@ export function assessProgramAccessReview(candidate, loaded, program, controls, 
   const missingSourceIds = reconciliation?.missingSourceIds || componentIds.filter((id) => !exports.some((proof) => proof.sourceComponentId === id
     && proof.populationCount === reviewedGrants.filter((grant) => grant?.componentId === id).length));
   if (missingSourceIds.length) issues.push("actual-provider-population-and-results");
-  return { resourceId: candidate.id, complete: !issues.length, missingFacts: issues, missingScopeIds, missingGrantIds, missingSourceIds, invalidGrantIds, unresolvedDecisionIds, permittedExceptionIds, remediationIds, ...(reconciliation || {}) };
+  return { resourceId: candidate.id, reviewedComponentIds: componentIds, complete: !issues.length, missingFacts: issues, missingScopeIds, missingGrantIds, missingSourceIds, invalidGrantIds, unresolvedDecisionIds, permittedExceptionIds, remediationIds, ...(reconciliation || {}) };
 }
