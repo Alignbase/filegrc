@@ -916,7 +916,7 @@ export async function scaffoldObligationOccurrence(input, options = {}) {
       && completionFallsInWindow(record, item, loaded.workspace.timezone, existing?.record.status === "reconciled" ? undefined : loaded.model)
       && completionMatchesMember(record, completionMemberField, resourceId, loaded.model, byId, obligation, program.id)
     ));
-    const accepted = matching.filter((record) => completionPassesActivity(record, activity, loaded.model, byId, asOf, loaded.workspace.timezone, obligation, program.id));
+    const accepted = matching.filter((record) => completionPassesActivity(record, activity, loaded.model, byId, asOf, loaded.workspace.timezone, obligation, program.id, loaded));
     return {
       ...prior,
       resourceId,
@@ -1278,10 +1278,10 @@ function completionMatchesOccurrenceMember(record, field, memberId, model, resou
 function completionPassesOccurrence(record, obligation, activity, model, resources, occurrence, asOf, timezone, root, currentById, programId) {
   const context = occurrenceCompletionContext(root, occurrence, record, model, resources, timezone);
   const byId = context.resources === resources ? currentById : resourceIndex(context.resources).byId;
-  return completionPassesActivity(record, activity, context.model, byId, occurrenceProofDate(occurrence, asOf, timezone), timezone, byId.get(obligation.id) || obligation, programId);
+  return completionPassesActivity(record, activity, context.model, byId, occurrenceProofDate(occurrence, asOf, timezone), timezone, byId.get(obligation.id) || obligation, programId, { ...context, root });
 }
 
-function completionPassesActivity(record, activity, model, byId, asOf, timezone = "UTC", obligation, programId) {
+function completionPassesActivity(record, activity, model, byId, asOf, timezone = "UTC", obligation, programId, sourceContext = {}) {
   const assessmentDate = asOf || currentCalendarDate(timezone);
   if (record.type === "attestation") {
     if (record.status !== "completed" || !record.completedOn || record.completedOn > assessmentDate
@@ -1302,8 +1302,8 @@ function completionPassesActivity(record, activity, model, byId, asOf, timezone 
   }
   if (record.type === "access-review" && obligation && !obligation.scopeResourceIds?.length
     && !obligation.selector && !byId.get(obligation.activeRuleId)?.selector && modelSupports(model, "operating-preparation")) {
-    const resources = [...byId.values()];
-    const loaded = { resources, model, workspace: resources.find(({ type }) => type === "workspace") };
+    const resources = sourceContext.resources || [...byId.values()];
+    const loaded = { ...sourceContext, resources, model, workspace: resources.find(({ type }) => type === "workspace") };
     const programs = resources.filter((candidate) => candidate.type === "program" && candidate.status !== "retired"
       && (!programId || candidate.id === programId) && recordBelongsToProgram(obligation, candidate, byId, model));
     if (programs.length !== 1) return false;
@@ -2124,7 +2124,7 @@ export function assessCompletionForObligation(record, obligation, loaded, option
   const date = executionDate(record, loaded.model, loaded.workspace?.timezone || "UTC");
   const issues = [];
   if (!completionMatchesObligation(record, obligation, loaded.model)) issues.push("Use the completion record type, activity profile, subtype, and Obligation linkage required by the adopted activity.");
-  if (!completionPassesActivity(record, activity, loaded.model, byId, options.asOf, loaded.workspace?.timezone, obligation, options.programId)) issues.push("Finish the model-required actors, actual result, completion time, review and proof fields; a planned record or applicability decision is not test execution.");
+  if (!completionPassesActivity(record, activity, loaded.model, byId, options.asOf, loaded.workspace?.timezone, obligation, options.programId, loaded)) issues.push("Finish the model-required actors, actual result, completion time, review and proof fields; a planned record or applicability decision is not test execution.");
   if (!date || options.asOf && date > options.asOf || options.notBefore && date < options.notBefore) issues.push("The actual completion date must cover the current implementation and cannot be in the future.");
   if (options.window && !completionFallsInWindow(record, options.window, loaded.workspace?.timezone || "UTC", loaded.model)) issues.push("This result falls outside the adopted occurrence's allowed completion dates.");
   const memberIds = options.memberIds || [];
