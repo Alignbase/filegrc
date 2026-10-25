@@ -13050,6 +13050,74 @@
         "allowProofScope": true,
         "reviewDateField": "reviewedOn",
         "executionDateField": "completedOn"
+      },
+      "policy-review": {
+        "statuses": [
+          "complete"
+        ],
+        "resultField": "outcome",
+        "passingResults": [
+          "passed",
+          "passed-with-exceptions"
+        ],
+        "scopeFields": [
+          "scopeResourceIds"
+        ],
+        "executionDateField": "completedOn"
+      },
+      "meeting": {
+        "statuses": [
+          "complete"
+        ],
+        "scopeFields": [
+          "teamId"
+        ],
+        "executionDateField": "endedAt"
+      },
+      "risk-assessment": {
+        "statuses": [
+          "complete"
+        ],
+        "scopeFields": [
+          "systemIds",
+          "componentIds",
+          "vendorIds",
+          "commitmentIds",
+          "riskIds",
+          "newRiskIds",
+          "changedRiskIds"
+        ],
+        "reviewDateField": "approvedOn",
+        "executionDateField": "completedOn"
+      },
+      "access-review": {
+        "statuses": [
+          "complete"
+        ],
+        "resultField": "outcome",
+        "passingResults": [
+          "passed",
+          "passed-with-exceptions"
+        ],
+        "scopeFields": [
+          "componentIds"
+        ],
+        "reviewDateField": "approvedOn",
+        "executionDateField": "completedOn"
+      },
+      "vendor-review": {
+        "statuses": [
+          "complete"
+        ],
+        "resultField": "decision",
+        "passingResults": [
+          "approved",
+          "conditional"
+        ],
+        "scopeFields": [
+          "vendorId"
+        ],
+        "executionDateField": "completedOn"
       }
     },
     "baselineProfiles": [
