@@ -1,4 +1,4 @@
-import { assessProviderAccessReconciliation } from "./provider-access-reconciliation.js";
+import { assessProgramAccessReview, providerAccessPopulation, providerAccessControls } from "./provider-access-completion.js";
 import { readFile } from "node:fs/promises";
 import { markdownEntries, resourceDataPath } from "./resource-markdown.js";
 import { resolveDataPath } from "./paths.js";
@@ -53,11 +53,11 @@ export async function assessProgramBaseline(loaded, program, controls, asOf, mak
   };
   const timezone = loaded.workspace?.timezone || "UTC";
   const assessedAt = asOf === currentCalendarDate(timezone) ? new Date().toISOString() : timestampFromLocalDateTime(`${asOf}T23:59:59`, timezone);
-  const calendar = planObligations(loaded.resources, { model: loaded.model, programId: program.id, asOf, from: asOf, through: asOf, includeComplete: true }).calendarItems;
+  const calendar = planObligations(loaded.resources, { root: loaded.root, model: loaded.model, programId: program.id, asOf, from: asOf, through: asOf, includeComplete: true }).calendarItems;
   const checks = [];
   for (const profile of loaded.model.operatingPreparation?.baselineProfiles || []) {
     const schedules = obligations.filter((record) => profile.activities.includes(record.activityType));
-    const selected = controls.filter((control) => profile.controlCodes.includes(control.code)
+    const selected = profile.id === "provider-access" ? providerAccessControls(loaded, program, controls) : controls.filter((control) => profile.controlCodes.includes(control.code)
       || schedules.some((record) => record.controlIds?.includes(control.id) || ruleFor(record).controlIds?.includes(control.id)));
     if (!selected.length) continue;
     const controlIds = selected.map(({ id }) => id);
@@ -187,72 +187,14 @@ export async function assessProgramBaseline(loaded, program, controls, asOf, mak
         populationIds: population, subjectPopulations, subjectIds: subjects.map(({ id }) => id), missingMembers: missing, resultIds: unique(results),
         missingFacts: complete ? [] : [...(!subjects.length ? ["approved-subjects"] : []), ...(!population.length ? ["current-workforce"] : []), ...(missingAudiences.length ? ["configured-role-training-audience"] : []), ...unique(missing.flatMap(({ missingFacts }) => missingFacts))] };
     } else if (profile.id === "provider-access") {
-      const componentIds = unique([...programComponents(loaded, program).filter(({ status }) => status === "active").map(({ id }) => id),
-        ...selected.flatMap((control) => [...control.componentIds || [], ...control.evidenceSourceComponentIds || []])]);
-      const grants = loaded.resources.filter((grant) => grant.type === "access-grant" && componentIds.includes(grant.componentId)
-        && grant.status === "active");
+      const { componentIds, grants } = providerAccessPopulation(loaded, program, selected);
       const assessments = await Promise.all(candidates.map(async (candidate) => {
-        if (!valid(candidate)) return { resourceId: candidate.id, complete: false, missingFacts: ["valid-access-review"], missingScopeIds: [], missingGrantIds: [], missingSourceIds: [], invalidGrantIds: [], unresolvedDecisionIds: [], permittedExceptionIds: [], remediationIds: [] };
-        const issues = [], missingScopeIds = componentIds.filter((id) => !candidate.componentIds?.includes(id));
-        const decisions = candidate.grantDecisions || [];
-        const invalidGrantIds = grants.filter((grant) => {
-          const subject = byId.get(grant.subjectId);
-          return !valid(grant) || grant.expiresOn && grant.expiresOn < asOf || !grant.provisionedOn || grant.provisionedOn > candidate.completedOn
-            || !subject || subject.type === "person" && !personWasActiveOn(subject, asOf)
-            || subject.type === "service-account" && (subject.status !== "active" || currentPartyPeople(subject.ownerIds || [], byId).size === 0);
-        }).map(({ id }) => id);
-        if (invalidGrantIds.length) issues.push("current-authorized-access");
-        const missingGrantIds = grants.filter((grant) => !decisions.some(({ accessGrantId }) => accessGrantId === grant.id)).map(({ id }) => id);
-        if (!valid(candidate) || candidate.status !== "complete" || !["passed", "passed-with-exceptions"].includes(candidate.outcome)
-          || !permittedDate(candidate.completedOn)) issues.push("completed-access-reconciliation");
-        if (!candidate.approvedOn || candidate.approvedOn < candidate.completedOn || candidate.approvedOn > asOf
-          || !actualPeople(candidate.reviewerIds, candidate.completedOn) || !actualPeople(candidate.approvedByIds, candidate.approvedOn)) issues.push("existing-access-review-approval");
-        if (missingScopeIds.length) issues.push("all-provider-components");
-        if (missingGrantIds.length || unique(decisions.map(({ accessGrantId }) => accessGrantId)).length !== decisions.length) issues.push("per-grant-decisions");
-        const reviewedGrants = decisions.map(({ accessGrantId }) => byId.get(accessGrantId));
-        const unresolvedDecisionIds = [];
-        const permittedExceptionIds = [];
-        const remediationIds = [];
-        const followUps = (grant) => loaded.resources.filter((action) => action.type === "action-item" && action.sourceResourceId === grant.id && valid(action));
-        const exceptionFor = (grant) => loaded.resources.find((exception) => exception.type === "exception" && exception.status === "approved"
-          && valid(exception) && exception.scopeResourceIds?.includes(grant.id) && exception.rationale?.trim()
-          && exception.approval.approvedOn <= candidate.approvedOn && exception.approval.expiresOn >= asOf
-          && actualPeople(exception.approval.approvedByIds, exception.approval.approvedOn)
-          && currentPartyPeople(exception.ownerIds || [], byId).size > 0
-          && loaded.resources.some((action) => action.type === "action-item" && [grant.id, exception.id].includes(action.sourceResourceId)
-            && valid(action) && ["open", "in-progress", "blocked"].includes(action.status)
-            && currentPartyPeople(action.assigneeIds || [], byId).size > 0
-            && (action.completionWindow.precision === "timestamp" ? action.completionWindow.dueAt >= assessedAt : action.completionWindow.dueOn >= asOf)
-            && (action.completionWindow.precision === "timestamp" ? action.completionWindow.dueAt <= timestampFromLocalDateTime(`${exception.approval.expiresOn}T23:59:59`, timezone) : action.completionWindow.dueOn <= exception.approval.expiresOn)));
-        const invalidDecisions = decisions.some((decision, index) => {
-          const grant = reviewedGrants[index];
-          if (grant?.type !== "access-grant" || !componentIds.includes(grant.componentId)
-            || !valid(grant) || !grant.provisionedOn || grant.provisionedOn > candidate.completedOn) return true;
-          if (grant.status !== "active") return decision.decision !== "remove" || !grant.deprovisionedOn || grant.deprovisionedOn > asOf;
-          if (decision.decision === "retain") return false;
-          const completedChange = decision.decision === "change" && followUps(grant).find((action) => action.status === "done"
-            && action.completedOn >= candidate.completedOn && action.completedOn <= asOf
-            && action.completionResourceIds?.includes(grant.id) && proofValid(action));
-          if (completedChange) { remediationIds.push(completedChange.id); return false; }
-          const exception = exceptionFor(grant);
-          if (exception && candidate.outcome === "passed-with-exceptions") { permittedExceptionIds.push(exception.id); return false; }
-          unresolvedDecisionIds.push(grant.id);
-          return false;
-        });
-        if (unresolvedDecisionIds.length || candidate.exceptionCount < unique(permittedExceptionIds).length) issues.push("resolved-access-decisions");
-        if (invalidDecisions) issues.push("supported-grant-decisions");
-        if ((!candidate.sourceReconciliations && candidate.populationCount !== decisions.length) || candidate.exceptionCount === undefined) issues.push("reconciled-account-counts");
-        const generatedOn = (proof) => proof?.generatedAt ? currentCalendarDate(timezone, new Date(proof.generatedAt)) : null;
-        const exports = evidence(candidate).filter((proof) => valid(proof) && !preparationEvidenceIssues(proof, byId, asOf).length
-          && proof.artifactKind === "population-export" && proof.readinessTest !== true && permittedDate(generatedOn(proof))
-          && generatedOn(proof) <= candidate.completedOn && proof.collectedOn >= generatedOn(proof) && proof.collectedOn <= candidate.completedOn && proof.completenessValidation?.trim() && proof.accuracyValidation?.trim());
-        const reconciliation = candidate.sourceReconciliations ? assessProviderAccessReconciliation(candidate,
-          { componentIds, exports, byId, asOf, valid, proofValid, grants, timezone }) : null;
-        if (reconciliation) issues.push(...reconciliation.issues);
-        const missingSourceIds = reconciliation?.missingSourceIds || componentIds.filter((id) => !exports.some((proof) => proof.sourceComponentId === id
-          && proof.populationCount === reviewedGrants.filter((grant) => grant?.componentId === id).length));
-        if (missingSourceIds.length || !await currentProcedureContent(loaded, candidate)) issues.push("actual-provider-population-and-results");
-        return { resourceId: candidate.id, complete: !issues.length, missingFacts: issues, missingScopeIds, missingGrantIds, missingSourceIds, invalidGrantIds, unresolvedDecisionIds, permittedExceptionIds, remediationIds, ...(reconciliation || {}) };
+        const assessment = assessProgramAccessReview(candidate, loaded, program, selected, asOf, { permittedDate });
+        if (!await currentProcedureContent(loaded, candidate)) {
+          assessment.missingFacts.push("actual-provider-population-and-results");
+          assessment.complete = false;
+        }
+        return assessment;
       }));
       const result = assessments.find(({ complete }) => complete) || assessments.sort((a, b) => a.missingFacts.length - b.missingFacts.length)[0];
       complete = componentIds.length > 0 && result?.complete === true; record = byId.get(result?.resourceId) || record;

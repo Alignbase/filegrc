@@ -125,9 +125,9 @@ export async function assessOperatingPreparation(loaded, program, selectedContro
     const candidates = loaded.resources.filter((record) => task.completionResourceTypes.includes(record.type));
     const assessments = candidates.map((record) => {
       const coveredMemberIds = populationIds.filter((memberId) => assessCompletionForObligation(record, obligation, loaded,
-        { asOf, notBefore: notBeforeFor(memberId), memberIds: [memberId] }).complete);
+        { programId: program.id, asOf, notBefore: notBeforeFor(memberId), memberIds: [memberId] }).complete);
       return { record, assessment: assessCompletionForObligation(record, obligation, loaded,
-        { asOf, memberIds: populationIds }), coveredMemberIds };
+        { programId: program.id, asOf, memberIds: populationIds }), coveredMemberIds };
     });
     const results = assessments.filter(({ coveredMemberIds }) => coveredMemberIds.length > 0);
     const populationCovered = populationIds.length > 0 && populationIds.every((id) => results.some(({ coveredMemberIds }) => coveredMemberIds.includes(id)));
@@ -233,7 +233,7 @@ export function firstOperatingTasks(loaded, program, options = {}) {
   const futureDates = records.filter((record) => record.type === "obligation-rule" || record.type === "obligation")
     .flatMap((record) => [record.effectiveAt?.slice(0, 10), record.recurrence?.anchorDate, record.startsOn]).filter(Boolean);
   const horizon = [through.toISOString().slice(0, 10), ...futureDates].sort().at(-1);
-  const plan = planObligations(records, { model: loaded.model, programId: program.id, asOf,
+  const plan = planObligations(records, { root: loaded.root, model: loaded.model, programId: program.id, asOf,
     through: horizon, includeComplete: true, firstOnly: true });
   const byId = new Map(loaded.resources.map((record) => [record.id, record]));
   const first = new Map();

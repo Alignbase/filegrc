@@ -99,7 +99,7 @@ export async function prepareEvidencePacket(input, options = {}) {
       byId.get(id)?.type === "evidence" ? byId.get(id).sourceResourceIds || [] : []
     ))
   );
-  const plan = planObligations(records, {
+  const plan = planObligations(records, { root: loaded.root,
     programId: program?.id || options.programId || audit?.programId,
     asOf: end,
     from: start,

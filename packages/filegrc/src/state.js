@@ -172,7 +172,7 @@ export async function createAppStateSection(input, section, options = {}) {
     return {
       generatedAt,
       asOf,
-      obligations: planObligations(loaded.resources, {
+      obligations: planObligations(loaded.resources, { root: loaded.root,
         programId: activeProgram.id,
         asOf,
         now: options.now ?? generatedAt,
@@ -293,7 +293,7 @@ async function createAppStateUnlocked(input, options) {
       return [audit?.id || "none", preparation];
     })
   )));
-  const obligations = planObligations(entries, {
+  const obligations = planObligations(entries, { root: loaded.root,
     programId: activeProgram.id,
     asOf,
     now: options.now ?? generatedAt,
