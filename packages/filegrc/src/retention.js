@@ -356,7 +356,7 @@ export function retentionUses(loaded, program) {
   const systemIds = new Set(program.systemIds || []);
   const componentIds = new Set(programComponents(loaded, program).map(({ id }) => id));
   const vendorIds = new Set(program.vendorIds || loaded.resources
-    .filter((record) => record.type === "vendor" && record.status !== "retired")
+    .filter((record) => record.type === "vendor" && !["retired", "terminated"].includes(record.status))
     .map(({ id }) => id));
   const uses = [];
   for (const record of loaded.resources) {
@@ -366,7 +366,7 @@ export function retentionUses(loaded, program) {
     if (record.type === "component" && componentIds.has(record.id)) {
       for (const use of record.informationUses || []) uses.push({ resource: record, informationTypeId: use.informationTypeId });
     }
-    if (record.type === "vendor" && vendorIds.has(record.id)) {
+    if (record.type === "vendor" && vendorIds.has(record.id) && !["retired", "terminated"].includes(record.status)) {
       for (const informationTypeId of record.informationTypeIds || []) uses.push({ resource: record, informationTypeId });
     }
   }
@@ -583,6 +583,17 @@ function substantiveReviewSource(record, currentModel, reviewer = null, lifecycl
     if (record.type === "component" && reviewer?.type === "retention-schedule-item") {
       decision.systemUses = retentionSystemUses(decision.systemUses);
       delete decision.evidenceSourceKinds;
+    }
+    // Ending service operation does not amend the retention rule for data
+    // already received. Keep literal scope and every data/contract decision
+    // bound, while allowing dated inventory closeout without new approval.
+    // Preserve the old projection above for committed binding compatibility.
+    if (lifecycleNeutral && reviewer?.type === "retention-schedule-item") {
+      if (record.type === "component" && ["active", "deprecated", "retired"].includes(record.status)) decision.status = "active";
+      if (record.type === "vendor" && ["active", "deprecated", "terminated"].includes(record.status)) {
+        decision.status = "active";
+        delete decision.endDate;
+      }
     }
     if (["control", "commitment", "complementary-control"].includes(record.type)) {
       decision.nonApplicableDecision = ["not-applicable", "externally-managed", "zero-population"]

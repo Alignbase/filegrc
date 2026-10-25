@@ -837,6 +837,15 @@ and unrelated metadata do not change the fit. Applications do not change origina
 approved rows and do not add approval requirements for equivalent service mappings.
 Periodic independent schedule review exposes the current applications for oversight.
 
+Retiring a Component or terminating a Vendor ends its current processing inventory.
+That lifecycle status and the Vendor termination date do not amend an unchanged
+approved retention rule for previously received data. Literal rule scope, original
+source bindings and owner application history remain intact. Retirement alone
+does not prove data disposal, release a hold or change a cutoff, period, agreement,
+Information Type or disposition duty. Such material changes keep their existing
+reviews. Retire obsolete owner applications through the dated owner transition;
+this never reactivates or rewrites the original decision.
+
 Model v13 adds these optional records in FileGRC 0.19.2. Shared validation rejects
 adoption until the consumer manifest and lockfile support them, including generic
 CRUD and hand-edited source files. Hosted runtimes must upgrade before repositories

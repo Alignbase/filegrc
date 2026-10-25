@@ -308,3 +308,67 @@ test("generic creation and direct-file validation reject uncaptured applicabilit
   assert.equal(result.ok, false);
   assert.ok(result.diagnostics.some(({ message }) => /changed after the owner review/.test(message)));
 });
+
+for (const basis of [{ legacyLifecycleBindings: true }, { legacyLifecycleBindings: false }, { legacyLifecycleBindings: true, inventoryStatus: "deprecated" }]) {
+test(`ended inventory preserves literal approved retention scope and retired owner decisions (${JSON.stringify(basis)})`, async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-retention-ended-service-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeRetentionApplicationWorkspace(root, basis);
+  let loaded = await loadWorkspace(root);
+  const originalRule = loaded.entries.find(({ record }) => record.type === "retention-schedule-item");
+  const originalApproval = loaded.entries.find(({ record }) => record.type === "collection-review" && record.resourceType === "retention-schedule-item");
+  const ruleBytes = await readFile(originalRule.path, "utf8");
+  const approvalBytes = await readFile(originalApproval.path, "utf8");
+  const payload = await decision(root);
+  payload.record.scopeResourceIds = ["component-example", "vendor-example"];
+  payload.record.reviewedScopeRevisions = {};
+  const application = await saveRetentionApplication(root, payload, { preview: true });
+  await saveRetentionApplication(root, application);
+  await commitWorkspaceFiles(root, "Apply unchanged approved rule to service");
+  loaded = await loadWorkspace(root);
+  const appEntry = loaded.entries.find(({ record }) => record.type === "retention-application");
+  const transition = { changedByIds: ["person-example"], changedOn: appEntry.record.reviewedOn,
+    reason: "Service access ended; retained copies remain subject to the approved cutoff, disposal and holds." };
+  await updateResource(root, appEntry.record.type, appEntry.record.id, {
+    ...appEntry.record, status: "retired", statusTransition: transition
+  }, { expectedRevision: appEntry.revision });
+  await commitWorkspaceFiles(root, "Retire service applicability without rewriting its review");
+  const retiredAppBytes = await readFile(appEntry.path, "utf8");
+  for (const [id, status] of [["component-example", "retired"], ["vendor-example", "terminated"]]) {
+    loaded = await loadWorkspace(root);
+    const entry = loaded.entries.find(({ record }) => record.id === id);
+    await updateResource(root, entry.record.type, id, { ...entry.record, status, statusTransition: transition,
+      ...(entry.record.type === "vendor" ? { endDate: transition.changedOn } : {})
+    }, { expectedRevision: entry.revision });
+  }
+  await commitWorkspaceFiles(root, "End service operation while preserving residual retention duties");
+  loaded = await loadWorkspace(root);
+  assert.equal((await validateWorkspace(root)).ok, true, JSON.stringify((await validateWorkspace(root)).diagnostics));
+  assert.equal(assessCollectionReview(loaded, "retention-schedule-item").complete, true);
+  assert.equal(await readFile(originalRule.path, "utf8"), ruleBytes);
+  assert.equal(await readFile(originalApproval.path, "utf8"), approvalBytes);
+  assert.equal(await readFile(appEntry.path, "utf8"), retiredAppBytes);
+  assert.deepEqual(retentionApplicationIssues(loaded, loaded.resources.find(({ id }) => id === appEntry.record.id)), []);
+  const program = loaded.resources.find(({ type }) => type === "program");
+  const { retentionUses } = await import("../src/retention.js");
+  for (const candidate of [program, { ...program, vendorIds: ["vendor-example"] }]) {
+    assert.ok(retentionUses(loaded, candidate).every(({ resource }) => !["component-example", "vendor-example"].includes(resource.id)), "ended suppliers are excluded even from an explicit current vendor selection");
+  }
+  const checks = await assessRetentionReadiness(loaded, program, { scheduleApproved: true });
+  assert.equal(checks.find(({ id }) => id === `retention-rule-${originalRule.record.id}`).status, "complete");
+  // Ending access is not proof of erasure and must not hide a simultaneous
+  // contract, information-use or classification change on the retained scope.
+  for (const [id, changes] of [
+    ["vendor-example", { standardAgreement: "Changed preservation terms" }],
+    ["vendor-example", { informationTypeIds: [] }],
+    ["vendor-example", { description: "Permanent preservation is now required." }],
+    ["component-example", { informationUses: [] }],
+    ["component-example", { classificationId: "classification-example" }]
+  ]) {
+    loaded = await loadWorkspace(root);
+    const entry = loaded.entries.find(({ record }) => record.id === id);
+    await assert.rejects(updateResource(root, entry.record.type, id, { ...entry.record, ...changes }, { expectedRevision: entry.revision }), /reviewedSourceRevisions|retention|classification/i, `${id}: ${JSON.stringify(changes)}`);
+    assert.equal(await readFile(entry.path, "utf8"), entry.source, "failed material mutation rolls back");
+  }
+});
+}

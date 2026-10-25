@@ -5,7 +5,7 @@ import { resourceReviewRevisionsSync, retentionReviewResourceIds } from "../../s
 import { applyCollectionReview, scaffoldCollectionReview } from "../../src/collection-review.js";
 import { currentCalendarDate } from "../../src/time.js";
 
-export async function makeRetentionApplicationWorkspace(root, { programWide = false, businessProof = false } = {}) {
+export async function makeRetentionApplicationWorkspace(root, { programWide = false, businessProof = false, legacyLifecycleBindings = false, inventoryStatus = "active" } = {}) {
   // Historical approvals remain valid when a workspace adopts the new action.
   await makeComprehensiveWorkspace(root, "11");
   let loaded = await loadWorkspace(root);
@@ -15,6 +15,14 @@ export async function makeRetentionApplicationWorkspace(root, { programWide = fa
       description: "Selected business decisions, review results and approvals; excludes raw source logs and deleted customer content." });
     const source = loaded.entries.find(({ record }) => record.id === "component-example");
     await writeJson(source.path, { ...source.record, vendorId: "vendor-example", classificationId: "classification-example" });
+  }
+  if (inventoryStatus !== "active") {
+    for (const entry of loaded.entries.filter(({ record }) => ["component", "vendor"].includes(record.type))) {
+      await writeJson(entry.path, { ...entry.record, status: inventoryStatus, statusTransition: {
+        changedByIds: ["person-example"], changedOn: currentCalendarDate(loaded.workspace.timezone),
+        reason: "The existing service is being phased out while its data duties continue."
+      } });
+    }
   }
   const document = loaded.entries.find(({ record }) => record.id === "document-example");
   await writeJson(document.path, { ...document.record, documentKind: "schedule", reportingRouteRequirements: undefined });
@@ -34,7 +42,7 @@ export async function makeRetentionApplicationWorkspace(root, { programWide = fa
   }
   loaded = await loadWorkspace(root);
   row.reviewedSourceRevisions = Object.fromEntries(resourceReviewRevisionsSync(
-    loaded, retentionReviewResourceIds(row, loaded), "legacy", false, null, row
+    loaded, retentionReviewResourceIds(row, loaded), "legacy", false, null, row, !legacyLifecycleBindings
   ));
   await writeJson(rowEntry.path, row);
   await initializeGitWorkspace(root);
