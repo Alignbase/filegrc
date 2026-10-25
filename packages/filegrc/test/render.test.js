@@ -1,3 +1,4 @@
+import { loadModel } from "../model/index.js";
 import assert from "node:assert/strict";
 import { access, mkdir, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";
 import { createServer, request } from "node:http";
@@ -2987,4 +2988,24 @@ test("reporting approval accepts minute-precision local inputs and keeps DST che
   assert.equal(convert("2026-10-13T00:00", "America/Chicago"), "2026-10-13T00:00:00-05:00");
   assert.equal(convert("2026-10-12T12:04:32", "America/Chicago"), "2026-10-12T12:04:32-05:00");
   assert.throws(() => convert("2026-03-08T02:30", "America/Chicago"), /does not exist/);
+});
+
+
+test("guided Evidence verification preserves hidden attachments and clears only model-disallowed values", () => {
+  const source = APP_SCRIPT.slice(APP_SCRIPT.indexOf("function readGuidedRecord"), APP_SCRIPT.indexOf("function relationCandidates"));
+  const conditions = APP_SCRIPT.slice(APP_SCRIPT.indexOf("function conditionMatchesValues"), APP_SCRIPT.indexOf("function formatValue"));
+  const read = vm.runInNewContext(source + conditions + "\nreadGuidedRecord", { structuredClone });
+  const fields = loadModel(13).resources.evidence.fields;
+  const base = { id: "evidence-retained", type: "evidence", status: "collected", sourceKind: "component",
+    sourceComponentId: "component-source", filePaths: ["evidence/evidence-retained/export.csv"] };
+  const group = (name, value, hidden = false) => ({ hidden, dataset: { fieldGroup: name, kind: "enum" }, querySelector: () => ({ value }) });
+  const groups = [group("status", "verified"), group("sourceKind", "component"), group("filePaths", "", true), group("sourceComponentId", "", true)];
+  const dialog = { querySelectorAll: () => groups };
+  const verified = read(dialog, base, fields);
+  assert.deepEqual(verified, { ...base, status: "verified" });
+  groups[1] = group("sourceKind", "external-reference");
+  const external = read(dialog, base, fields);
+  assert.equal(external.sourceKind, "external-reference");
+  assert.equal(external.filePaths, undefined);
+  assert.equal(external.sourceComponentId, undefined);
 });

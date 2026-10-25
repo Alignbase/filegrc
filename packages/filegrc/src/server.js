@@ -1421,6 +1421,7 @@ function urlHost(host) {
 }
 
 function statusFor(error) {
+  if (error?.code === "FILEGRC_FINALIZED_PROOF") return 400;
   if (error?.code === "FILEGRC_RETENTION_APPLICATION") return 400;
   if (error?.code === "FILEGRC_ACTIVATION_NOT_READY") return 400;
   if (error?.code === "FILEGRC_STATE_EXPIRED") return 409;

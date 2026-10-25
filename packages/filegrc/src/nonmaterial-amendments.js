@@ -1,3 +1,4 @@
+import { evidenceObservationMatches as amendmentEvidenceObservationMatches } from "./evidence-observation.js";
 import { readFileSync } from "node:fs";
 import { validateWorkspace } from "./validate.js";
 import { join } from "node:path";
@@ -137,20 +138,7 @@ export function nonmaterialAmendmentIssues(loaded, amendment) {
   return issues;
 }
 
-// Independent verification can be added later without changing the observation
-// the owner relied on. Captures, collectors, dates and conclusions stay fixed.
-export function amendmentEvidenceObservationMatches(original, current, loaded = null, reliedOnCommit = null) {
-  if (!original || !current) return false;
-  if (original.status === "collected" && loaded && reliedOnCommit) {
-    const history = [...(getDataRecordHistoryIndex(loaded.root).historiesById.get(original.id) || [])].reverse();
-    const firstVerified = history.filter(({ commit }) => isDataHistoryAncestor(loaded, reliedOnCommit, commit))
-      .map(({ commit }) => historicalRecord(loaded, original.id, commit)).find((record) => record?.status === "verified");
-    if (firstVerified && (!amendmentEvidenceObservationMatches(original, firstVerified) || JSON.stringify(firstVerified) !== JSON.stringify(current))) return false;
-  }
-  const verification = original.status === "collected" && current.status === "verified"
-    ? new Set(["status", "verifiedOn", "verifiedAt", "verifierIds"]) : new Set();
-  return [...new Set([...Object.keys(original), ...Object.keys(current)])].every((key) => verification.has(key) || JSON.stringify(original[key]) === JSON.stringify(current[key]));
-}
+export { evidenceObservationMatches as amendmentEvidenceObservationMatches } from "./evidence-observation.js";
 
 function fixedSupport(loaded, evidence, amendment, date, commit) {
   return evidence?.type === "evidence" && ["collected", "verified"].includes(evidence.status)
