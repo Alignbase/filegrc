@@ -16,6 +16,10 @@ async function fixture(t) {
   if (!base) {
     base = await mkdtemp(join(tmpdir(), "filegrc-amendment-base-"));
     const { records } = await makeComprehensiveWorkspace(base, "13");
+    // Keep approval timestamps, evidence dates and owner decisions in one timezone.
+    const workspace = records.find(({ type }) => type === "workspace");
+    workspace.timezone = "UTC";
+    await writeFile(join(base, "data/workspace.json"), JSON.stringify(workspace));
     await writeFile(join(base, "package.json"), JSON.stringify({ private: true, dependencies: { filegrc: "0.19.0" } }));
     await writeFile(join(base, "package-lock.json"), JSON.stringify({ lockfileVersion: 3, packages: { "node_modules/filegrc": { version: "0.19.0" } } }));
     for (const record of records.filter((r) => ["policy", "document", "training"].includes(r.type) && r.status === "active")) {

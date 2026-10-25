@@ -1,3 +1,4 @@
+import { occurrenceCompletionContext } from "./obligation-completion-context.js";
 import { attestationBindingIssue } from "./attestation-integrity.js";
 import { withAssessmentCache } from "./calculation-cache.js";
 import { retentionApplicationIssues } from "./retention-applications.js";
@@ -689,9 +690,11 @@ function validateObligationOccurrence(record, model, resources, entries, root, w
         ));
         continue;
       }
+      const completionContext = occurrenceCompletionContext(root, record, completion, model, resources, workspaceTimezone);
+      const completionById = completionContext.resources === resources ? byId : indexResources(completionContext.resources).byId;
       const memberField = activity.aggregate?.completionMemberField;
       const memberValue = memberField ? completion[memberField] : null;
-      if (!completionMatchesMember(completion, memberField, member.resourceId, model, byId, obligation)) {
+      if (!completionMatchesMember(completion, memberField, member.resourceId, completionContext.model, completionById, completionById.get(obligation.id) || obligation, record.programId)) {
         diagnostics.push(error(
           "wrong-member-completion",
           path,
@@ -709,8 +712,8 @@ function validateObligationOccurrence(record, model, resources, entries, root, w
       }
       if (completionPassesObligationActivity(completion, activity)
         && (!modelSupports(model, "operating-preparation") || assessCompletionForObligation(completion, obligation,
-          { model, resources, workspace: { timezone: workspaceTimezone } },
-          { asOf: record.status === "reconciled" && record.reconciledAt
+          completionContext,
+          { programId: record.programId, asOf: ["reconciled", "superseded"].includes(record.status) && record.reconciledAt
             ? currentCalendarDate(workspaceTimezone, new Date(record.reconciledAt)) : asOf, window: { dueWindowStart: record.coverage.startsOn || record.coverage.on, dueWindowEnd: record.coverage.endsOn || record.coverage.on } }).complete)) validCompletions.push(completion);
     }
     if (member.result === "passed" && validCompletions.length === 0) {

@@ -98,7 +98,7 @@ export async function assessAuditPreparation(input, options = {}) {
         await documentsStage(loaded, audit, byId, calendarAsOf),
         evidenceStage(audit, records, byId, loaded.model),
         populationsStage(audit, records, byId, loaded.model),
-        occurrenceContinuityStage(audit, records, loaded.model, programReadiness.asOf)
+        occurrenceContinuityStage(audit, records, loaded.model, programReadiness.asOf, loaded.root)
       ]
     : [];
   stages.push(fieldworkStage(audit, fieldworkSections, programReadiness));
@@ -956,7 +956,7 @@ function fieldworkStage(audit, sections, programReadiness) {
   );
 }
 
-function occurrenceContinuityStage(audit, records, model, asOf) {
+function occurrenceContinuityStage(audit, records, model, asOf, root) {
   if (audit.auditKind !== "soc-2-type-2") {
     return stage(
       "occurrences",
@@ -991,6 +991,7 @@ function occurrenceContinuityStage(audit, records, model, asOf) {
     || record.controlIds.some((id) => selectedControlIds.has(id))
   ));
   const plan = planObligations(periodResources, {
+    root,
     programId: audit.programId,
     from: periodStart,
     asOf: periodThrough,

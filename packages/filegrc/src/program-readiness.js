@@ -335,7 +335,7 @@ async function assessProgramReadinessUncached(input, options = {}) {
     program?.assuranceGoal === "soc-2-type-2"
     && progressWindow?.start <= asOf
   );
-  const obligations = planObligations(records, { programId: program.id, asOf, through: asOf, now: asOfTime, model: loaded.model });
+  const obligations = planObligations(records, { root: loaded.root, programId: program.id, asOf, through: asOf, now: asOfTime, model: loaded.model });
   const policyLibrary = await assessPolicyLibraryUpgrades(loaded);
   const operating = Boolean(
     evidenceReady
@@ -2012,7 +2012,7 @@ async function operationStage(loaded, workspace, scope, records, byId, asOf, evi
     ]);
   }
 
-  const obligations = planObligations(records, { programId: workspace.id, asOf, through: asOf, model });
+  const obligations = planObligations(records, { root: loaded.root, programId: workspace.id, asOf, through: asOf, model });
   const start = progressWindow?.start || null;
   const end = progressWindow?.end || null;
   const formalWindow = progressWindow?.source === "audit";

@@ -41,7 +41,7 @@ export async function makeRetentionApplicationWorkspace(root, { programWide = fa
   const scaffold = await scaffoldCollectionReview(root, { resourceType: "retention-schedule-item" });
   await applyCollectionReview(root, {
     ...scaffold, decision: "complete", rationale: "Reviewed the complete schedule and all approved rule requirements.",
-    reviewedByIds: ["person-independent-approver-example"], reviewedOn: currentCalendarDate("UTC"), confirmed: true
+    reviewedByIds: ["person-independent-approver-example"], reviewedOn: currentCalendarDate(loaded.workspace.timezone), confirmed: true
   });
   await commitWorkspaceFiles(root, "Approve retention schedule");
   loaded = await loadWorkspace(root);

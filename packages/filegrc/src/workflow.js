@@ -130,7 +130,7 @@ async function assessWorkflowUnmeasured(input, options = {}) {
   const auditPreparations = Object.fromEntries(
     Object.entries(suppliedAuditPreparations).filter(([id]) => auditIds.has(id))
   );
-  const obligationPlan = options.obligations || planObligations(loaded.resources, {
+  const obligationPlan = options.obligations || planObligations(loaded.resources, { root: loaded.root,
     programId: programRecord.id,
     asOf,
     through: options.through || asOf,
@@ -916,7 +916,7 @@ async function assessPeriodHealth(loaded, options) {
     || !(record.controlIds || []).length
     || record.controlIds.some((id) => selectedControlIds.has(id))
   ));
-  const occurrences = planObligations(periodResources, {
+  const occurrences = planObligations(periodResources, { root: loaded.root,
     programId: options.programId,
     from: coverage.start,
     asOf: periodThrough,

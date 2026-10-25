@@ -446,7 +446,7 @@ export async function runCli(argv = process.argv.slice(2)) {
   }
   if (command === "obligations") {
     const loaded = await loadWorkspace(root);
-    const result = planObligations(loaded.resources, {
+    const result = planObligations(loaded.resources, { root: loaded.root,
       programId: flags.program,
       asOf: flags["as-of"] ?? currentCalendarDate(loaded.workspace.timezone),
       from: flags.from,
@@ -1093,6 +1093,7 @@ export async function runCli(argv = process.argv.slice(2)) {
     return result;
   }
   if (command === "reconcile-obligation") {
+    if (Object.hasOwn(flags, "preview")) throw new Error("reconcile-obligation does not support --preview. Use --scaffold to inspect the occurrence before saving.");
     const [obligationId, file] = positionals;
     if (!obligationId) throw new Error("An Obligation ID is required.");
     if (flags.scaffold) {
