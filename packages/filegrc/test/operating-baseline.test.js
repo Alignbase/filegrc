@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { performance } from "node:perf_hooks";
+import { withGitCommandDeadline } from "../src/git.js";
+import { assessProgramAccessReview, providerAccessControls } from "../src/provider-access-completion.js";
 import { execFileSync } from "node:child_process";
 import { mkdtemp, mkdir, rm, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -546,6 +549,12 @@ test("committed access populations survive later closure while current scope and
   loaded.resources.push(extraGrant);
   assert.equal((await baseline("provider-access")).complete, false, "A new active grant requires its own decision and account mapping");
   loaded.resources.pop(); revoke(serviceGrant); service.status = "disabled";
+  const fresh = { ...loaded, resources: structuredClone(loaded.resources) };
+  const freshProgram = fresh.resources.find(({ type }) => type === "program"), freshReview = fresh.resources.find(({ id }) => id === review.id);
+  const assessFresh = () => assessProgramAccessReview(freshReview, fresh, freshProgram, providerAccessControls(fresh, freshProgram), "2026-10-13");
+  assert.throws(() => withGitCommandDeadline(performance.now() - 1, assessFresh), { code: "FILEGRC_GIT_DEADLINE" },
+    "Unavailable historical provider context must defer instead of becoming current-population failures");
+  assert.equal(assessFresh().complete, true, "The same provider review recovers after its history deadline");
   review.populationCount = 1;
   assert.equal((await baseline("provider-access")).complete, false, "An edited completed review cannot reuse the unchanged committed approval");
 });

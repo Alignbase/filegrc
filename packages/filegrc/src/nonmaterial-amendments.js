@@ -10,7 +10,7 @@ import { loadWorkspace } from "./workspace.js";
 import { calculateRevision, revisionsMatch } from "./revisions.js";
 import { appointmentWasAuthorizedOn } from "./soc2.js";
 import { isRfc3339Timestamp, localDateTimeValue } from "./time.js";
-import { getDataRecordHistoryIndex, getFileAtRevision, getFileObjectIdAtRevision, getGitSummary, getWorkingFileObjectId, isDataHistoryAncestor, runGitCommandSync } from "./git.js";
+import { getDataRecordHistoryIndex, getFileAtRevision, getFileObjectIdAtRevision, getGitSummary, getWorkingFileObjectId, isDataHistoryAncestor, runGitCommandSync, rethrowGitReadDeadline } from "./git.js";
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const valueAt = (record, path) => String(path || "").split(".").reduce((value, key) => value?.[key], record);
@@ -22,14 +22,14 @@ function hasAmendmentRuntimePin(loaded, commit = null) {
       : readFileSync(join(loaded.root, "package-lock.json"), "utf8");
     const engine = JSON.parse(source)?.packages?.["node_modules/filegrc"];
     return !engine?.link && ["0.19.x", "0.20.x"].includes(runtimeCompatibilityLine(engine?.version));
-  } catch { return false; }
+  } catch (error) { rethrowGitReadDeadline(error); return false; }
 }
 
 function historicalRecord(loaded, id, commit) {
   const history = getDataRecordHistoryIndex(loaded.root).historiesById.get(id) || [];
   const identity = history.find((item) => isDataHistoryAncestor(loaded, item.commit, commit));
   if (!identity) return null;
-  try { return JSON.parse(getFileAtRevision(loaded.root, commit, identity.path)); } catch { return null; }
+  try { return JSON.parse(getFileAtRevision(loaded.root, commit, identity.path)); } catch (error) { rethrowGitReadDeadline(error); return null; }
 }
 
 // A later source decision on this field ends the old correction chain, even

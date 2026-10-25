@@ -4361,6 +4361,17 @@ function gitTimeoutPlan(configured, fallback) {
   };
 }
 
+// Optional historical files may be absent, but a timed-out read says nothing
+// about their contents. Let read callers defer/retry instead of caching absence.
+export function rethrowGitReadDeadline(error) {
+  if (error?.code === "FILEGRC_GIT_DEADLINE") throw error;
+  if (["FILEGRC_HISTORY_DEADLINE", "ETIMEDOUT"].includes(error?.code)) {
+    const deferred = new Error("Git history could not be read within its time limit.", { cause: error });
+    deferred.code = "FILEGRC_GIT_DEADLINE";
+    throw deferred;
+  }
+}
+
 function rethrowGitDeadline(error) {
   if (error?.code === "FILEGRC_GIT_DEADLINE") throw error;
 }
