@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { withCalculationCache } from "../src/calculation-cache.js";
+import { setGitSubprocessObserverForTests, setHistoricalRevisionReadObserverForTests } from "../src/git.js";
 import { execFileSync } from "node:child_process";
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -306,4 +308,25 @@ test("0.20 adoption preserves committed 0.19 amendments and permits unchanged am
   await saveNonmaterialAmendment(root, next);
   git(root, "add", "."); git(root, "commit", "-m", "Record subsequent owner label decision");
   assert.equal((await validateWorkspace(root)).ok, true);
+});
+
+
+test("amendment adoption and historical-source deadlines remain retryable", async (context) => {
+  const root = await fixture(context), p = await payload(root, "policy-example");
+  await saveNonmaterialAmendment(root, p);
+  git(root, "add", "."); git(root, "commit", "-m", "Record owner correction");
+  const loaded = await loadWorkspace(root), amendment = loaded.resources.find(({ id }) => id === p.record.id);
+  const cache = new WeakMap(), deferred = Object.assign(new Error("Historical read deferred"), { code: "FILEGRC_GIT_DEADLINE" });
+  const restorePin = setGitSubprocessObserverForTests(({ args }) => {
+    if (args[0] === "show" && args[1]?.endsWith(":./package-lock.json")) throw deferred;
+  });
+  try { assert.throws(() => withCalculationCache(cache, () => nonmaterialAmendmentIssues(loaded, amendment)), (error) => error === deferred); }
+  finally { restorePin(); }
+  assert.deepEqual(withCalculationCache(cache, () => nonmaterialAmendmentIssues(loaded, amendment)), []);
+  const restoreSource = setHistoricalRevisionReadObserverForTests(({ relativePath }) => {
+    if (relativePath === "data/policies/policy-example.json") throw deferred;
+  });
+  try { assert.throws(() => nonmaterialAmendmentIssues(loaded, amendment), (error) => error === deferred); }
+  finally { restoreSource(); }
+  assert.deepEqual(nonmaterialAmendmentIssues(loaded, amendment), []);
 });

@@ -1,17 +1,22 @@
 import assert from "node:assert/strict";
+import { once } from "node:events";
+import { createFilegrcServer } from "../src/server.js";
+import { performance } from "node:perf_hooks";
 import { mkdtemp, mkdir, rm, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { makeRetentionApplicationWorkspace } from "./fixtures/retention-applications.js";
 import { commitWorkspaceFiles, writeJson, captureCli } from "./helpers.js";
-import { scaffoldRetentionApplication, saveRetentionApplication, retentionApplicationIssues, retentionApplicationScopeRevision } from "../src/retention-applications.js";
+import { scaffoldRetentionApplication, saveRetentionApplication, retentionApplicationIssues, retentionApplicationScopeRevision, retentionApplicationRuntimeSupported } from "../src/retention-applications.js";
 import { assessCollectionReview } from "../src/collection-review.js";
 import { assessRetentionReadiness, resourceReviewRevisionsSync, retentionReviewResourceIds } from "../src/retention.js";
 import { loadWorkspace } from "../src/workspace.js";
 import { validateWorkspace } from "../src/validate.js";
 import { createResource, updateResource } from "../src/files.js";
-import { setGitSubprocessObserverForTests } from "../src/git.js";
+import { withCalculationCache } from "../src/calculation-cache.js";
+import { createStateCalculator } from "../src/state-calculator.js";
+import { getGitSummary, withGitCommandDeadline, setGitSubprocessObserverForTests } from "../src/git.js";
 import { runCli } from "../src/cli.js";
 
 async function fixture(context) {
@@ -372,3 +377,67 @@ test(`ended inventory preserves literal approved retention scope and retired own
   }
 });
 }
+
+
+test("committed patch upgrades preserve historical adoption after a real deadline and same-cache retry", async (context) => {
+  const root = await fixture(context);
+  await saveRetentionApplication(root, await decision(root));
+  await commitWorkspaceFiles(root, "Apply existing approved rule");
+  const firstCommit = getGitSummary(root).commit;
+  await writeJson(join(root, "package.json"), { private: true, dependencies: { filegrc: "0.20.6" } });
+  await writeJson(join(root, "package-lock.json"), { lockfileVersion: 3, packages: { "": { dependencies: { filegrc: "0.20.6" } }, "node_modules/filegrc": { version: "0.20.6" } } });
+  await commitWorkspaceFiles(root, "Adopt compatible patch runtime");
+  const loaded = await loadWorkspace(root), application = loaded.resources.find(({ type }) => type === "retention-application");
+  const cache = new WeakMap();
+  let reachedManifest = false;
+  const restore = setGitSubprocessObserverForTests(({ args }) => {
+    if (args[0] === "show" && args[1] === `${firstCommit}:./package.json`) {
+      reachedManifest = true;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200);
+    }
+  });
+  try {
+    assert.throws(() => withCalculationCache(cache, () => withGitCommandDeadline(performance.now() + 100,
+      () => retentionApplicationRuntimeSupported(loaded, firstCommit, application))), { code: "FILEGRC_GIT_DEADLINE" });
+    assert.equal(reachedManifest, true, "Expire during a historical package read, not before assessment starts");
+  } finally { restore(); }
+  assert.equal(withCalculationCache(cache, () => retentionApplicationRuntimeSupported(loaded, firstCommit, application)), true);
+  assert.deepEqual(withCalculationCache(cache, () => retentionApplicationIssues(loaded, application)), []);
+  const calculator = createStateCalculator();
+  context.after(() => calculator.close());
+  await assert.rejects(calculator.calculate("same-retention-snapshot", loaded, "validation", {}, performance.now() - 1), { code: "FILEGRC_GIT_DEADLINE" });
+  const recovered = await calculator.calculate("same-retention-snapshot", loaded, "validation", {}, performance.now() + 20_000);
+  assert.equal(recovered.ok, true, JSON.stringify(recovered.diagnostics));
+  const options = { stateSectionDeadlineMs: 0 }, server = createFilegrcServer(root, options);
+  server.listen(0, "127.0.0.1"); await once(server, "listening");
+  context.after(() => new Promise((resolve) => server.close(resolve)));
+  const url = `http://127.0.0.1:${server.address().port}`;
+  const bootstrap = await (await fetch(`${url}/api/state/bootstrap`)).json();
+  const path = `${url}/api/state/repository?token=${encodeURIComponent(bootstrap.stateToken)}`;
+  assert.equal((await fetch(path)).status, 503);
+  options.stateSectionDeadlineMs = 20_000;
+  const retry = await fetch(path);
+  assert.equal(retry.status, 200);
+  assert.equal((await retry.json()).state.validation.ok, true, "The same browser snapshot must recover without false adoption errors");
+  for (const code of ["FILEGRC_HISTORY_DEADLINE", "ETIMEDOUT"]) {
+    const restoreTimeout = setGitSubprocessObserverForTests(({ args }) => {
+      if (args[0] === "show" && args[1] === `${firstCommit}:./package-lock.json`) throw Object.assign(new Error("Deferred historical package read"), { code });
+    });
+    try { assert.throws(() => retentionApplicationRuntimeSupported(loaded, firstCommit, application), { code: "FILEGRC_GIT_DEADLINE" }); }
+    finally { restoreTimeout(); }
+  }
+});
+
+test("a later committed runtime upgrade cannot repair unsupported original adoption", async (context) => {
+  const root = await fixture(context), preview = await saveRetentionApplication(root, await decision(root), { preview: true });
+  await writeJson(join(root, "package.json"), { private: true, dependencies: { filegrc: "0.19.1" } });
+  await writeJson(join(root, "package-lock.json"), { lockfileVersion: 3, packages: { "": { dependencies: { filegrc: "0.19.1" } }, "node_modules/filegrc": { version: "0.19.1" } } });
+  await mkdir(join(root, "data/retention-applications"), { recursive: true });
+  await writeJson(join(root, "data/retention-applications", `${preview.record.id}.json`), preview.record);
+  await commitWorkspaceFiles(root, "Record unsupported initial adoption");
+  await writeJson(join(root, "package.json"), { private: true, dependencies: { filegrc: "0.20.6" } });
+  await writeJson(join(root, "package-lock.json"), { lockfileVersion: 3, packages: { "": { dependencies: { filegrc: "0.20.6" } }, "node_modules/filegrc": { version: "0.20.6" } } });
+  await commitWorkspaceFiles(root, "Upgrade after the original decision");
+  const loaded = await loadWorkspace(root), application = loaded.resources.find(({ type }) => type === "retention-application");
+  assert.ok(retentionApplicationIssues(loaded, application).some(({ message }) => message.includes("no later than its first retention application commit")));
+});

@@ -13,7 +13,7 @@ import { resourceReviewRevisionsSync, retentionReviewResourceIds, retentionRuleI
 import { appointmentWasAuthorizedOn, personWasActiveOn } from "./soc2.js";
 import { currentPartyPeople } from "./parties.js";
 import { createResource } from "./files.js";
-import { getGitSummary, getFileAtRevision, runGitCommandSync, getDataRecordHistoryIndex, isDataHistoryAncestor } from "./git.js";
+import { getGitSummary, getFileAtRevision, runGitCommandSync, rethrowGitReadDeadline, getDataRecordHistoryIndex, isDataHistoryAncestor } from "./git.js";
 import { currentCalendarDate } from "./time.js";
 
 const CONFIRMATIONS = ["purposeMatches", "cutoffMatches", "dispositionFeasible", "holdsPreserved", "noConflictingDuties"];
@@ -40,7 +40,7 @@ export function retentionApplicationRuntimeSupported(loaded, commit = null, targ
       return Boolean(supported(requested) && supported(installed)
         && lock.packages?.[""]?.dependencies?.filegrc === manifest.dependencies.filegrc && !entry?.link
         && installed[1] === requested[1] && Number(installed[2]) >= Number(requested[2]));
-    } catch { return false; }
+    } catch (error) { rethrowGitReadDeadline(error); return false; }
   });
 }
 function ruleMarkdown(loaded, rule) {
