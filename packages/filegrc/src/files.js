@@ -1,3 +1,4 @@
+import { evidenceObservationMatches } from "./evidence-observation.js";
 import { workflowProofIds } from "./workflow-proof.js";
 import { randomUUID } from "node:crypto";
 import { constants, link, lstat, mkdir, open, readFile, rename, rm, stat } from "node:fs/promises";
@@ -386,7 +387,7 @@ async function applyResourceBatchUnlocked(input, changes = {}, lifecycleOperatio
       requireExpectedRevisions: hasContentUpdate
     });
     if (hasContentUpdate) preparedContentIds.add(record.id);
-    if (recordContentWrites.length) assertWorkflowContentMutable(loaded, existing.record);
+    if (recordContentWrites.some(({ source, previous }) => source !== previous)) assertWorkflowContentMutable(loaded, existing.record);
     contentWrites.push(...recordContentWrites);
     const nextRecord = hasContentUpdate
       ? await prepareApprovalBinding(loaded, record, recordContentWrites, existing.record)
@@ -654,7 +655,7 @@ async function updateResourceUnlocked(input, type, id, record, options) {
   });
   const existing = loaded.entries.find(({ record: candidate }) => candidate.id === id)?.record;
   assertImmutableWorkflowRecord(existing, record, options, loaded);
-  if (contentWrites.length) assertWorkflowContentMutable(loaded, existing);
+  if (contentWrites.some(({ source, previous }) => source !== previous)) assertWorkflowContentMutable(loaded, existing);
   const nextRecord = await prepareApprovalBinding(loaded, record, contentWrites, existing);
   assertGovernedContentLifecycleMutation(existing, nextRecord, loaded.model, null);
   try {
@@ -761,9 +762,10 @@ function assertImmutableWorkflowRecord(existing, next, options = {}, loaded = nu
     throw new Error(`Obligation occurrence "${existing.id}" is workflow-managed. Scaffold and save its reconciliation instead of editing it directly.`);
   }
   const finalizedOccurrence = finalizedOccurrenceUsingProof(loaded, existing.id);
-  if (finalizedOccurrence && !preservesExisting()) {
-    throw new Error(
-      `Completion record "${existing.id}" is immutable because finalized occurrence "${finalizedOccurrence.id}" relies on it. `
+  if (finalizedOccurrence && !preservesExisting()
+    && !evidenceObservationMatches(existing, next, loaded)) {
+    throw finalizedProofError(
+      `${existing.type === "evidence" ? "Proof" : "Completion"} record "${existing.id}" is immutable because finalized occurrence "${finalizedOccurrence.id}" relies on it. `
       + "Create a corrected completion and superseding occurrence instead."
     );
   }
@@ -840,10 +842,14 @@ function assertImmutableWorkflowRecord(existing, next, options = {}, loaded = nu
   }
 }
 
+function finalizedProofError(message) {
+  return Object.assign(new Error(message), { code: "FILEGRC_FINALIZED_PROOF" });
+}
+
 function assertFinalizedOccurrenceProofMutable(loaded, record) {
   const occurrence = finalizedOccurrenceUsingProof(loaded, record.id);
   if (occurrence) {
-    throw new Error(
+    throw finalizedProofError(
       `Proof record "${record.id}" is immutable because finalized occurrence "${occurrence.id}" relies on it. `
       + "Create corrected proof and a superseding occurrence instead."
     );
@@ -873,6 +879,8 @@ function finalizedOccurrenceUsingProof(loaded, targetId) {
     (record.type === "obligation-occurrence" && ["reconciled", "superseded"].includes(record.status))
     || (record.type === "audit-population" && ["reconciled", "not-applicable", "superseded"].includes(record.status))
     || (record.type === "attestation" && record.status === "completed")
+    || record.type === "nonmaterial-amendment"
+    || (record.type === "exception" && ["approved", "revoked", "closed"].includes(record.status))
   ))) {
     if (workflowProofIds(owner, (id) => byId.get(id)).has(targetId)) return owner;
   }

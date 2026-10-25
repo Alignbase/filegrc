@@ -6019,10 +6019,7 @@ function readGuidedRecord(dialog, base, fields) {
   const record = structuredClone(base);
   for (const group of dialog.querySelectorAll("[data-field-group]")) {
     const name = group.dataset.fieldGroup;
-    if (group.hidden) {
-      delete record[name];
-      continue;
-    }
+    if (group.hidden) continue;
     const kind = group.dataset.kind;
     let value;
     if (kind === "relation-array" || kind === "choice-array") value = [...group.querySelectorAll('input[type="checkbox"]:checked')].map((input) => input.value);
@@ -6049,6 +6046,11 @@ function readGuidedRecord(dialog, base, fields) {
       || value && typeof value === "object" && !Array.isArray(value) && !Object.keys(value).length;
     if (empty && group.dataset.required !== "true") delete record[name];
     else record[name] = value;
+  }
+  // Visibility controls the form, while allowedWhen controls stored facts.
+  // Keep valid existing optional values when their editor is hidden.
+  for (const [name, field] of Object.entries(fields)) {
+    if (field.allowedWhen && !conditionMatchesValues(field.allowedWhen, (key) => record[key])) delete record[name];
   }
   return record;
 }

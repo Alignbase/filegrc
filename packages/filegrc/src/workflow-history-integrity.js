@@ -1,5 +1,5 @@
 import { workflowProofIds } from "./workflow-proof.js";
-import { amendmentEvidenceObservationMatches } from "./nonmaterial-amendments.js";
+import { evidenceObservationMatches } from "./evidence-observation.js";
 import { readFile } from "node:fs/promises";
 import {
   getDataRecordHistoryIndex,
@@ -283,8 +283,8 @@ export async function validateWorkflowHistoryIntegrity(loaded, diagnostics) {
         diagnostics.push(integrityError(ownerEntry, `Proof record "${id}" must exist in the commit where ${owner.type} "${owner.id}" was first finalized.`));
         continue;
       }
-      if (!(owner.type === "nonmaterial-amendment" && historical.record.type === "evidence"
-        ? amendmentEvidenceObservationMatches(historical.record, currentEntry.record, loaded, finalized.commit)
+      if (!(historical.record.type === "evidence"
+        ? evidenceObservationMatches(historical.record, currentEntry.record, loaded, finalized.commit)
         : sameJson(currentEntry.record, historical.record))) {
         diagnostics.push(integrityError(currentEntry, `Proof record "${id}" differs from the version used when ${owner.type} "${owner.id}" was first finalized. Create corrected proof and a superseding record.`));
         continue;
