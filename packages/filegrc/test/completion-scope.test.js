@@ -77,3 +77,21 @@ test("unrelated source and Control links do not turn results into System work", 
   assert.equal(matches({ type: "exercise", componentIds: ["component-b"], evidenceIds: ["proof-a"] }, "system-a"), false);
   assert.equal(matches({ type: "exercise", evidenceIds: ["proof-a"] }, "system-a"), true, "Proof-only scope remains supported where the model allows it");
 });
+
+test("native review membership uses declared scope fields without counting actors or proof links", () => {
+  const records = ["policy", "document", "team", "person", "vendor", "risk", "commitment"].map((type) => ({ id: `${type}-a`, type }));
+  const { byId } = fixture();
+  for (const record of records) byId.set(record.id, record);
+  const cases = [
+    ["policy-review", { scopeResourceIds: ["policy-a", "document-a"] }, ["policy-a", "document-a"]],
+    ["meeting", { teamId: "team-a" }, ["team-a"]],
+    ["risk-assessment", { systemIds: ["system-a"], componentIds: ["component-a"], vendorIds: ["vendor-a"], riskIds: ["risk-a"], commitmentIds: ["commitment-a"] }, ["system-a", "component-a", "vendor-a", "risk-a", "commitment-a"]],
+    ["access-review", { componentIds: ["component-a"] }, ["component-a", "system-a"]],
+    ["vendor-review", { vendorId: "vendor-a" }, ["vendor-a"]]
+  ];
+  for (const [type, scope, members] of cases) {
+    const record = { type, ...scope, reviewerIds: ["person-a"], approverIds: ["person-a"], assessorIds: ["person-a"], chairIds: ["person-a"], attendeeIds: ["person-a"], evidenceIds: ["proof-a"] };
+    for (const id of members) assert.equal(completionMatchesMember(record, null, id, model, byId), true, `${type} ${id}`);
+    for (const id of ["person-a", "system-b", "component-b", "proof-a"]) assert.equal(completionMatchesMember(record, null, id, model, byId), false, `${type} ${id}`);
+  }
+});

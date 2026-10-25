@@ -708,7 +708,7 @@ async function completeObligationOccurrenceUnlocked(input, options) {
     if (!assessment.complete) throw new Error(assessment.issues.join(" "));
     const scaffold = await scaffoldObligationOccurrence(loaded.root, {
       obligationId: obligation.id, programId: program.id,
-      windowStart: item.dueWindowStart, asOf: completedOn,
+      windowStart: item.dueWindowStart, asOf: currentCalendarDate(loaded.workspace.timezone),
       completionRecord
     });
     const occurrence = scaffold.record;

@@ -524,13 +524,13 @@ async function runCombinedSetup(target, input) {
 async function writeMinimalLockfile(target, name, versionRange) {
   const lock = {
     name,
-    version: "0.20.7",
+    version: "0.20.8",
     lockfileVersion: 3,
     requires: true,
     packages: {
       "": {
         name,
-        version: "0.20.7",
+        version: "0.20.8",
         dependencies: { filegrc: versionRange }
       }
     }
