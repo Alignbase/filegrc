@@ -1,3 +1,4 @@
+import { occurrenceSelectorPopulation } from "./obligation-population.js";
 import { occurrenceCompletionContext } from "./obligation-completion-context.js";
 import { attestationBindingIssue } from "./attestation-integrity.js";
 import { withAssessmentCache } from "./calculation-cache.js";
@@ -596,7 +597,11 @@ function validateObligationOccurrence(record, model, resources, entries, root, w
       record.collectionReviewCommit
     );
     const memberIds = [...(record.members || []).map(({ resourceId }) => resourceId)].sort();
-    const reviewedIds = [...(historicalSnapshot?.selectedIds || [])].sort();
+    const reviewedIds = historicalSnapshot ? occurrenceSelectorPopulation(
+      { root, resources, model }, record, rule.selector, byId.get(record.programId), {
+        selectedIds: historicalSnapshot.selectedIds, throughCommit: review.scopeRevision
+      }
+    ).expectedIds : [];
     const reviewCoversCutoff = review?.coverage?.kind === "as-of"
       ? review.coverage.on === record.membershipCutoffAt
       : review?.coverage?.kind === "range"
@@ -626,16 +631,14 @@ function validateObligationOccurrence(record, model, resources, entries, root, w
       "A historical occurrence must bind an immutable Collection Review for its exact population cutoff."
     ));
   } else if (rule?.selector) {
-    const selectedIds = selectScopedCollectionRecords(
-      { resources, model },
-      rule.selector,
-      byId.get(record.programId)
-    ).map(({ id }) => id).sort();
-    if (JSON.stringify([...memberIds].sort()) !== JSON.stringify(selectedIds)) {
+    const population = occurrenceSelectorPopulation({ root, resources, model }, record, rule.selector, byId.get(record.programId));
+    const missingRecorded = population.memberIds.some((id) => !memberIds.includes(id));
+    const unsupported = memberIds.some((id) => !population.expectedIds.includes(id));
+    if (missingRecorded || unsupported || !population.established && JSON.stringify([...memberIds].sort()) !== JSON.stringify(population.currentIds)) {
       diagnostics.push(error(
         "invalid-obligation-occurrence-population",
         path,
-        "An occurrence without a historical Collection Review must contain the exact current selector population."
+        "An open occurrence must preserve its committed eligible members and contain no unsupported population members. Reconcile newly eligible members before finalizing the window."
       ));
     }
   }

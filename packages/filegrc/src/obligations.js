@@ -1,3 +1,4 @@
+import { occurrenceSelectorPopulation } from "./obligation-population.js";
 import { occurrenceCompletionContext } from "./obligation-completion-context.js";
 import { assessProgramAccessReview, providerAccessControls } from "./provider-access-completion.js";
 import { readFile } from "node:fs/promises";
@@ -244,7 +245,7 @@ export function planObligations(resources, options = {}) {
       const recordedMemberIds = (reconciliation?.members || []).map(({ resourceId }) => resourceId);
       const expectedMemberIds = reconciliation
         ? reconciliation.status === "open" && !membershipFinal
-          ? [...new Set([...recordedMemberIds, ...selectedMemberIds])].sort()
+          ? occurrenceSelectorPopulation({ resources: records, model, root: options.root }, reconciliation, schedule.selector, program, { selectedIds: selectedMemberIds }).expectedIds
           : recordedMemberIds
         : selectedMemberIds;
       const completedMemberIds = new Set((reconciliation?.members || [])
@@ -343,7 +344,7 @@ export function planObligations(resources, options = {}) {
     const membershipFinal = membershipIsFinal(rule.selector, window, asOf);
     const recordedMemberIds = (occurrence.members || []).map(({ resourceId }) => resourceId);
     const expectedMemberIds = occurrence.status === "open" && !membershipFinal && rule.selector
-      ? [...new Set([...recordedMemberIds, ...selectScopedCollectionRecords({ resources: records, model }, rule.selector, program).map(({ id }) => id)])].sort()
+      ? occurrenceSelectorPopulation({ resources: records, model, root: options.root }, occurrence, rule.selector, program).expectedIds
       : recordedMemberIds;
     const completedMemberIds = (occurrence.members || [])
       .filter(({ disposition, result }) => disposition === "expected" && result === "passed")
@@ -866,7 +867,11 @@ export async function scaffoldObligationOccurrence(input, options = {}) {
         rule?.selector,
         entry.relativePath
       );
-      return snapshot ? [{ entry, snapshot }] : [];
+      return snapshot ? [{ entry, snapshot: { ...snapshot,
+        populationIds: occurrenceSelectorPopulation(loaded, current?.record, rule.selector, program, {
+          selectedIds: snapshot.selectedIds, throughCommit: entry.record.scopeRevision
+        }).expectedIds
+      } }] : [];
     });
     const supersededIds = new Set(candidates.map(({ entry }) => entry.record.supersedesId).filter(Boolean));
     candidates.sort((left, right) => (
@@ -888,16 +893,16 @@ export async function scaffoldObligationOccurrence(input, options = {}) {
   const activity = obligationActivity(loaded.model, obligation);
   const completionMemberField = activity.aggregate?.completionMemberField;
   const populationIds = existing
-    ? item.expectedMemberIds
+    ? historicalSnapshot?.populationIds || item.expectedMemberIds
     : predecessor
       ? predecessor.record.members.map(({ resourceId }) => resourceId)
     : historicalReview
-      ? historicalSnapshot.selectedIds
+      ? historicalSnapshot.populationIds
       : item.expectedMemberIds;
   if (existing && historicalSnapshot) {
     const frozenIds = [...existingMembers.keys()].sort();
-    const reviewedIds = [...historicalSnapshot.selectedIds].sort();
-    if (JSON.stringify(frozenIds) !== JSON.stringify(reviewedIds)) {
+    const reviewedIds = [...historicalSnapshot.populationIds].sort();
+    if (frozenIds.some((id) => !reviewedIds.includes(id))) {
       throw new Error(
         `Open occurrence "${existing.record.id}" does not match the committed ${cutoff} Collection Review population. `
         + "Correct the open occurrence before reconciliation."
