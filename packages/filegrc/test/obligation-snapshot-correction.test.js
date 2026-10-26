@@ -12,13 +12,15 @@ import {
   writeJson,
   executeCli,
 } from "./helpers.js";
-import { contentRevision } from "../src/files.js";
+import { contentRevision, createResource } from "../src/files.js";
 import { loadWorkspace, validateWorkspace } from "../src/index.js";
 import {
   scaffoldObligationOccurrence,
   saveObligationOccurrence,
   planObligations,
   assessCompletionForObligation,
+  scaffoldObligationRuleActivation,
+  activateObligationRule,
 } from "../src/obligations.js";
 import {
   scaffoldObligationRuleCorrection,
@@ -29,7 +31,7 @@ import { currentSnapshotPopulation } from "../src/obligation-snapshot.js";
 import { getGitSummary } from "../src/git.js";
 import { completionCoversRequiredPeriod } from "../src/obligation-timing.js";
 import { currentCalendarDate } from "../src/time.js";
-import { addCalendarDays } from "../src/recurrence.js";
+import { addCalendarDays, calendarOccurrence } from "../src/recurrence.js";
 
 async function fixture(t, { unit = "year" } = {}) {
   const root = await mkdtemp(join(tmpdir(), "filegrc-snapshot-correction-"));
@@ -839,4 +841,59 @@ test("open populations count expected work separately from reviewed non-applicab
     assert.equal(item.completedCount, 0);
     assert.equal(item.status, "waiting");
   }
+});
+
+test("impossible whole-period deadlines fail validation and remain actionable despite zero or N/A results", async (t) => {
+  const f = await fixture(t), loaded = await loadWorkspace(f.root);
+  const ruleEntry = loaded.entries.find(e => e.record.id === f.rule.id);
+  await writeJson(ruleEntry.path, { ...ruleEntry.record, completionCoverage: "whole-period" });
+  const validation = await validateWorkspace(f.root);
+  assert.ok(validation.diagnostics.some(d => d.code === "invalid-obligation-period-window"));
+  await assert.rejects(scaffoldObligationOccurrence(f.root, { obligationId: f.obligation.id, windowStart: f.start, asOf: f.today }), /execution deadline/);
+  const requiredCoverage = { kind: "range", startsOn: f.start, endsOn: addCalendarDays(f.start, 364) };
+  for (const members of [[], [{ ...f.occurrence.members[0], disposition: "not-applicable", result: "pending", rationale: "No applicable work." }]]) {
+    for (const status of ["open", "reconciled"]) {
+      const resources = loaded.resources.map(record => record.id === f.obligation.id ? { ...record, status: "retired" }
+        : record.id === f.rule.id ? { ...record, status: "retired", completionCoverage: "whole-period" }
+        : record.id === f.occurrence.id ? { ...record, requiredCoverage, members, expectedCount: 0, completedCount: 0, status, conclusion: "zero-population" } : record);
+      for (const asOf of [f.today, addCalendarDays(f.start, 31), addCalendarDays(f.start, 370)]) {
+        const item = planObligations(resources, { model: loaded.model, from: f.start, through: asOf, asOf, includeComplete: true }).calendarItems.find(i => i.occurrenceId === f.occurrence.id);
+        assert.ok(item.timingIssue);
+        assert.equal(item.status, asOf > f.occurrence.coverage.endsOn ? "overdue" : "due");
+        assert.equal(item.awaitingPeriodEnd, false);
+        assert.equal(item.resolutionsComplete, false);
+      }
+    }
+  }
+});
+
+
+test("a reviewed valid successor retains impossible prior timing as warnings without rewriting proof", async (t) => {
+  const f = await fixture(t), loaded = await loadWorkspace(f.root);
+  const re = loaded.entries.find(e => e.record.id === f.rule.id), oe = loaded.entries.find(e => e.record.id === f.occurrence.id);
+  const priorRule = { ...re.record, id: "obligation-rule-prior-whole-period", effectiveAt: `${f.today}T12:00:00Z`, approvedOn: f.today, supersedesId: f.rule.id, cutoverDecision: "supersede-open-window", completionCoverage: "whole-period" };
+  const priorOccurrence = { ...oe.record, id: `${oe.record.id}-whole-period`, ruleId: priorRule.id, coverage: { ...oe.record.coverage, startsOn: f.today }, occurrenceKey: `${oe.record.programId}:${f.obligation.id}:${f.today}`, members: oe.record.members.map(member => ({ ...member, disposition: "not-applicable", result: "pending", completionResourceIds: [], rationale: "The fixed scope has no applicable events." })), expectedCount: 0, completedCount: 0, requiredCoverage: { kind: "range", startsOn: f.start, endsOn: addCalendarDays(calendarOccurrence(priorRule.recurrence, 1), -1) } };
+  const priorRulePath = join(f.root, "data/obligation-rules", `${priorRule.id}.json`), priorOccurrencePath = join(f.root, "data/obligation-occurrences", `${priorOccurrence.id}.json`);
+  await writeJson(re.path, { ...re.record, status: "retired", retiredOn: f.today });
+  await writeJson(oe.path, { ...oe.record, status: "superseded" });
+  await writeJson(priorRulePath, priorRule); await writeJson(priorOccurrencePath, priorOccurrence);
+  const obligationEntry = loaded.entries.find(e => e.record.id === f.obligation.id);
+  await writeJson(obligationEntry.path, { ...obligationEntry.record, activeRuleId: priorRule.id, ruleIds: [...obligationEntry.record.ruleIds, priorRule.id] });
+  await commitWorkspaceFiles(f.root, "Retain original impossible duty timing");
+  const originalValidation = await validateWorkspace(f.root);
+  assert.equal(originalValidation.diagnostics.filter(d => d.severity === "error").every(d => d.code === "invalid-obligation-period-window"), true, JSON.stringify(originalValidation.diagnostics));
+  const proof = await readFile(f.ve.path, "utf8");
+  const proposed = { ...priorRule, id: "obligation-rule-post-period-successor", title: "Reviewed post-period execution time", status: "proposed", window: { ...priorRule.window, dueAfter: 400 } };
+  for (const key of ["approvedByIds", "approvedOn", "effectiveAt", "timezone", "supersedesId", "cutoverDecision"]) delete proposed[key];
+  await createResource(f.root, proposed); await commitWorkspaceFiles(f.root, "Propose adequate post-period execution time");
+  const activation = await scaffoldObligationRuleActivation(f.root, { ruleId: proposed.id, approvedByIds: ["person-example"], effectiveAt: new Date(Date.now() + 300000).toISOString(), cutoverDecision: "supersede-open-window" });
+  await activateObligationRule(f.root, { ...activation.payload, confirmedRevision: activation.review.revision });
+  await commitWorkspaceFiles(f.root, "Approve successor without concluding the prior work");
+  const validation = await validateWorkspace(f.root);
+  assert.equal(validation.ok, true, JSON.stringify(validation.diagnostics));
+  assert.equal(validation.diagnostics.filter(d => d.code === "invalid-obligation-period-window" && d.severity === "warning").length, 2);
+  const after = await loadWorkspace(f.root), retired = after.resources.find(r => r.id === priorRule.id), superseded = after.resources.find(r => r.id === priorOccurrence.id);
+  assert.deepEqual({ ...retired, status: priorRule.status, retiredOn: undefined }, { ...priorRule, retiredOn: undefined });
+  assert.deepEqual({ ...superseded, status: priorOccurrence.status }, priorOccurrence);
+  assert.equal(await readFile(f.ve.path, "utf8"), proof);
 });

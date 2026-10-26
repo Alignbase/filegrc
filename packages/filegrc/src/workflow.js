@@ -929,7 +929,7 @@ async function assessPeriodHealth(loaded, options) {
     findings.push(periodFinding(
       `period.obligation.${item.key || stableSuffix(JSON.stringify(item))}`,
       item.title,
-      item.status === "waiting"
+      item.timingIssue || (item.status === "waiting"
         ? item.awaitingPeriodEnd
           ? `Current member work is recorded, but the required period remains open through ${item.requiredCoverage.endsOn}; reconcile after its inclusive final day.`
           : `Current member work is recorded, but the population remains open through ${item.membershipCutoffAt}; the occurrence has not been reconciled.`
@@ -939,7 +939,7 @@ async function assessPeriodHealth(loaded, options) {
           ? item.blockingReason || "This work is blocked by an unresolved source record."
         : item.status === "due"
           ? `This occurrence is open within its allowed window and must be completed by ${item.dueWindowEnd}.`
-          : `The expected occurrence for ${item.dueWindowStart} through ${item.dueWindowEnd} has no accepted completion.`,
+          : `The expected occurrence for ${item.dueWindowStart} through ${item.dueWindowEnd} has no accepted completion.`),
       item.status === "waiting"
         ? "waiting"
         : item.status === "overdue"
@@ -1320,6 +1320,7 @@ function obligationWorkItem(item, byId, asOf, programId) {
     blockingReason: item.blockingReason || item.reason || null,
     dependencies: blockingDependencies(item.blockingResourceIds, byId),
     ...(item.ruleId ? {
+      timingIssue: item.timingIssue || null,
       membershipFinal: item.membershipFinal,
       membershipCutoffAt: item.membershipCutoffAt,
       memberWorkComplete: item.memberWorkComplete,
@@ -1352,6 +1353,10 @@ function obligationNextAction(item, programId) {
       command: `npx filegrc complete-action ${shellArgument(item.actionItemId)} --scaffold --completed-on YYYY-MM-DD${programOption}`
     };
   }
+  if (item.ruleId && item.timingIssue) return {
+    kind: "command", message: item.timingIssue,
+    command: `npx filegrc guide obligation-rule --json`
+  };
   if (item.ruleId && ["proposed", "approved"].includes(item.ruleStatus)) {
     return {
       kind: "command",

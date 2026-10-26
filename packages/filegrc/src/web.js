@@ -2531,7 +2531,9 @@ function obligationCard(item, collapsed = false) {
       : "";
   const canAct = completion?.blocked === "Assign current owner"
     || !["upcoming", "proposed"].includes(item.status);
-  const action = proposedAction || (!state.readOnly && canAct && completion
+  const action = item.timingIssue && item.ruleId
+    ? '<a class="obligation-action" href="#/resource/obligation-rule/' + encodeURIComponent(item.ruleId) + '">Review schedule</a>'
+    : proposedAction || (!state.readOnly && canAct && completion
     ? completion.blocked
       ? '<a class="obligation-action blocked" href="' + completion.href + '">' + esc(completion.blocked) + '</a>'
       : item.actionItemId
@@ -2544,7 +2546,7 @@ function obligationCard(item, collapsed = false) {
   const population = item.ruleId
     ? '<p><strong>' + esc(String(item.completedCount || 0)) + ' of ' + esc(String(item.expectedCount || 0)) + '</strong> expected members passed' + (item.awaitingPeriodEnd ? '; work recorded, awaiting full period end ' + esc(item.requiredCoverage.endsOn) : item.membershipFinal ? '' : (item.awaitingPopulationCutoff ? '; work recorded, awaiting population cutoff ' : '; population remains open through ') + esc(item.membershipCutoffAt)) + '.</p>'
     : '';
-  return '<article class="obligation-card status-' + esc(item.status) + '" data-work-source="' + esc(type + ":" + id) + '"' + (collapsed ? ' data-collapsed hidden' : "") + '><div class="obligation-card-head"><span>' + esc(kind) + '</span><strong>' + esc(timingText(item)) + '</strong></div><h3><a href="#/resource/' + type + '/' + encodeURIComponent(id) + '">' + esc(titleCase(item.title)) + '</a></h3><p>' + esc(windowText(item)) + '</p>' + population + '<div class="obligation-card-foot"><div class="obligation-links">' + (item.policyIds || []).map(formatReference).join("") + '</div>' + action + '</div></article>';
+  return '<article class="obligation-card status-' + esc(item.status) + '" data-work-source="' + esc(type + ":" + id) + '"' + (collapsed ? ' data-collapsed hidden' : "") + '><div class="obligation-card-head"><span>' + esc(kind) + '</span><strong>' + esc(timingText(item)) + '</strong></div><h3><a href="#/resource/' + type + '/' + encodeURIComponent(id) + '">' + esc(titleCase(item.title)) + '</a></h3><p>' + esc(windowText(item)) + '</p>' + population + (item.timingIssue ? '<p>' + esc(item.timingIssue) + '</p>' : '') + '<div class="obligation-card-foot"><div class="obligation-links">' + (item.policyIds || []).map(formatReference).join("") + '</div>' + action + '</div></article>';
 }
 
 function actionCompletionPlan(item) {
