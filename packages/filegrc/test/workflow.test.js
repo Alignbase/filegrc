@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
@@ -788,6 +789,10 @@ test("Program workflow excludes unrelated source deadlines and does not recreate
   assert.equal(workflow.workItems.some(({ source }) => source.id === "evidence-deadline-unrelated"), false);
   assert.equal(workflow.workItems.find(({ source }) => source.id === "evidence-audit-selected")?.state, "overdue");
   assert.equal(workflow.workItems.some(({ source }) => source.id === "evidence-audit-unrelated"), false);
+  assert.equal(workflow.workQueue.items.find(({ source }) => source?.id === "evidence-deadline-selected")?.status, "overdue");
+  assert.equal(workflow.workQueue.items.some(({ source }) => source?.id === "evidence-deadline-unrelated"), false);
+  assert.equal(workflow.workQueue.items.some(({ source }) => source?.id === action.id), false);
+
 });
 
 test("approved Exception expiry remains actionable through its lifecycle and Program scope", async (context) => {
@@ -841,11 +846,43 @@ test("unfinalized population work prevents period completeness without becoming 
     assessment: (status) => ({ status }),
     findingKeys: () => []
   });
-  const input = { program: { stages: [], evidenceReady: true }, audits: [], auditPreparations: {}, obligationPlan: { counts: { overdue: 0, blocked: 0 } }, findings: [], validation: { ok: true }, coverage: { start: "2026-10-01", end: "2026-10-31" } };
+  const input = { program: { stages: [], evidenceReady: true }, audits: [], auditPreparations: {}, obligationPlan: { counts: { overdue: 0, blocked: 0 } }, workQueue: { counts: { overdue: 0, blocked: 0 } }, findings: [], validation: { ok: true }, coverage: { start: "2026-10-01", end: "2026-10-31" } };
   assert.equal(build(input).periodHealth.status, "complete");
+  input.workQueue.counts.overdue = 1;
+  assert.equal(build(input).periodHealth.status, "at-risk");
+  input.workQueue.counts.overdue = 0;
   input.findings.push({ assessment: "period-health", state: "waiting" });
   assert.equal(build(input).periodHealth.status, "at-risk");
   const recommendationSource = source.slice(source.indexOf("function blockingFinding"), source.indexOf("function compareRecommended"));
   const recommend = vm.runInNewContext(recommendationSource + "\nrecommendedAction", { activeWork: () => true, compareRecommended: () => 0 });
   assert.equal(recommend(input.findings, [{ state: "waiting" }], {}), null);
+});
+
+test("dated review deadlines agree across workflow, CLI and lazy app/API queue summaries", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-source-deadline-summary-"));
+  context.after(() => import("node:fs/promises").then(({ rm }) => rm(root, { recursive: true, force: true })));
+  await makeWorkspace(root);
+  const record = { id: "assessment-current-review", type: "risk-assessment", title: "Current operating risk review", status: "in-progress", scope: "Example service risks", assessorIds: ["person-owner"], scheduledFor: "2026-07-09" };
+  await mkdir(join(root, "data", "risk-assessments"), { recursive: true });
+  await writeJson(join(root, "data", "risk-assessments", record.id + ".json"), record);
+  const asOf = "2026-07-10";const now = "2026-07-10T12:00:00Z";
+  const cli = fileURLToPath(new URL("../bin/filegrc.js", import.meta.url));
+  const { stdout } = await promisify(execFile)(process.execPath, [cli, "obligations", "--root", root, "--as-of", asOf, "--now", now, "--json"]);
+  const result = JSON.parse(stdout);
+  const running = await serveWorkspace(root, { port: 0 });
+  context.after(() => new Promise((resolve) => running.server.close(resolve)));
+  const api = await (await fetch(running.url + "/api/obligations?asOf=" + asOf + "&now=" + now)).json();
+  const { createAppStateSection } = await import("../src/state.js");
+  const section = await createAppStateSection(root, "obligations", { asOf, now });
+  const workflow = await assessWorkflow(root, { asOf, now });
+  for (const queue of [result.workQueue, api.workQueue, section.workQueue, workflow.workQueue]) {
+    const item = queue.items.find(({ source }) => source?.id === record.id);
+    assert.equal(item.status, "overdue");assert.equal(item.dueOn, record.scheduledFor);
+    assert.equal(queue.counts.overdue, result.workQueue.counts.overdue);
+  }
+  assert.deepEqual(result.counts, api.counts);
+  assert.equal(result.items.some(({ source }) => source?.id === record.id), false);
+  assert.equal(workflow.workItems.find(({ source }) => source?.id === record.id).state, "overdue");
+  const current = JSON.parse(await readFile(join(root, "data", "risk-assessments", record.id + ".json"), "utf8"));
+  assert.deepEqual(current, record);
 });

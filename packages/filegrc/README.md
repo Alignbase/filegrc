@@ -176,3 +176,21 @@ A preservation rule covers the declared proof, such as control metadata, approva
 results or scoped exports. It does not extend raw log retention or restore deleted
 customer content. Keep those source retention decisions separate and use normal
 independent review when a new category, purpose or period is needed.
+
+## Complete Work Queue
+
+`filegrc obligations --json` preserves the obligation-only `items` and `counts`
+and adds `workQueue` for the complete selected Program queue. This combines
+recurring occurrences and assigned tasks with source-record deadlines, such as
+risk reviews, treatment targets and Exception expirations. The browser, app-state
+API, `GET /api/obligations`, program-operation summaries and
+`filegrc workflow --json` use this same calculation. Headless callers can also
+use `planWorkQueue(resources, obligationPlan, options)` from `filegrc`.
+
+The queue includes source deadlines through the obligation plan's `through`
+date, including older overdue work. `scheduled` source work appears as Upcoming;
+proposals remain proposals and canceled/superseded records stay out of the board.
+`--complete` also includes completed sources. Program selection, source deadlines,
+record lifecycle and existing owner/contact resolution remain authoritative.
+The full workflow's `workItems` retains its existing complete deadline listing.
+No deadline, completion, approval or assignee is inferred from displaying a card.

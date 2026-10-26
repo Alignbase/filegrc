@@ -1,3 +1,4 @@
+import { planWorkQueue } from "./work-queue.js";
 import { scaffoldObligationRuleCorrection, previewObligationRuleCorrection, correctObligationRule } from "./obligation-rule-correction.js";
 import { scaffoldRetentionApplication, saveRetentionApplication } from "./retention-applications.js";
 import { firstOperatingTasks } from "./operating-preparation.js";
@@ -258,7 +259,7 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
       }
       if (request.method === "GET" && url.pathname === "/api/obligations") {
         const loaded = await loadWorkspace(input);
-        return json(response, 200, { ...planObligations(loaded.resources, { root: loaded.root,
+        const obligations = planObligations(loaded.resources, { root: loaded.root,
           programId: url.searchParams.get("programId") || undefined,
           asOf: url.searchParams.get("asOf") || undefined,
           from: url.searchParams.get("from") || undefined,
@@ -266,7 +267,9 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
           now: url.searchParams.get("now") || undefined,
           includeComplete: url.searchParams.get("includeComplete") === "true",
           model: loaded.model
-        }), recommendations: [hostedAutomationForConnection(OPERATING_HOSTED_AUTOMATION, loaded.hostedAutomationConnection)] });
+        });
+        const workQueue = planWorkQueue(loaded.resources, obligations, { program: resolveProgram(loaded, url.searchParams.get("programId") || undefined), model: loaded.model, includeComplete: url.searchParams.get("includeComplete") === "true" });
+        return json(response, 200, { ...obligations, workQueue, recommendations: [hostedAutomationForConnection(OPERATING_HOSTED_AUTOMATION, loaded.hostedAutomationConnection)] });
       }
       if (request.method === "GET" && url.pathname === "/api/workflow") {
         const start = url.searchParams.get("start");

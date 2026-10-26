@@ -1,3 +1,5 @@
+import { loadWorkspace } from "./workspace.js";
+import { planWorkQueue } from "./work-queue.js";
 import { amendedResourceView } from "./nonmaterial-amendments.js";
 import { assessReportingRouteSets } from "./reporting-route-sets.js";
 import { readFile } from "node:fs/promises";
@@ -88,6 +90,7 @@ export async function createAppBootstrap(input = process.cwd(), options = {}) {
     },
     reconciliation: { contractVersion: 1, gitRevision: null, changedPaths: [], candidates: [] },
     obligations: { loading: true, items: [], triggers: [], counts: {} },
+    workQueue: { loading: true, items: [], counts: {} },
     collectionReviews: {},
     applicabilityConstraints: {},
     applicabilityReviewStatuses: {},
@@ -169,16 +172,10 @@ export async function createAppStateSection(input, section, options = {}) {
   }
   if (section === "obligations") {
     const activeProgram = resolveProgram(loaded, options.programId);
-    return {
-      generatedAt,
-      asOf,
-      obligations: planObligations(loaded.resources, { root: loaded.root,
-        programId: activeProgram.id,
-        asOf,
-        now: options.now ?? generatedAt,
-        model: loaded.model
-      })
-    };
+    const obligations = planObligations(loaded.resources, { root: loaded.root,
+      programId: activeProgram.id, asOf, now: options.now ?? generatedAt, model: loaded.model });
+    return { generatedAt, asOf, obligations,
+      workQueue: planWorkQueue(loaded.resources, obligations, { program: activeProgram, model: loaded.model }) };
   }
   if (section === "audits") {
     const programReadiness = options.programReadiness;
@@ -335,6 +332,7 @@ async function createAppStateUnlocked(input, options) {
       diagnostics: validation.diagnostics
     },
     obligations,
+    workQueue: planWorkQueue(loaded.resources, obligations, { program: activeProgram, model: loaded.model }),
     reconciliation,
     collectionReviews,
     applicabilityConstraints,

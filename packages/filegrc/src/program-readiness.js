@@ -1,3 +1,4 @@
+import { planWorkQueue } from "./work-queue.js";
 import { withAssessmentCache } from "./calculation-cache.js";
 import { assessOperatingPreparation, firstOperatingTasks } from "./operating-preparation.js";
 import { reportingCutoverIssues } from "./activation-readiness.js";
@@ -2013,6 +2014,7 @@ async function operationStage(loaded, workspace, scope, records, byId, asOf, evi
   }
 
   const obligations = planObligations(records, { root: loaded.root, programId: workspace.id, asOf, through: asOf, model });
+  const workQueue = planWorkQueue(records, obligations, { program: workspace, model });
   const start = progressWindow?.start || null;
   const end = progressWindow?.end || null;
   const formalWindow = progressWindow?.source === "audit";
@@ -2066,15 +2068,15 @@ async function operationStage(loaded, workspace, scope, records, byId, asOf, evi
     )] : []),
     item(
       "ongoing-obligations",
-      obligations.counts.overdue || obligations.counts.blocked ? "action" : "complete",
+      workQueue.counts.overdue || workQueue.counts.blocked ? "action" : "complete",
       "Keep policy work current",
-      obligations.counts.overdue
-        ? `${obligations.counts.overdue} Work Queue ${obligations.counts.overdue === 1 ? "item is" : "items are"} overdue`
-          + (obligations.counts.blocked ? ` and ${obligations.counts.blocked} ${obligations.counts.blocked === 1 ? "is" : "are"} blocked` : "")
+      workQueue.counts.overdue
+        ? `${workQueue.counts.overdue} Work Queue ${workQueue.counts.overdue === 1 ? "item is" : "items are"} overdue`
+          + (workQueue.counts.blocked ? ` and ${workQueue.counts.blocked} ${workQueue.counts.blocked === 1 ? "is" : "are"} blocked` : "")
           + ". Resolve the work and retain its dated proof."
-        : obligations.counts.blocked
-          ? `${obligations.counts.blocked} Work Queue ${obligations.counts.blocked === 1 ? "item is" : "items are"} blocked. Open each task, review its named blockers, and resolve them before completion.`
-          : `${obligations.counts.due} due and ${obligations.counts.upcoming} upcoming Work Queue items; none are overdue or blocked.`,
+        : workQueue.counts.blocked
+          ? `${workQueue.counts.blocked} Work Queue ${workQueue.counts.blocked === 1 ? "item is" : "items are"} blocked. Open each task, review its named blockers, and resolve them before completion.`
+          : `${workQueue.counts.due} due Work Queue items; none are overdue or blocked.`,
       { type: "obligation" },
       {
         commands: [
