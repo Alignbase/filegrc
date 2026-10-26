@@ -144,3 +144,5 @@ export { assessHostedAutomation, githubRepository, hostedAutomationForConnection
 export { amendedResourceView, scaffoldNonmaterialAmendment, saveNonmaterialAmendment } from "./nonmaterial-amendments.js";
 
 export { scaffoldRetentionApplication, saveRetentionApplication, retentionApplicationIssues } from "./retention-applications.js";
+
+export { scaffoldObligationRuleCorrection, previewObligationRuleCorrection, correctObligationRule } from "./obligation-rule-correction.js";

@@ -1,3 +1,6 @@
+import { workspaceEngineVersion, runtimeCompatibilityLine } from "./runtime-version.js";
+import { recordedCorrectionPopulation, currentSnapshotPopulation, samePopulation } from "./obligation-snapshot.js";
+import { populationCutoffDate, wholePeriodCoverage, requiredPeriodIsFinal } from "./obligation-timing.js";
 import { occurrenceSelectorPopulation } from "./obligation-population.js";
 import { occurrenceCompletionContext } from "./obligation-completion-context.js";
 import { attestationBindingIssue } from "./attestation-integrity.js";
@@ -95,6 +98,19 @@ export async function validateWorkspace(input = process.cwd()) {
 async function validateWorkspaceUnmeasured(input) {
   const loaded = typeof input === "object" && input.entries ? input : await loadWorkspace(input);
   const diagnostics = [...loaded.diagnostics];
+  const usesSnapshotTiming = loaded.resources.some(record => (["meeting", "vulnerability-scan", "exercise", "backup-test", "control-activity"].includes(record.type) && record.coverage) || record.completionCoverage || record.requiredCoverage
+    || record.populationSourceRevision || ["review-date", "coverage-end"].includes(record.selector?.cutoff)
+    || record.cutoverDecision === "correct-open-window");
+  if (usesSnapshotTiming && loaded.root) {
+    let version;
+    try {
+      version = workspaceEngineVersion(loaded.root).lockedVersion;
+    } catch (cause) {
+      if (cause.code !== "FILEGRC_VERSION_DRIFT") throw cause;
+      diagnostics.push(error("snapshot-runtime-adoption-required", "package-lock.json", cause.message));
+    }
+    if (version && runtimeCompatibilityLine(version) !== "0.21.x") diagnostics.push(error("snapshot-runtime-adoption-required", "package-lock.json", "Review-date snapshots and explicit period duties require adoption of FileGRC 0.21 before saving source records. Upgrade and verify every hosted reader first."));
+  }
   let reconciliation = null;
   const { byId } = indexResources(loaded.resources);
   const seen = new Map();
@@ -508,6 +524,11 @@ function validateObligationRule(record, model, byId, path, diagnostics) {
     recurrence: record.recurrence,
     window: record.window
   }, model, byId, path, diagnostics);
+  if (record.selector?.cutoff === "review-date" && record.completionCoverage !== "point-in-time"
+    || record.selector?.cutoff === "coverage-end" && record.completionCoverage !== "whole-period"
+    || record.completionCoverage === "whole-period" && record.selector?.cutoff === "review-date") {
+    diagnostics.push(error("invalid-obligation-coverage-criterion", path, "Review-date requires a point-in-time duty; coverage-end requires a whole-period duty."));
+  }
   if (record.selector?.resourceType) {
     const activity = obligation.activityType === "custom"
       ? { ...model.obligationActivities?.custom, ...obligation.customActivity }
@@ -559,6 +580,16 @@ function validateObligationRule(record, model, byId, path, diagnostics) {
     if (prior?.type === "obligation-rule" && prior.obligationId !== record.obligationId) {
       diagnostics.push(error("wrong-obligation-rule", path, "A rule may supersede only a rule for the same Obligation."));
     }
+    if (record.cutoverDecision === "correct-open-window") {
+      const strip = (value, ignored = []) => Object.fromEntries(Object.entries(value || {}).filter(([key]) => !ignored.includes(key)));
+      if (prior?.completionCoverage === "whole-period" || record.completionCoverage !== "point-in-time"
+        || record.selector?.cutoff !== "review-date"
+        || JSON.stringify(record.recurrence) !== JSON.stringify(prior?.recurrence)
+        || JSON.stringify(record.window) !== JSON.stringify(prior?.window)
+        || JSON.stringify(strip(record.selector, ["cutoff"])) !== JSON.stringify(strip(prior?.selector, ["cutoff"]))) {
+        diagnostics.push(error("invalid-obligation-rule-correction", path, "A snapshot correction must preserve its predecessor's cadence, allowed window and population filters, and cannot downgrade a whole-period duty."));
+      }
+    }
     if (!record.cutoverDecision) {
       diagnostics.push(error("missing-rule-cutover", path, "A superseding rule needs an explicit cutover decision for any open occurrence."));
     }
@@ -582,7 +613,21 @@ function validateObligationOccurrence(record, model, resources, entries, root, w
   }
   const rule = byId.get(record.ruleId);
   const obligation = byId.get(record.obligationId);
-  if (record.collectionReviewId) {
+  const loaded = { root, resources, model };
+  const correctionPopulation = recordedCorrectionPopulation(loaded, record, rule);
+  const snapshotPopulation = currentSnapshotPopulation(loaded, record, rule);
+  if (rule?.selector?.cutoff === "review-date") {
+    if (!correctionPopulation && !snapshotPopulation && !record.collectionReviewId) diagnostics.push(error("missing-obligation-snapshot-source", path, "A review-date snapshot needs its exact committed scope, retained correction source or immutable temporal Collection Review."));
+    if (!parseCalendarDate(record.membershipCutoffAt) || record.membershipCutoffAt < record.coverage?.startsOn
+      || record.membershipCutoffAt > record.coverage?.endsOn || record.membershipCutoffAt > asOf) diagnostics.push(error("invalid-obligation-review-date", path, "The observed population date must be inside the allowed work window and cannot be future-dated."));
+  }
+  if (record.populationSourceRevision && !correctionPopulation) {
+    diagnostics.push(error("invalid-obligation-correction-source", path, "A corrected population must preserve its committed original open occurrence and unchanged duty, window and selector filters."));
+  }
+  if (correctionPopulation || snapshotPopulation) {
+    const population = correctionPopulation?.memberIds || snapshotPopulation;
+    if (!samePopulation(memberIds, population)) diagnostics.push(error("invalid-obligation-snapshot-population", path, "The snapshot must retain every supported member from its exact committed population source."));
+  } else if (record.collectionReviewId) {
     const review = byId.get(record.collectionReviewId);
     const reviewEntry = entries.find(({ record: candidate }) => candidate.id === record.collectionReviewId);
     const historicalSnapshot = historicalCollectionReviewSnapshot(
@@ -645,7 +690,7 @@ function validateObligationOccurrence(record, model, resources, entries, root, w
   if (record.supersedesId) {
     const prior = byId.get(record.supersedesId);
     if (
-      prior?.type === "obligation-occurrence"
+      !correctionPopulation && prior?.type === "obligation-occurrence"
       && (
         prior.programId !== record.programId
         || prior.obligationId !== record.obligationId
@@ -717,7 +762,7 @@ function validateObligationOccurrence(record, model, resources, entries, root, w
         && (!modelSupports(model, "operating-preparation") || assessCompletionForObligation(completion, obligation,
           completionContext,
           { programId: record.programId, asOf: ["reconciled", "superseded"].includes(record.status) && record.reconciledAt
-            ? currentCalendarDate(workspaceTimezone, new Date(record.reconciledAt)) : asOf, window: { dueWindowStart: record.coverage.startsOn || record.coverage.on, dueWindowEnd: record.coverage.endsOn || record.coverage.on } }).complete)) validCompletions.push(completion);
+            ? currentCalendarDate(workspaceTimezone, new Date(record.reconciledAt)) : asOf, window: { dueWindowStart: record.coverage.startsOn || record.coverage.on, dueWindowEnd: record.coverage.endsOn || record.coverage.on, requiredCoverage: record.requiredCoverage } }).complete)) validCompletions.push(completion);
     }
     if (member.result === "passed" && validCompletions.length === 0) {
       diagnostics.push(error(
@@ -759,10 +804,11 @@ function validateObligationOccurrence(record, model, resources, entries, root, w
       "An occurrence reconciliation time cannot be in the future."
     ));
   }
+  if (reconciledOn && !requiredPeriodIsFinal(record, reconciledOn)) diagnostics.push(error("obligation-period-still-open", path, "The full inclusive required period must end before reconciling any population, including zero or non-applicable members."));
   const populationStillOpen = !membershipIsFinal(rule?.selector, {
     dueWindowStart: record.coverage?.startsOn,
-    dueWindowEnd: record.coverage?.endsOn
-  }, reconciledOn);
+    dueWindowEnd: record.coverage?.endsOn, requiredCoverage: record.requiredCoverage
+  }, reconciledOn, record);
   if (reconciledOn && populationStillOpen) {
     diagnostics.push(error(
       "obligation-population-still-open",
@@ -794,7 +840,7 @@ function validateOccurrenceScheduleBinding(record, obligation, rule, resources, 
   const timezone = resources.find(({ type }) => type === "workspace")?.timezone || "UTC";
   const { recurrence, activationDate: cutover } = obligationScheduleRecurrence(obligation, rule, byId, model, timezone);
   if (!start || !validCalendarRecurrence(recurrence)) return;
-  const index = calendarOccurrenceIndex(recurrence, start);
+  const index = Math.max(0, calendarOccurrenceIndex(recurrence, addCalendarDays(start, -(rule.window?.startsAfter || 0))));
   const window = calendarWindow(recurrence, rule.window, index);
   let expectedStart = window?.dueWindowStart || null;
   const expectedEnd = window?.dueWindowEnd || null;
@@ -806,7 +852,22 @@ function validateOccurrenceScheduleBinding(record, obligation, rule, resources, 
       && committedOccurrenceWindowMatches(root, record, resources)) expectedStart = start;
     else if (expectedEnd >= cutover) expectedStart = cutover;
   }
-  const expectedCutoff = rule.selector?.cutoff === "window-end" ? expectedEnd : expectedStart;
+  const expectedCoverage = wholePeriodCoverage(rule, recurrence, window, index);
+  const expectedCutoff = populationCutoffDate(rule.selector, { ...window, dueWindowStart: expectedStart, dueWindowEnd: expectedEnd, requiredCoverage: expectedCoverage }, record);
+  const correction = recordedCorrectionPopulation({ root, resources, model }, record, rule);
+  if (correction) {
+    const prior = correction.source;
+    const priorObligation = correction.resources.find(({ id }) => id === prior.obligationId);
+    const priorRule = correction.resources.find(({ id }) => id === prior.ruleId);
+    const issues = [];
+    validateOccurrenceScheduleBinding(prior, priorObligation, priorRule, correction.resources, model, root, path, issues);
+    if (issues.length) diagnostics.push(...issues);
+    if (!parseCalendarDate(record.membershipCutoffAt) || record.membershipCutoffAt < start
+      || record.membershipCutoffAt > record.coverage.endsOn || record.membershipCutoffAt > currentCalendarDate(timezone)) {
+      diagnostics.push(error("invalid-obligation-review-date", path, "The review date must be an actual observation inside the original allowed window."));
+    }
+    return;
+  }
   const program = resources.find(({ type, id }) => type === "program" && id === record.programId);
   const expectedKey = `${program?.id || "program"}:${obligation.id}:${expectedStart}`;
   const governingRule = resources
@@ -820,7 +881,8 @@ function validateOccurrenceScheduleBinding(record, obligation, rule, resources, 
     ))
     .sort((left, right) => right.effectiveAt.localeCompare(left.effectiveAt))[0];
   if (
-    expectedStart !== start
+    JSON.stringify(record.requiredCoverage || null) !== JSON.stringify(expectedCoverage)
+    || expectedStart !== start
     || record.coverage.endsOn !== expectedEnd
     || record.membershipCutoffAt !== expectedCutoff
     || record.occurrenceKey !== expectedKey

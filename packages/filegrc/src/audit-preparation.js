@@ -1000,7 +1000,7 @@ function occurrenceContinuityStage(audit, records, model, asOf, root) {
     includeComplete: true,
     model
   });
-  const gapStatuses = new Set(["overdue", "blocked", "due", "proposed"]);
+  const gapStatuses = new Set(["overdue", "blocked", "due", "proposed", "waiting"]);
   const calendarGaps = plan.calendarItems.filter(({ status }) => gapStatuses.has(status));
   const eventGaps = plan.eventRuns
     .filter((run) => run.status !== "canceled" && run.occurredOn >= periodStart && run.occurredOn <= periodThrough)

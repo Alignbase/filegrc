@@ -441,3 +441,15 @@ test("a later committed runtime upgrade cannot repair unsupported original adopt
   const loaded = await loadWorkspace(root), application = loaded.resources.find(({ type }) => type === "retention-application");
   assert.ok(retentionApplicationIssues(loaded, application).some(({ message }) => message.includes("no later than its first retention application commit")));
 });
+
+test("runtime adoption preserves earlier service decisions and bounds the approved 0.21 line", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-retention-runtime-lines-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  for (const [version, service, source] of [["0.19.1", false, false], ["0.19.2", true, false], ["0.20.8", true, true], ["0.21.0", true, true], ["0.22.0", false, false]]) {
+    await writeJson(join(root, "package.json"), { dependencies: { filegrc: version } });
+    await writeJson(join(root, "package-lock.json"), { packages: { "": { dependencies: { filegrc: version } }, "node_modules/filegrc": { version } } });
+    const loaded = { root, resources: [] };
+    assert.equal(retentionApplicationRuntimeSupported(loaded), service, version);
+    assert.equal(retentionApplicationRuntimeSupported(loaded, null, "source-coverage"), source, version);
+  }
+});

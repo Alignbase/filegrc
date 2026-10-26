@@ -258,9 +258,9 @@ export function workflowForResource(workflow, type, id, loaded = null) {
     related: {
       findings: relatedFindings,
       workItems: relatedWorkItems,
-      recommended: contextualAction([...relatedFindings, ...relatedWorkItems].sort(compareRecommended)[0], loaded)
+      recommended: contextualAction([...relatedFindings, ...relatedWorkItems].filter((item) => item.state !== "waiting").sort(compareRecommended)[0], loaded)
     },
-    recommended: contextualAction([...findings, ...workItems].sort(compareRecommended)[0], loaded)
+    recommended: contextualAction([...findings, ...workItems].filter((item) => item.state !== "waiting").sort(compareRecommended)[0], loaded)
   };
 }
 
@@ -925,18 +925,24 @@ async function assessPeriodHealth(loaded, options) {
     includeComplete: true,
     model: loaded.model
   });
-  for (const item of occurrences.items.filter((item) => ["overdue", "blocked", "due", "proposed"].includes(item.status))) {
+  for (const item of occurrences.items.filter((item) => ["overdue", "blocked", "due", "proposed", "waiting"].includes(item.status))) {
     findings.push(periodFinding(
       `period.obligation.${item.key || stableSuffix(JSON.stringify(item))}`,
       item.title,
-      item.status === "proposed"
+      item.status === "waiting"
+        ? item.awaitingPeriodEnd
+          ? `Current member work is recorded, but the required period remains open through ${item.requiredCoverage.endsOn}; reconcile after its inclusive final day.`
+          : `Current member work is recorded, but the population remains open through ${item.membershipCutoffAt}; the occurrence has not been reconciled.`
+        : item.status === "proposed"
         ? "This occurrence is still a proposal because its governing policy, control, owner, or completion profile is incomplete."
         : item.status === "blocked"
           ? item.blockingReason || "This work is blocked by an unresolved source record."
         : item.status === "due"
           ? `This occurrence is open within its allowed window and must be completed by ${item.dueWindowEnd}.`
           : `The expected occurrence for ${item.dueWindowStart} through ${item.dueWindowEnd} has no accepted completion.`,
-      item.status === "overdue"
+      item.status === "waiting"
+        ? "waiting"
+        : item.status === "overdue"
         ? "overdue"
         : item.status === "blocked"
           ? "blocked"
@@ -1308,6 +1314,7 @@ function obligationWorkItem(item, byId, asOf, programId) {
     ...(item.dueWindowStart ? { availableOn: item.dueWindowStart } : {}),
     ...(due ? { dueOn: due } : {}),
     state: item.status,
+    ...(item.timingStatus ? { timingStatus: item.timingStatus } : {}),
     priority: workPriority(item.status, due?.slice(0, 10), asOf),
     scope: item.scopeResourceIds || (subjectId ? [subjectId] : []),
     blockingReason: item.blockingReason || item.reason || null,
@@ -1316,7 +1323,10 @@ function obligationWorkItem(item, byId, asOf, programId) {
       membershipFinal: item.membershipFinal,
       membershipCutoffAt: item.membershipCutoffAt,
       memberWorkComplete: item.memberWorkComplete,
-      awaitingPopulationCutoff: item.awaitingPopulationCutoff
+      awaitingPopulationCutoff: item.awaitingPopulationCutoff,
+      awaitingPeriodEnd: item.awaitingPeriodEnd,
+      periodFinal: item.periodFinal,
+      requiredCoverage: item.requiredCoverage || null
     } : {}),
     requiredCompletionProfile: item.completionProfile || item.activityType || null,
     completionProfile: {
@@ -1357,7 +1367,7 @@ function obligationNextAction(item, programId) {
   if (item.ruleId) {
     return {
       kind: "command",
-      ...(item.awaitingPopulationCutoff ? { message: `Work is recorded for the current population. Reconcile after ${item.membershipCutoffAt}; include any additional eligible members through that cutoff.` } : {}),
+      ...(item.awaitingPeriodEnd ? { message: `Work is recorded for the current population. Reconcile after the full inclusive period ends on ${item.requiredCoverage.endsOn}.` } : item.awaitingPopulationCutoff ? { message: `Work is recorded for the current population. Reconcile after ${item.membershipCutoffAt}; include any additional eligible members through that cutoff.` } : {}),
       command: `npx filegrc reconcile-obligation ${shellArgument(item.obligationId)} --scaffold --window-start ${shellArgument(item.dueWindowStart)}${item.status === "complete" ? " --correct-finalized" : ""}${programOption}`
     };
   }
@@ -1397,7 +1407,7 @@ function buildAssessments({ program, audits, auditPreparations, obligationPlan, 
   const periodHealthy = periodStarted
     && obligationPlan.counts.overdue === 0
     && obligationPlan.counts.blocked === 0
-    && !periodFindings.some(blockingFinding);
+    && !periodFindings.some((finding) => blockingFinding(finding) || finding.state === "waiting");
   const auditValues = Object.values(auditPreparations);
   const auditReady = audits.length > 0
     && auditValues.every((preparation) => preparation.status === "management-ready");
@@ -1540,7 +1550,7 @@ function recommendedAction(findings, workItems, program) {
     ));
     if (preferred) return preferred;
   }
-  return [...findings.filter(blockingFinding), ...workItems.filter(activeWork)]
+  return [...findings.filter(blockingFinding), ...workItems.filter((item) => activeWork(item) && item.state !== "waiting")]
     .sort(compareRecommended)[0] || null;
 }
 
@@ -1569,6 +1579,7 @@ function findingPriority(finding) {
 }
 
 function workPriority(state, dueOn, asOf) {
+  if (state === "waiting") return 60;
   if (state === "overdue") return 0;
   if (dueOn && asOf && dueOn < asOf) return 5;
   if (state === "due") return 10;

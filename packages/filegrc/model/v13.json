@@ -4380,6 +4380,13 @@
           "allowedWhen": {
             "status": "canceled"
           }
+        },
+        "coverage": {
+          "type": "object",
+          "required": false,
+          "label": "Work coverage",
+          "description": "The actual date or period inspected by this work. A whole-period duty requires an explicit range covering its required period; a completed test does not imply future coverage.",
+          "objectType": "coverage-period"
         }
       },
       "listFields": [
@@ -6020,6 +6027,13 @@
             "component"
           ],
           "label": "Components"
+        },
+        "coverage": {
+          "type": "object",
+          "required": false,
+          "label": "Work coverage",
+          "description": "The actual date or period inspected by this work. A whole-period duty requires an explicit range covering its required period; a completed test does not imply future coverage.",
+          "objectType": "coverage-period"
         }
       },
       "listFields": [
@@ -6342,6 +6356,13 @@
             "component"
           ],
           "label": "Components"
+        },
+        "coverage": {
+          "type": "object",
+          "required": false,
+          "label": "Work coverage",
+          "description": "The actual date or period inspected by this work. A whole-period duty requires an explicit range covering its required period; a completed test does not imply future coverage.",
+          "objectType": "coverage-period"
         }
       },
       "listFields": [
@@ -6481,6 +6502,13 @@
             "component"
           ],
           "label": "Components"
+        },
+        "coverage": {
+          "type": "object",
+          "required": false,
+          "label": "Work coverage",
+          "description": "The actual date or period inspected by this work. A whole-period duty requires an explicit range covering its required period; a completed test does not imply future coverage.",
+          "objectType": "coverage-period"
         }
       },
       "listFields": [
@@ -8465,6 +8493,13 @@
           "allowedWhen": {
             "status": "canceled"
           }
+        },
+        "coverage": {
+          "type": "object",
+          "required": false,
+          "label": "Work coverage",
+          "description": "The actual date or period inspected by this work. A whole-period duty requires an explicit range covering its required period; a completed test does not imply future coverage.",
+          "objectType": "coverage-period"
         }
       },
       "listFields": [
@@ -9030,7 +9065,8 @@
           "values": [
             "new-windows-only",
             "supersede-open-window",
-            "keep-open-window"
+            "keep-open-window",
+            "correct-open-window"
           ]
         },
         "supersedesId": {
@@ -9054,6 +9090,15 @@
           ],
           "label": "Preparation purpose",
           "description": "Classify the adopted work. A review decides applicability or cadence; test execution needs a real result for the declared population."
+        },
+        "completionCoverage": {
+          "type": "enum",
+          "values": [
+            "point-in-time",
+            "whole-period"
+          ],
+          "label": "Required proof coverage",
+          "description": "Point-in-time work is executed within the allowed window. Whole-period work must prove the complete recurrence period, separately from its allowed execution window."
         }
       },
       "listFields": [
@@ -9202,6 +9247,15 @@
           "relation": [
             "program"
           ]
+        },
+        "requiredCoverage": {
+          "type": "object",
+          "objectType": "coverage-period",
+          "label": "Required proof coverage"
+        },
+        "populationSourceRevision": {
+          "type": "string",
+          "label": "Recorded population source commit"
         }
       },
       "listFields": [
@@ -11151,8 +11205,11 @@
           "type": "enum",
           "values": [
             "window-start",
-            "window-end"
-          ]
+            "window-end",
+            "review-date",
+            "coverage-end"
+          ],
+          "description": "window-start and window-end use inclusive calendar boundaries. review-date freezes an explicitly observed snapshot on its actual date. coverage-end uses the required whole-period proof boundary."
         }
       }
     },

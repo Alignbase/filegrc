@@ -34,9 +34,9 @@ export function retentionApplicationRuntimeSupported(loaded, commit = null, targ
       const read = (name) => JSON.parse(commit ? runGitCommandSync(loaded.root, ["show", `${commit}:./${name}`], { timeout: 5000, maxBuffer: 2000000 }) : readFileSync(join(loaded.root, name), "utf8"));
       const manifest = read("package.json"), lock = read("package-lock.json");
       const entry = lock.packages?.["node_modules/filegrc"];
-      const requested = /^(?:\^|~)?0\.(19|20)\.(0|[1-9]\d*)$/.exec(manifest.dependencies?.filegrc || "");
-      const installed = /^0\.(19|20)\.(0|[1-9]\d*)$/.exec(entry?.version || "");
-      const supported = (version) => version && (Number(version[1]) === 20 || !sourceCoverage && Number(version[1]) === 19 && Number(version[2]) >= 2);
+      const requested = /^(?:\^|~)?0\.(19|20|21)\.(0|[1-9]\d*)$/.exec(manifest.dependencies?.filegrc || "");
+      const installed = /^0\.(19|20|21)\.(0|[1-9]\d*)$/.exec(entry?.version || "");
+      const supported = (version) => version && ([20, 21].includes(Number(version[1])) || !sourceCoverage && Number(version[1]) === 19 && Number(version[2]) >= 2);
       return Boolean(supported(requested) && supported(installed)
         && lock.packages?.[""]?.dependencies?.filegrc === manifest.dependencies.filegrc && !entry?.link
         && installed[1] === requested[1] && Number(installed[2]) >= Number(requested[2]));

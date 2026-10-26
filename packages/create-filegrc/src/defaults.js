@@ -1136,7 +1136,7 @@ export function baselineRecordFiles(effectiveDate, starter = "security") {
       ? { ...obligation.recurrence, anchorDate: effectiveDate }
       : obligation.recurrence,
     ...(obligation.window ? { window: obligation.window } : {}),
-    ...(starterObligationSelector(obligation.id) ? { selector: starterObligationSelector(obligation.id) } : {}),
+    ...(starterObligationSelector(obligation.id) ? { selector: starterObligationSelector(obligation.id), completionCoverage: "point-in-time" } : {}),
     ...(obligation.id === "obligation-annual-penetration-test" ? { preparationPurpose: "applicability-review" }
       : ["backup-test", "exercise", "penetration-test", "vulnerability-scan", "security-scan", "alert-path-test"].includes(obligation.activityType) ? { preparationPurpose: "test-execution" } : {}),
     rationale: starterObligationRationale(obligation.id),
@@ -1221,7 +1221,7 @@ function starterObligationSelector(obligationId) {
   return definition ? {
     ...definition,
     membershipMode: "as-of",
-    cutoff: "window-end"
+    cutoff: obligationId === "obligation-annual-critical-vendor-review" ? "window-end" : "review-date"
   } : null;
 }
 

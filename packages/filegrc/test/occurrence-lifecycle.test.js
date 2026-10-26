@@ -69,6 +69,9 @@ test("vendor termination preserves committed in-window work through cutoff recon
     from: f.start, through: f.today, includeComplete: true }).calendarItems.find(({ obligationId }) => obligationId === f.obligation.id);
   assert.deepEqual(item.expectedMemberIds, [vendor.record.id]);
   assert.equal(item.completedCount, 1);
+  assert.equal(item.status, "waiting");
+  assert.equal(item.timingStatus, "due");
+  assert.equal(item.awaitingPopulationCutoff, true);
   assert.equal((await validateWorkspace(f.root)).ok, true, JSON.stringify((await validateWorkspace(f.root)).diagnostics));
   // A later inventory addition remains writable; it enters the derived queue
   // immediately and the owner must include it in the next reconciliation.
@@ -76,6 +79,9 @@ test("vendor termination preserves committed in-window work through cutoff recon
   loaded = await loadWorkspace(f.root);
   const next = await scaffoldObligationOccurrence(f.root, { obligationId: f.obligation.id, windowStart: f.start, asOf: f.today });
   assert.deepEqual(next.record.members.map(({ resourceId }) => resourceId), ["vendor-added", "vendor-example"]);
+  const actionable = planObligations(loaded.resources, { root: f.root, model: loaded.model, asOf: f.today, from: f.start, through: f.today }).calendarItems.find(({ obligationId }) => obligationId === f.obligation.id);
+  assert.equal(actionable.status, "due");
+  assert.equal(actionable.awaitingPopulationCutoff, false);
   assert.equal(next.record.members.find(({ resourceId }) => resourceId === vendor.record.id).result, "passed");
   occurrence = loaded.entries.find(({ record }) => record.id === f.occurrenceId);
   const dropped = { ...occurrence.record, members: [], expectedCount: 0, completedCount: 0 };

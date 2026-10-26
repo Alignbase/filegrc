@@ -2341,11 +2341,11 @@ function renderObligations(main, params = new URLSearchParams()) {
     : "";
   const activeOperation = operationLocked
     ? (acceptedTriggers.length ? renderEvents(acceptedTriggers, "active", "Trigger the matching workflow when an event occurs. filegrc adds every required action to the Work Queue with its owner and deadline.") : "") +
-      (currentItems.length ? renderQueue(currentItems, ["upcoming", "due", "overdue", "blocked"], "Complete work the program has already adopted. Each card shows its due window, source, and next action.") : "")
+      (currentItems.length ? renderQueue(currentItems, ["upcoming", "due", "overdue", "blocked", "waiting"], "Complete work the program has already adopted. Each card shows its due window, source, and next action.") : "")
     : "";
   const setupTriggers = operationLocked ? proposedTriggers : orderedTriggers;
   const setupItems = operationLocked ? proposedItems : plan.items;
-  const setupStatuses = operationLocked ? ["proposed"] : ["upcoming", "due", "overdue", "blocked", "proposed"];
+  const setupStatuses = operationLocked ? ["proposed"] : ["upcoming", "due", "overdue", "blocked", "waiting", "proposed"];
   const operationSetupOpen = operationLocked ? "" : " open";
   const operationSetupSummary = operationLocked
     ? '<summary>Preview ' + proposedTriggers.length + ' proposed Policy Events and ' + proposedItems.length + ' proposed Work Queue items</summary>'
@@ -2471,7 +2471,7 @@ function activePolicyEventTriggers(triggers) {
 }
 
 function activeOperationItems(items) {
-  return items.filter(({ status }) => ["overdue", "due", "blocked", "upcoming"].includes(status));
+  return items.filter(({ status }) => ["overdue", "due", "blocked", "upcoming", "waiting"].includes(status));
 }
 
 function policyEventTrigger(trigger, index, collapsed = false, scope = "events") {
@@ -2537,12 +2537,12 @@ function obligationCard(item, collapsed = false) {
       : item.actionItemId
         ? '<button class="obligation-action" type="button" data-complete-action="' + esc(item.key) + '">Complete task</button>'
         : item.ruleId
-          ? (item.reconciliationStatus !== "reconciled" ? '<button class="obligation-action" type="button" data-record-obligation="' + esc(item.key) + '">Record work</button>' : '') + '<button class="obligation-action" type="button" data-reconcile-obligation="' + esc(item.key) + '">' + (item.reconciliationStatus === "reconciled" ? "Correct result" : "Review population") + '</button>'
+          ? (item.reconciliationStatus !== "reconciled" && item.status !== "waiting" ? '<button class="obligation-action" type="button" data-record-obligation="' + esc(item.key) + '">Record work</button>' : '') + '<button class="obligation-action" type="button" data-reconcile-obligation="' + esc(item.key) + '">' + (item.reconciliationStatus === "reconciled" ? "Correct result" : "Review population") + '</button>'
           : '<button class="obligation-action" type="button" data-record-obligation="' + esc(item.key) + '">Record work</button>'
     : "");
   const kind = item.kind === "event" ? "Policy Event Task" : item.kind === "action" ? "Assigned Follow-up" : properCase(item.activityType || "Recurring");
   const population = item.ruleId
-    ? '<p><strong>' + esc(String(item.completedCount || 0)) + ' of ' + esc(String(item.expectedCount || 0)) + '</strong> expected members passed' + (item.membershipFinal ? '' : (item.awaitingPopulationCutoff ? '; work recorded, awaiting population cutoff ' : '; population remains open through ') + esc(item.membershipCutoffAt)) + '.</p>'
+    ? '<p><strong>' + esc(String(item.completedCount || 0)) + ' of ' + esc(String(item.expectedCount || 0)) + '</strong> expected members passed' + (item.awaitingPeriodEnd ? '; work recorded, awaiting full period end ' + esc(item.requiredCoverage.endsOn) : item.membershipFinal ? '' : (item.awaitingPopulationCutoff ? '; work recorded, awaiting population cutoff ' : '; population remains open through ') + esc(item.membershipCutoffAt)) + '.</p>'
     : '';
   return '<article class="obligation-card status-' + esc(item.status) + '" data-work-source="' + esc(type + ":" + id) + '"' + (collapsed ? ' data-collapsed hidden' : "") + '><div class="obligation-card-head"><span>' + esc(kind) + '</span><strong>' + esc(timingText(item)) + '</strong></div><h3><a href="#/resource/' + type + '/' + encodeURIComponent(id) + '">' + esc(titleCase(item.title)) + '</a></h3><p>' + esc(windowText(item)) + '</p>' + population + '<div class="obligation-card-foot"><div class="obligation-links">' + (item.policyIds || []).map(formatReference).join("") + '</div>' + action + '</div></article>';
 }
@@ -2615,15 +2615,18 @@ function openActionCompletion(item) {
   });
 }
 
-function openObligationCompletion(item) {
+async function openObligationCompletion(item) {
   const obligation = state.resources.find(({ record }) => record.type === "obligation" && record.id === item.obligationId);
   if (!obligation) return showError("The obligation template could not be found.");
   const completion = obligationCompletionPlan(item);
   if (completion.blocked) return;
+  const populationAsOf = await observationDateForItem(item);
+  if (populationAsOf === null) return;
   openEditor(completion.type, null, {
     seed: obligationCompletionSeed(completion.type, item, obligation.record),
     obligationCompletion: {
       obligationId: item.obligationId,
+      populationAsOf,
       revision: obligation.revision,
       completionContext: item.ruleId ? {
         windowStart: item.dueWindowStart,
@@ -2639,6 +2642,8 @@ function openObligationCompletion(item) {
 }
 
 async function openObligationReconciliation(item) {
+  const populationAsOf = await observationDateForItem(item);
+  if (populationAsOf === null) return;
   try {
     const response = await localFetch("/api/obligation-occurrences/scaffold", {
       method: "POST",
@@ -2647,6 +2652,7 @@ async function openObligationReconciliation(item) {
         obligationId: item.obligationId,
         windowStart: item.dueWindowStart,
         asOf: currentDate(),
+        populationAsOf,
         correctFinalized: item.reconciliationStatus === "reconciled"
       })
     });
@@ -2661,12 +2667,88 @@ async function openObligationReconciliation(item) {
       description: "Review each member and its proof. Counts and the conclusion are calculated from the rows below.",
       occurrenceReview: true,
       membershipFinal: scaffold.membershipFinal,
+      periodFinal: scaffold.periodFinal,
       occurrenceReconciliation: { revision: scaffold.revision },
       saveLabel: scaffold.operation === "update" ? "Save reconciliation" : scaffold.operation === "supersede" ? "Create correction" : "Create population review"
     });
   } catch (error) {
     showError(error.message);
   }
+}
+
+function observationDateForItem(item) {
+  const rule = state.resources.find(({ record }) => record.id === item.ruleId)?.record;
+  if (rule?.selector?.cutoff !== "review-date") return Promise.resolve(undefined);
+  const occurrence = state.resources.find(({ record }) => record.id === item.occurrenceId)?.record;
+  if (occurrence?.membershipCutoffAt) return Promise.resolve(occurrence.membershipCutoffAt);
+  return new Promise((resolve) => {
+    const dialog = document.createElement("dialog");
+    dialog.className = "editor";
+    dialog.innerHTML = '<form><div class="dialog-head"><h2>Population observation date</h2></div><p>Choose the date you actually reviewed this population. A snapshot covers members eligible on that date. It does not establish work throughout the occurrence period.</p><label class="field-group"><span>Observed on</span><input type="date" name="observedOn" min="' + esc(item.dueWindowStart) + '" max="' + esc([item.dueWindowEnd, currentDate()].sort()[0]) + '" required></label><div class="dialog-actions"><button type="button" class="button" data-cancel>Cancel</button><button type="submit" class="button primary">Continue</button></div></form>';
+    let selected = null;
+    document.body.append(dialog);
+    dialog.addEventListener("close", () => { dialog.remove(); resolve(selected); });
+    dialog.querySelector("[data-cancel]").addEventListener("click", () => dialog.close());
+    dialog.querySelector("form").addEventListener("submit", (event) => { event.preventDefault(); selected = event.currentTarget.elements.observedOn.value; dialog.close(); });
+    dialog.showModal();
+  });
+}
+
+async function openObligationRuleCorrection(ruleId) {
+  try {
+    const response = await localFetch("/api/obligation-rule-corrections/scaffold", {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ruleId })
+    });
+    const scaffold = await response.json();
+    if (!response.ok) throw new Error(scaffold.error || "Could not prepare the cutoff correction.");
+    const dialog = document.createElement("dialog");
+    dialog.className = "editor";
+    const people = resourcesOfType("person").filter(({ record }) => record.status === "active");
+    dialog.innerHTML = '<form><div class="dialog-head"><h2>Correct snapshot cutoff</h2><button type="button" class="icon-button" data-cancel aria-label="Close">×</button></div><p>Use this only when the existing duty is a point-in-time review. The successor preserves the schedule, allowed work windows, original approvals, retained member decisions, and proof dates. It does not approve the shared schedule collection.</p><div class="form-grid"><label class="field-group full"><span>Correction rationale</span><textarea name="rationale" rows="4" style="min-height:100px;max-height:160px" required></textarea></label><label class="field-group"><span>Authorized on</span><input type="date" name="approvedOn" required value="' + esc(currentDate()) + '"></label><label class="field-group"><span>Actual authorization timestamp, including timezone</span><input name="effectiveAt" required placeholder="YYYY-MM-DDTHH:mm:ss-05:00"></label><fieldset class="field-group full"><legend>Authorized by</legend>' + people.map(({ record }) => '<label><input type="checkbox" name="approver" value="' + esc(record.id) + '">' + esc(record.title) + '</label>').join("") + '</fieldset><fieldset class="field-group full"><legend>Open occurrences to correct</legend>' + scaffold.corrections.map((correction, index) => '<label class="field-group"><span><input type="checkbox" name="occurrence" value="' + index + '"> ' + esc(state.resources.find(({ record }) => record.id === correction.sourceOccurrenceId)?.record.title || correction.sourceOccurrenceId) + '</span><span>Actual population observation date</span><input type="date" name="population-' + index + '"></label>').join("") + '</fieldset><label class="field-group full"><input type="checkbox" name="pointInTime" required>I confirm this duty is a point-in-time review.</label><label class="field-group full"><input type="checkbox" name="population" required>I reviewed the retained population and its recorded member decisions.</label></div><pre class="correction-preview" style="max-height:240px;overflow:auto;white-space:pre-wrap" hidden></pre><div class="dialog-error" role="alert"></div><div class="dialog-actions"><button type="button" class="button" data-cancel>Cancel</button><button type="button" class="button" data-export>Export payload</button><button type="submit" class="button primary">Preview correction</button><button type="button" class="button primary" data-apply hidden>Apply reviewed correction</button></div></form>';
+    document.body.append(dialog);
+    dialog.showModal();
+    dialog.addEventListener("close", () => dialog.remove());
+    dialog.querySelectorAll("[data-cancel]").forEach((button) => button.addEventListener("click", () => dialog.close()));
+    const form = dialog.querySelector("form");
+    const error = dialog.querySelector(".dialog-error");
+    const apply = dialog.querySelector("[data-apply]");
+    let previewedPayload = null;
+    const payload = () => ({
+      ...scaffold,
+      record: { ...scaffold.record, rationale: form.elements.rationale.value },
+      approvedOn: form.elements.approvedOn.value,
+      effectiveAt: form.elements.effectiveAt.value,
+      approvedByIds: [...form.querySelectorAll('[name="approver"]:checked')].map(({ value }) => value),
+      confirmPointInTimeDuty: form.elements.pointInTime.checked,
+      confirmRecordedPopulation: form.elements.population.checked,
+      corrections: [...form.querySelectorAll('[name="occurrence"]:checked')].map(({ value }) => ({ ...scaffold.corrections[Number(value)], populationAsOf: form.elements["population-" + value].value }))
+    });
+    form.addEventListener("input", () => { previewedPayload = null; apply.hidden = true; });
+    dialog.querySelector("[data-export]").addEventListener("click", () => {
+      const url = URL.createObjectURL(new Blob([JSON.stringify(previewedPayload || payload(), null, 2) + "\n"], { type: "application/json" }));
+      const link = document.createElement("a"); link.href = url; link.download = ruleId + "-correction.json"; link.click(); URL.revokeObjectURL(url);
+    });
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault(); error.textContent = "";
+      try {
+        const candidate = payload();
+        const response = await localFetch("/api/obligation-rule-corrections/preview", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(candidate) });
+        const preview = await response.json();
+        if (!response.ok) throw new Error(preview.error || "Correction preview failed.");
+        previewedPayload = { ...candidate, confirmedRevision: preview.revision };
+        const output = dialog.querySelector(".correction-preview"); output.hidden = false; output.textContent = JSON.stringify(preview, null, 2); apply.hidden = false;
+      } catch (caught) { error.textContent = caught.message; }
+    });
+    apply.addEventListener("click", async () => {
+      if (!previewedPayload) return;
+      setButtonBusy(apply, true, "Applying…");
+      try {
+        const response = await localFetch("/api/obligation-rule-corrections", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(previewedPayload) });
+        if (!response.ok) throw new Error(await responseMessage(response));
+        applyMutationState(await response.json()); dialog.close(); render();
+      } catch (caught) { error.textContent = caught.message; setButtonBusy(apply, false); }
+    });
+  } catch (error) { showError(error.message); }
 }
 
 async function openObligationRuleActivation(ruleId) {
@@ -3324,6 +3406,7 @@ function eventReminderPreview(triggers) {
 }
 
 function windowText(item) {
+  if (item.status === "waiting") return "Recorded work window: " + formatCalendarDate(item.dueWindowStart) + " through " + formatCalendarDate(item.dueWindowEnd) + ".";
   if (item.dueWindowEndAt) {
     return formatLocalDateTime(item.dueWindowStartAt) + " through " + formatLocalDateTime(item.dueWindowEndAt) + ". Overdue after that cutoff.";
   }
@@ -3333,6 +3416,7 @@ function windowText(item) {
 }
 
 function timingText(item) {
+  if (item.status === "waiting") return item.awaitingPeriodEnd ? "Awaiting period end" : "Awaiting population cutoff";
   if (item.canceledAction) return "Action canceled; resolve or cancel the event";
   if (item.missingCompletion) return "Link required completion proof";
   if (item.status === "blocked") return item.blockingReason || "Blocked";
@@ -3607,6 +3691,7 @@ function renderDetail(main, type, id, params = new URLSearchParams()) {
   const amendmentAllowed = !state.readOnly && amendmentTarget && Object.values(state.model.nonmaterialAmendments || {}).some((rule) => rule.resourceTypes.includes(amendmentTarget.record.type))
     && (type !== "reporting-route-set" || ["approved", "proposed"].includes(entry.record.status));
   const retentionApplicationAction = !state.readOnly && type === "retention-schedule-item" && entry.record.status === "active" && state.model.resources["retention-application"] ? '<button class="button" type="button" data-apply-retention-rule>Apply approved rule</button>' : "";
+  const ruleCorrectionAction = !state.readOnly && type === "obligation-rule" && entry.record.status === "active" && entry.record.selector && entry.record.completionCoverage !== "whole-period" ? '<button class="button" type="button" data-correct-obligation-rule>Correct snapshot cutoff</button>' : "";
   const amendmentAction = amendmentAllowed ? '<button class="button" type="button" data-amend-nonmaterial>Nonmaterial amendment</button>' : "";
   const amendmentView = entry.nonmaterialView;
   const amendmentPanel = amendmentView?.amendmentIds.length ? '<section class="panel nonmaterial-current-panel"><div class="panel-head"><h3>Current administrative details</h3></div><p>The source record and any original approval remain unchanged. These are owner-authorized administrative corrections.</p><dl class="metadata">' + (type === "reporting-route-set" ? ["primaryLane", "alternateLane"].filter((name) => amendmentView.record[name]).map((name) => '<div><dt>' + (name === "primaryLane" ? "Normal channel" : "Fallback channel") + '</dt><dd>' + esc(amendmentView.record[name].destination) + '</dd></div>').join("") : '<div><dt>Current label</dt><dd>' + esc(amendmentView.record.title) + '</dd></div>') + '</dl><p>' + amendmentView.amendmentIds.map((id) => '<a href="#/resource/nonmaterial-amendment/' + encodeURIComponent(id) + '">' + esc(state.resources.find(({ record }) => record.id === id)?.record.title || id) + '</a>').join(" · ") + '</p></section>' : "";
@@ -3632,8 +3717,9 @@ function renderDetail(main, type, id, params = new URLSearchParams()) {
     ? '<a class="button" href="#/resources/' + encodeURIComponent(type) + '?review=1">' + (applicabilityStatus === "stale" ? "Reconfirm" : "Review") + ' applicability</a>'
     : "";
   const recordMenu = '<details class="record-overflow"><summary aria-label="More record actions" title="More record actions"><svg viewBox="0 0 18 4" aria-hidden="true"><circle cx="2" cy="2" r="2"></circle><circle cx="9" cy="2" r="2"></circle><circle cx="16" cy="2" r="2"></circle></svg></summary><div class="record-overflow-menu" aria-label="Record actions"><button type="button" data-record-modal="info">Record info</button><button type="button" data-record-modal="connections">Connections</button><button type="button" data-record-modal="history"' + (entry.historyLoaded === false ? ' disabled' : '') + '>File history' + (entry.historyLoaded === false ? ' (loading)' : '') + '</button>' + (mayDelete ? '<div class="record-overflow-separator"></div><button class="danger-text" type="button" data-delete-resource>Delete record</button>' : '') + '</div></details>';
-  main.innerHTML = '<div class="page"><div class="detail-head"><div><div class="breadcrumbs header-breadcrumbs"><a href="' + collectionHref + '">' + esc(collectionLabel) + '</a><span>/</span><span>' + esc(entry.record.title) + '</span></div><h2>' + esc(titleCase(entry.nonmaterialView?.record.title || entry.record.title)) + '</h2></div><div class="actions">' + reportingRouteSetActions + amendmentAction + retentionApplicationAction + auditCycleAction + auditPopulationCorrectionAction + (type === "audit" ? '<a class="button primary" href="#/audit-packet?auditId=' + encodeURIComponent(entry.record.id) + '">Audit Evidence &amp; Packet</a>' : "") + governanceActions + lifecycleActions + issueActions + applicabilityAction + addRecordContentAction + (!state.readOnly && !routeSetLocked ? '<button class="button" id="edit-resource">Edit</button>' : "") + recordMenu + '</div></div>' + amendmentPanel + '<div class="detail-grid ' + (hasRecordBody ? "" : "detail-grid-structured") + (type === "control" ? " detail-control" : "") + '">' + detailMain + supportPanels + (hasStructuredMetadata ? recordFieldsPanel : "") + '</div></div>';
+  main.innerHTML = '<div class="page"><div class="detail-head"><div><div class="breadcrumbs header-breadcrumbs"><a href="' + collectionHref + '">' + esc(collectionLabel) + '</a><span>/</span><span>' + esc(entry.record.title) + '</span></div><h2>' + esc(titleCase(entry.nonmaterialView?.record.title || entry.record.title)) + '</h2></div><div class="actions">' + reportingRouteSetActions + ruleCorrectionAction + amendmentAction + retentionApplicationAction + auditCycleAction + auditPopulationCorrectionAction + (type === "audit" ? '<a class="button primary" href="#/audit-packet?auditId=' + encodeURIComponent(entry.record.id) + '">Audit Evidence &amp; Packet</a>' : "") + governanceActions + lifecycleActions + issueActions + applicabilityAction + addRecordContentAction + (!state.readOnly && !routeSetLocked ? '<button class="button" id="edit-resource">Edit</button>' : "") + recordMenu + '</div></div>' + amendmentPanel + '<div class="detail-grid ' + (hasRecordBody ? "" : "detail-grid-structured") + (type === "control" ? " detail-control" : "") + '">' + detailMain + supportPanels + (hasStructuredMetadata ? recordFieldsPanel : "") + '</div></div>';
   main.querySelectorAll("[data-completion-requirements]").forEach((button) => button.addEventListener("click", () => openCompletionRequirementsDialog(button.dataset.completionRequirements)));
+  main.querySelector("[data-correct-obligation-rule]")?.addEventListener("click", () => openObligationRuleCorrection(entry.record.id));
   main.querySelector("[data-select-program-for-review]")?.addEventListener("click", () => {
     selectProgram(entry.record.id, "#/resources/requirement?review=1");
   });
@@ -4427,7 +4513,7 @@ async function openNonmaterialAmendmentDialog(entry, proposal = null, category =
     const evidence = resourcesOfType("evidence").filter(({ record }) => ["collected", "verified"].includes(record.status) && record.sourceKind === "file" && record.filePaths?.length && (record.sourceResourceIds || []).some((id) => [entry.record.id, proposal?.record.id].includes(id)));
     const dialog = document.createElement("dialog");
     dialog.className = "editor nonmaterial-amendment-dialog";
-    dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">Owner decision</p><h2>Record nonmaterial amendment</h2></div><button type="button" class="icon-button" data-dismiss aria-label="Close">×</button></div><p>Keep the original record and independent approval unchanged. Correct only an administrative label or an equivalent email alias. Changes to recipients, access, scope, commitments, schedules or content need normal review.</p><div class="form-grid"><label class="form-field full"><span>Correction category</span><select name="category">' + categories.map(([key, item]) => '<option value="' + esc(key) + '"' + (key === scaffold.record.category ? ' selected' : '') + '>' + esc(item.title) + '</option>').join("") + '</select></label><label class="form-field full"><span>Field</span><select name="fieldKey">' + rule.fieldPaths.filter((path) => scaffold.record.category !== "reporting-email-alias" || entry.record[path.split(".")[0]]?.channelKind === "email").map((path) => '<option value="' + esc(path) + '"' + (path === scaffold.record.fieldKey ? ' selected' : '') + '>' + esc(path === "primaryLane.destination" ? "Normal email alias" : path === "alternateLane.destination" ? "Fallback email alias" : "Administrative label") + '</option>').join("") + '</select></label><label class="form-field full"><span>Current value</span><input readonly value="' + esc(scaffold.record.previousValue) + '"></label><label class="form-field full"><span>Replacement value</span><input name="replacementValue" required></label><label class="form-field full"><span>Owner authority</span><select name="authorityAppointmentId" required><option value="">Select an Appointment</option>' + appointments.map(({ record }) => '<option value="' + esc(record.id) + '">' + esc(record.title) + '</option>').join("") + '</select></label><label class="form-field full"><span>Why this is nonmaterial</span><textarea name="rationale" required></textarea></label>' + (rule.requiredConfirmations || []).map((key) => '<label class="form-field full confirmation"><input type="checkbox" name="' + esc(key) + '" required><span>' + esc(state.model.objectTypes["nonmaterial-amendment-confirmations"].properties[key].label) + '</span></label>').join("") + (scaffold.record.category === "reporting-email-alias" ? '<div class="form-field full"><span>Fixed evidence of equivalence</span>' + evidence.map(({ record }) => '<label class="checkbox"><input type="checkbox" name="evidenceIds" value="' + esc(record.id) + '">' + esc(record.title) + '</label>').join("") + '</div>' : '') + (proposal && scaffold.record.category === "reporting-email-alias" ? '<p>This also withdraws the unapproved successor proposal. The original channel set remains in force.</p>' : '') + '</div><div class="dialog-error" role="alert"></div><div class="dialog-actions"><span class="save-status" role="status"></span><button type="button" class="button" data-dismiss>Cancel</button><button type="submit" class="button primary">Record owner amendment</button></div></form>';
+    dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">Owner decision</p><h2>Record nonmaterial amendment</h2></div><button type="button" class="icon-button" data-dismiss aria-label="Close">×</button></div><p>Keep the original record and independent approval unchanged. Correct only an administrative label or an equivalent email alias. Changes to recipients, access, scope, commitments, schedules or content need normal review.</p><div class="form-grid"><label class="form-field full"><span>Correction category</span><select name="category">' + categories.map(([key, item]) => '<option value="' + esc(key) + '"' + (key === scaffold.record.category ? ' selected' : '') + '>' + esc(item.title) + '</option>').join("") + '</select></label><label class="form-field full"><span>Field</span><select name="fieldKey">' + rule.fieldPaths.filter((path) => scaffold.record.category !== "reporting-email-alias" || entry.record[path.split(".")[0]]?.channelKind === "email").map((path) => '<option value="' + esc(path) + '"' + (path === scaffold.record.fieldKey ? ' selected' : '') + '>' + esc(path === "primaryLane.destination" ? "Normal email alias" : path === "alternateLane.destination" ? "Fallback email alias" : "Administrative label") + '</option>').join("") + '</select></label><label class="form-field full"><span>Current value</span><input readonly value="' + esc(scaffold.record.previousValue) + '"></label><label class="form-field full"><span>Replacement value</span><input name="replacementValue" required></label><label class="form-field full"><span>Owner authority</span><select name="authorityAppointmentId" required><option value="">Select an Appointment</option>' + appointments.map(({ record }) => '<option value="' + esc(record.id) + '">' + esc(record.title) + '</option>').join("") + '</select></label><label class="form-field full"><span>Why this is nonmaterial</span><textarea name="rationale" rows="4" style="min-height:100px;max-height:160px" required></textarea></label>' + (rule.requiredConfirmations || []).map((key) => '<label class="form-field full confirmation"><input type="checkbox" name="' + esc(key) + '" required><span>' + esc(state.model.objectTypes["nonmaterial-amendment-confirmations"].properties[key].label) + '</span></label>').join("") + (scaffold.record.category === "reporting-email-alias" ? '<div class="form-field full"><span>Fixed evidence of equivalence</span>' + evidence.map(({ record }) => '<label class="checkbox"><input type="checkbox" name="evidenceIds" value="' + esc(record.id) + '">' + esc(record.title) + '</label>').join("") + '</div>' : '') + (proposal && scaffold.record.category === "reporting-email-alias" ? '<p>This also withdraws the unapproved successor proposal. The original channel set remains in force.</p>' : '') + '</div><div class="dialog-error" role="alert"></div><div class="dialog-actions"><span class="save-status" role="status"></span><button type="button" class="button" data-dismiss>Cancel</button><button type="submit" class="button primary">Record owner amendment</button></div></form>';
     document.body.append(dialog);
     dialog.showModal();
     dialog.addEventListener("close", () => dialog.remove());
@@ -5213,7 +5299,7 @@ function openEditor(type, entry = null, options = {}) {
     || implementationEditorDescription(type)
     || conciseResourceDescription(definition)
     || "Fill the core fields below. Git will record the author, time, reason, and diff when you commit this file.";
-  dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">' + (entry ? "Edit record" : options.actionCompletion ? "Complete assigned work" : options.obligationCompletion ? "Record obligation work" : "Create record") + '</p><h2 id="resource-editor-title">' + esc(titleCase(entry?.record.title || record.title || definition.title)) + '</h2></div><button type="button" class="icon-button" data-editor-dismiss aria-label="Close">×</button></div><p>' + esc(editorDescription) + '</p>' + resourceReviewCriteria(type, true) + (options.occurrenceReview ? occurrenceMemberReview(record, options.membershipFinal) : "") + '<div class="form-grid">' + names.map((name) => editorField(type, name, fields[name], record[name], required.has(name) || conditionMatches(record, fields[name].requiredWhen), Boolean(entry), oneOf.has(name), activeOneOf.has(name), record.id)).join("") + '</div>' +
+  dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">' + (entry ? "Edit record" : options.actionCompletion ? "Complete assigned work" : options.obligationCompletion ? "Record obligation work" : "Create record") + '</p><h2 id="resource-editor-title">' + esc(titleCase(entry?.record.title || record.title || definition.title)) + '</h2></div><button type="button" class="icon-button" data-editor-dismiss aria-label="Close">×</button></div><p>' + esc(editorDescription) + '</p>' + resourceReviewCriteria(type, true) + (options.occurrenceReview ? occurrenceMemberReview(record, options.membershipFinal, options.periodFinal) : "") + '<div class="form-grid">' + names.map((name) => editorField(type, name, fields[name], record[name], required.has(name) || conditionMatches(record, fields[name].requiredWhen), Boolean(entry), oneOf.has(name), activeOneOf.has(name), record.id)).join("") + '</div>' +
     activeMarkdown.map((markdown) => {
       const generated = !entry?.content?.[markdown.name];
       const source = entry?.content?.[markdown.name]?.source
@@ -5324,6 +5410,7 @@ function openEditor(type, entry = null, options = {}) {
           contentRevisions,
           obligationId: options.obligationCompletion?.obligationId,
           completionContext: options.obligationCompletion?.completionContext,
+          populationAsOf: options.obligationCompletion?.populationAsOf,
           actionItemId: options.actionCompletion?.actionItemId,
           completedOn: options.actionCompletion?.completedOn,
           prefetchToken: prefetch?.token
@@ -5341,9 +5428,11 @@ function openEditor(type, entry = null, options = {}) {
   });
 }
 
-function occurrenceMemberReview(record, membershipFinal = true) {
+function occurrenceMemberReview(record, membershipFinal = true, periodFinal = true) {
   const members = record.members || [];
-  const pending = membershipFinal
+  const pending = !periodFinal
+    ? '<p class="occurrence-pending">The full period remains open through ' + esc(record.requiredCoverage?.endsOn) + '. Reconcile after its inclusive final day, even for zero or non-applicable populations.</p>'
+    : membershipFinal
     ? ""
     : '<p class="occurrence-pending">Population remains open through ' + esc(record.membershipCutoffAt) + '. Review now, then reconcile after the cutoff.</p>';
   if (!members.length) {
@@ -7032,7 +7121,7 @@ dialog::backdrop{background:rgba(0,0,24,.62)}
 .commit-files code{font-size:10.8px;overflow-wrap:anywhere}
 .onboarding-progress{grid-template-columns:repeat(var(--onboarding-step-count),1fr)}
 .onboarding-git-status{display:flex;align-items:center;gap:9px;margin:14px 25px 0;padding:10px 12px;border:1px solid var(--line);border-radius:7px;background:var(--surface-soft)}.onboarding-git-status strong,.onboarding-git-status small{display:block}.onboarding-git-status strong{font-size:12px}.onboarding-git-status small{color:var(--muted);font-size:10.8px;line-height:1.45;margin-top:3px}.onboarding-git-status code{font-size:10.8px}
-.badge.status-overdue,.badge.status-blocked{background:#f7dfdc;color:#873027}.badge.status-due{background:#f6e8c9;color:#79500f}.badge.status-upcoming,.badge.status-proposed{background:var(--accent-soft);color:var(--accent)}.badge.status-complete{background:#dcefe4;color:#125733}
+.badge.status-overdue,.badge.status-blocked{background:#f7dfdc;color:#873027}.badge.status-due{background:#f6e8c9;color:#79500f}.badge.status-upcoming,.badge.status-proposed{background:var(--accent-soft);color:var(--accent)}.badge.status-waiting{background:#e8ebed;color:#4b5960}.badge.status-complete{background:#dcefe4;color:#125733}
 .obligation-preview,.event-reminder-preview{display:grid;gap:8px}.obligation-preview a{display:flex;align-items:center;gap:9px;text-decoration:none;padding:7px 0;border-top:1px solid var(--line)}.obligation-preview a:first-child{border-top:0;padding-top:0}.obligation-preview strong,.obligation-preview small,.event-reminder-preview strong,.event-reminder-preview small{display:block}.obligation-preview strong,.event-reminder-preview strong{font-size:12px}.obligation-preview small,.event-reminder-preview small{font-size:10.8px;color:var(--muted);margin-top:2px}.event-reminder-preview{grid-template-columns:repeat(2,minmax(0,1fr))}.event-reminder-preview a{padding:10px;border-radius:7px;background:var(--surface-soft);text-decoration:none}
 .obligation-board{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;align-items:start}.obligation-column{min-width:0}.obligation-column-head{display:flex;align-items:center;justify-content:space-between;margin:5px 1px 10px}.obligation-column-head>strong{font:500 26.4px Georgia,serif}.obligation-cards{display:grid;gap:9px}.obligation-card{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--accent-light);border-radius:9px;padding:14px;box-shadow:0 2px 8px rgba(21,40,33,.025)}.obligation-card.status-overdue,.obligation-card.status-blocked{border-left-color:var(--red)}.obligation-card.status-due{border-left-color:#d89021}.obligation-card-head{display:flex;justify-content:space-between;gap:8px;text-transform:uppercase;letter-spacing:.06em;font-size:9.6px;color:var(--muted)}.obligation-card-head strong{color:var(--ink);text-align:right}.obligation-card h3{font-size:14.4px;margin:9px 0 7px}.obligation-card h3 a{text-decoration:none}.obligation-card p{font-size:10.8px;line-height:1.5;color:var(--muted);margin:0}.obligation-links{margin-top:10px}.workflow-section{margin-top:30px}.operation-gate{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:22px;border:1px solid var(--accent-light);border-radius:12px;background:var(--accent-wash)}.operation-gate h2{margin:5px 0 7px;font:500 25px Georgia,serif}.operation-gate p:not(.kicker){margin:0;max-width:680px;color:var(--muted)}.operation-setup-preview>summary{margin-top:18px;padding:14px 16px;border:1px solid var(--line);border-radius:9px;background:var(--panel);font-weight:700;cursor:pointer}.operation-setup-preview[open]>summary{margin-bottom:0}.section-head{display:flex;justify-content:space-between;margin-bottom:13px}.section-head h2{font:500 28.8px Georgia,serif;margin:6px 0}.section-head p:not(.kicker){font-size:13.2px;color:var(--muted);margin:0;max-width:720px}.policy-event-feedback{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;gap:10px;align-items:center;margin-top:14px;padding:12px 14px;border:1px solid #9ccfb2;border-radius:8px;background:#e7f5ec}.policy-event-feedback strong,.policy-event-feedback p{display:block}.policy-event-feedback strong{font-size:12px}.policy-event-feedback p{margin:3px 0 0;color:#315d44;font-size:10.8px}.policy-event-feedback .icon-button{width:30px;height:30px}.policy-event-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.policy-event-more{margin-top:10px}.policy-event-row{position:relative;display:flex;align-items:center;justify-content:space-between;gap:10px;min-width:0;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel)}.policy-event-row[hidden]{display:none}.policy-event-name{min-width:0}.policy-event-title{display:flex;align-items:center;gap:6px;min-width:0}.policy-event-title>strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.policy-event-guide{display:inline-flex;flex:0 0 auto}.policy-event-guide .guide-trigger{width:20px;height:20px}.policy-event-guide .guide-trigger svg{width:14px;height:14px}.policy-event-name strong,.policy-event-name>small{display:block}.policy-event-name strong{font-size:12px}.policy-event-name>small{margin-top:2px;color:var(--muted);font-size:9.6px;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.policy-event-row>.button{flex:none;padding:7px 9px;font-size:10.8px}.policy-event-tooltip{position:absolute;z-index:8;top:calc(100% + 7px);left:0;width:min(420px,calc(100vw - 48px));padding:12px 14px;border:1px solid var(--line);border-radius:8px;background:var(--panel);box-shadow:var(--shadow);opacity:0;visibility:hidden;transform:translateY(-3px);transition:opacity .12s,transform .12s,visibility 0s .12s;pointer-events:none}.policy-event-row:nth-child(3n) .policy-event-tooltip{right:0;left:auto}.policy-event-row:hover,.policy-event-row:focus-within{z-index:9}.policy-event-guide:hover .policy-event-tooltip,.policy-event-guide:focus-within .policy-event-tooltip{opacity:1;visibility:visible;transform:none;transition-delay:0s}.policy-event-tooltip>strong{font-size:12px}.policy-event-tooltip ol{display:grid;gap:7px;margin:9px 0 0;padding-left:20px}.policy-event-tooltip li span,.policy-event-tooltip li small{display:block}.policy-event-tooltip li span{font-size:10.8px}.policy-event-tooltip li small{margin-top:2px;color:var(--muted);font-size:9.6px;line-height:1.4}
 .obligation-card-foot{display:flex;align-items:flex-end;justify-content:space-between;gap:9px;margin-top:10px}.obligation-card-foot .obligation-links{margin-top:0;min-width:0}.obligation-action{flex:0 0 auto;border:0;border-radius:6px;background:var(--accent-soft);color:var(--accent);padding:7px 9px;font-family:inherit;font-size:10.8px;font-weight:700;line-height:1;text-decoration:none;cursor:pointer}.obligation-action:hover{filter:brightness(1.08)}.obligation-action.blocked{background:var(--surface-muted);color:var(--muted)}.obligation-more{width:100%;margin-top:9px}.workflow-section{scroll-margin-top:92px}
@@ -7073,7 +7162,7 @@ dialog::backdrop{background:rgba(0,0,24,.62)}
   .badge.status-draft,.badge.status-planned,.badge.status-in-progress,.badge.status-medium{background:#483714;color:#ffd991}
   .badge.status-overdue,.badge.status-blocked{background:#4a252a;color:#ffb5ad}
   .badge.status-due{background:#483714;color:#ffd991}
-  .badge.status-complete{background:#173b2b;color:#a8edc4}
+  .badge.status-waiting{background:#e8ebed;color:#4b5960}.badge.status-complete{background:#173b2b;color:#a8edc4}
   .repository-override,.repository-sync-alert{border-color:#77612f;background:#382f19}
   .repository-override code{color:#ffe2a3}
   .workflow-finding-status.ready,.workflow-finding-status.due,.workflow-finding-status.open,.stage-page-completion-state,.readiness-state.warn,.preparation-status.later{background:#483714;color:#ffd991}
