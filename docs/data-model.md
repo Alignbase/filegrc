@@ -602,7 +602,7 @@ Key format: `namespace`.
 | `statuses` | array of string | No |  |
 | `criticalities` | array of enum | No | Values: `low`, `medium`, `high`, `critical` |
 | `membershipMode` | enum | Yes | Values: `as-of` |
-| `cutoff` | enum | Yes | Values: `window-start`, `window-end` |
+| `cutoff` | enum | Yes | Values: `window-start`, `window-end`, `review-date`, `coverage-end` |
 
 ### `obligation-member`
 
@@ -1402,6 +1402,7 @@ Markdown companions:
 | `evidenceIds` | array of id | No | References: `evidence` |
 | `scheduledFor` | date | Yes | Scheduled for |
 | `cancellation` | object (`cancellation`) | Conditional | Required when `status` is `canceled`. Allowed when `status` is `canceled`. |
+| `coverage` | object (`coverage-period`) | No | Work coverage |
 
 At least one of `attendeeIds`, `externalAttendees` is required when `status` is `complete`.
 
@@ -2246,6 +2247,7 @@ Record Markdown: shown by default as an implicit companion file.
 | `reviewedOn` | date | Conditional | Required when `status` is `complete`. Allowed when `status` is `complete`. |
 | `scheduledFor` | date | No | Scheduled for |
 | `componentIds` | array of id | No | Components References: `component` |
+| `coverage` | object (`coverage-period`) | No | Work coverage |
 
 #### `incident`
 
@@ -2367,6 +2369,7 @@ Record Markdown: shown by default as an implicit companion file.
 | `scheduledFor` | date | Yes | Scheduled for |
 | `cancellation` | object (`cancellation`) | Conditional | Required when `status` is `canceled`. Allowed when `status` is `canceled`. |
 | `componentIds` | array of id | No | Components References: `component` |
+| `coverage` | object (`coverage-period`) | No | Work coverage |
 
 #### `backup-test`
 
@@ -2405,6 +2408,7 @@ Record Markdown: shown by default as an implicit companion file.
 | `scheduledFor` | date | No | Scheduled for |
 | `cancellation` | object (`cancellation`) | Conditional | Required when `status` is `canceled`. Allowed when `status` is `canceled`. |
 | `componentIds` | array of id | No | Components References: `component` |
+| `coverage` | object (`coverage-period`) | No | Work coverage |
 
 ### Evidence
 
@@ -2555,6 +2559,7 @@ Record Markdown: shown by default as an implicit companion file.
 | `externalActivity` | object (`external-activity-reference`) | Conditional | Required when `status` is `externally-managed`. Allowed when `status` is `externally-managed`. |
 | `ownerIds` | array of id | Yes | Owners Relation group: `accountable-party`. References: `person`, `team`, `appointment` |
 | `cancellation` | object (`cancellation`) | Conditional | Required when `status` is `canceled`. Allowed when `status` is `canceled`. |
+| `coverage` | object (`coverage-period`) | No | Work coverage |
 
 ### Issues and Remediation
 
@@ -2719,10 +2724,11 @@ Record Markdown: available when needed as an implicit companion file.
 | `approvedOn` | date | Conditional | Required when `status` is one of `approved`, `active`, `retired`. |
 | `effectiveAt` | timestamp | Conditional | Required when `status` is one of `active`, `retired`. |
 | `timezone` | string (timezone) | Conditional | Required when `status` is one of `approved`, `active`, `retired`. |
-| `cutoverDecision` | enum | No | Values: `new-windows-only`, `supersede-open-window`, `keep-open-window` |
+| `cutoverDecision` | enum | No | Values: `new-windows-only`, `supersede-open-window`, `keep-open-window`, `correct-open-window` |
 | `supersedesId` | id | No | References: `obligation-rule` |
 | `retiredOn` | date | Conditional | Required when `status` is `retired`. |
 | `preparationPurpose` | enum | No | Preparation purpose Values: `operation`, `applicability-review`, `test-execution` |
+| `completionCoverage` | enum | No | Required proof coverage Values: `point-in-time`, `whole-period` |
 
 #### `obligation-occurrence`
 
@@ -2761,6 +2767,8 @@ Record Markdown: shown by default as an implicit companion file.
 | `auditPopulationIds` | array of id | No | References: `audit-population` |
 | `ownerIds` | array of id | Yes | Relation group: `accountable-party`. References: `person`, `team`, `appointment` |
 | `programId` | id | Yes | References: `program` |
+| `requiredCoverage` | object (`coverage-period`) | No | Required proof coverage |
+| `populationSourceRevision` | string | No | Recorded population source commit |
 
 ### Audits
 

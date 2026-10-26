@@ -84,6 +84,12 @@ export function buildAgentGuide(loaded, type, options = {}) {
 
   return {
     type,
+    ...(["obligation-rule", "obligation-occurrence"].includes(type) ? { populationTiming: {
+      snapshot: "Use completionCoverage point-in-time with selector cutoff review-date. Choose the actual observed population date, retain the committed source, and reconcile actual member results. A completed periodic review does not assert whole-period operation.",
+      period: "Use completionCoverage whole-period for a complete recurrence period. Proof needs explicit range coverage and execution after the required period ends; use an allowed window that permits this work. coverage-end keeps the period population open through its inclusive end.",
+      correction: "npx filegrc correct-obligation-rule RULE_ID --scaffold --json",
+      historical: "Preserve old approvals, dates and frozen member dispositions. A correction requires actual current authorization and retained committed occurrence rows; it does not approve shared schedule oversight."
+    } } : {}),
     ...(type === "retention-schedule-item" && loaded.model.resources["retention-application"] ? { applyApprovedRule: "npx filegrc apply-retention-rule RULE_ID --scaffold" } : {}),
     nonmaterialAmendments: Object.fromEntries(Object.entries(loaded.model.nonmaterialAmendments || {}).filter(([, rule]) => rule.resourceTypes.includes(type))),
     ...(options.preparationChecks ? { preparationChecks: options.preparationChecks } : {}),

@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import vm from "node:vm";
 import { promisify } from "node:util";
 import {
   assessWorkflow,
@@ -828,4 +829,23 @@ test("approved Exception expiry remains actionable through its lifecycle and Pro
   delete requested.approval;
   await writeJson(path, requested);
   assert.equal((await assess("2026-07-11")).workItems.some(({ source }) => source.id === record.id), false);
+});
+
+
+test("unfinalized population work prevents period completeness without becoming a recommended action", async () => {
+  const source = await readFile(new URL("../src/workflow.js", import.meta.url), "utf8");
+  const buildSource = source.slice(source.indexOf("function buildAssessments"), source.indexOf("function assessment("));
+  const build = vm.runInNewContext(buildSource + "\nbuildAssessments", {
+    stageComplete: () => true,
+    blockingFinding: (finding) => ["blocked", "overdue", "ready"].includes(finding.state),
+    assessment: (status) => ({ status }),
+    findingKeys: () => []
+  });
+  const input = { program: { stages: [], evidenceReady: true }, audits: [], auditPreparations: {}, obligationPlan: { counts: { overdue: 0, blocked: 0 } }, findings: [], validation: { ok: true }, coverage: { start: "2026-10-01", end: "2026-10-31" } };
+  assert.equal(build(input).periodHealth.status, "complete");
+  input.findings.push({ assessment: "period-health", state: "waiting" });
+  assert.equal(build(input).periodHealth.status, "at-risk");
+  const recommendationSource = source.slice(source.indexOf("function blockingFinding"), source.indexOf("function compareRecommended"));
+  const recommend = vm.runInNewContext(recommendationSource + "\nrecommendedAction", { activeWork: () => true, compareRecommended: () => 0 });
+  assert.equal(recommend(input.findings, [{ state: "waiting" }], {}), null);
 });

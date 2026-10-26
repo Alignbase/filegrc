@@ -1,3 +1,4 @@
+import { scaffoldObligationRuleCorrection, previewObligationRuleCorrection, correctObligationRule } from "./obligation-rule-correction.js";
 import { scaffoldRetentionApplication, saveRetentionApplication } from "./retention-applications.js";
 import { firstOperatingTasks } from "./operating-preparation.js";
 import { createStateCalculator } from "./state-calculator.js";
@@ -448,6 +449,7 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
           programId: requestOptions.programId || payload.programId,
           windowStart: payload.completionContext?.windowStart,
           completionContext: payload.completionContext,
+          populationAsOf: payload.populationAsOf,
           record: payload.record,
           content: payload.content,
           expectedRevision: requireRevision(payload.revision, `obligation/${payload.obligationId}`)
@@ -488,6 +490,18 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
             ? requireRevision(payload.revision, `obligation-occurrence/${payload.record.supersedesId}`)
             : payload.revision
         })));
+      }
+      if (request.method === "POST" && url.pathname.startsWith("/api/obligation-rule-corrections")) {
+        const action = url.pathname.slice("/api/obligation-rule-corrections".length);
+        if (["/scaffold", "/preview", ""].includes(action)) {
+          const payload = await readJson(request);
+          if (!safeSegment(payload.ruleId)) return json(response, 400, { error: "A safe Obligation Rule ID is required." });
+          if (action === "/scaffold") return json(response, 200, await scaffoldObligationRuleCorrection(input, payload));
+          if (action === "/preview") return json(response, 200, await previewObligationRuleCorrection(input, payload));
+          return json(response, 201, await browserMutation(input, requestOptions, {
+            message: () => `Correct obligation rule: ${payload.ruleId}`
+          }, () => correctObligationRule(input, payload)));
+        }
       }
       if (request.method === "POST" && url.pathname === "/api/obligation-rule-activations/scaffold") {
         const payload = await readJson(request);

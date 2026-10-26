@@ -1,3 +1,4 @@
+import { scaffoldObligationRuleCorrection, previewObligationRuleCorrection, correctObligationRule } from "./obligation-rule-correction.js";
 import { scaffoldRetentionApplication, saveRetentionApplication } from "./retention-applications.js";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -459,7 +460,7 @@ export async function runCli(argv = process.argv.slice(2)) {
     if (flags.json) console.log(JSON.stringify(result, null, 2));
     else {
       printHostedAutomation(result.recommendations[0]);
-      console.log(`${result.counts.overdue} overdue, ${result.counts.blocked} blocked, ${result.counts.due} due, ${result.counts.upcoming} upcoming, ${result.counts.proposed} starter proposals`);
+      console.log(`${result.counts.overdue} overdue, ${result.counts.blocked} blocked, ${result.counts.due} due, ${result.counts.waiting} waiting, ${result.counts.upcoming} upcoming, ${result.counts.proposed} starter proposals`);
       for (const item of result.items) {
         const deadline = item.dueWindowEndAt || item.dueWindowEnd;
         if (!deadline) throw new Error(`Planned work "${item.title}" is missing a deadline.`);
@@ -1057,7 +1058,8 @@ export async function runCli(argv = process.argv.slice(2)) {
         obligationId,
         programId: flags.program,
         windowStart: flags["window-start"],
-        completedOn: flags["completed-on"]
+        completedOn: flags["completed-on"],
+        populationAsOf: flags["population-as-of"]
       });
       console.log(JSON.stringify(result, null, 2));
       return result;
@@ -1068,6 +1070,7 @@ export async function runCli(argv = process.argv.slice(2)) {
       programId: flags.program,
       windowStart: flags["window-start"] || mutation.completionContext?.windowStart,
       completionContext: mutation.completionContext,
+      populationAsOf: flags["population-as-of"] || mutation.populationAsOf,
       record: mutation.record,
       content: mutation.content,
       expectedRevision: expectedRevision(flags, mutation, `obligation/${obligationId}`)
@@ -1092,6 +1095,24 @@ export async function runCli(argv = process.argv.slice(2)) {
     else console.log(`Activated obligation-rule/${ruleId}`);
     return result;
   }
+  if (command === "correct-obligation-rule") {
+    const [ruleId, file] = positionals;
+    if (!ruleId) throw new Error("An Obligation Rule ID is required.");
+    if (flags.scaffold) {
+      const result = await scaffoldObligationRuleCorrection(root, { ruleId });
+      console.log(JSON.stringify(result, null, 2));
+      return result;
+    }
+    if (!file || !flags.preview && !flags.yes) throw new Error("Pass a completed correction payload and --preview or --yes.");
+    const source = await readSetupPayload(file);
+    const payload = source.payload || source;
+    if (payload.ruleId !== ruleId) throw new Error("The correction payload must name the requested Obligation Rule.");
+    const result = flags.preview
+      ? await previewObligationRuleCorrection(root, payload)
+      : await withWorkflowDelta(root, () => correctObligationRule(root, payload));
+    console.log(JSON.stringify(result, null, 2));
+    return result;
+  }
   if (command === "reconcile-obligation") {
     if (Object.hasOwn(flags, "preview")) throw new Error("reconcile-obligation does not support --preview. Use --scaffold to inspect the occurrence before saving.");
     const [obligationId, file] = positionals;
@@ -1102,6 +1123,7 @@ export async function runCli(argv = process.argv.slice(2)) {
         programId: flags.program,
         windowStart: flags["window-start"],
         asOf: flags["as-of"],
+        populationAsOf: flags["population-as-of"],
         correctFinalized: flags["correct-finalized"] === true
       });
       console.log(JSON.stringify(result, null, 2));
@@ -1476,10 +1498,11 @@ Usage:
   filegrc references <id> [--json]
   filegrc preview-mutation <preview.json|-> [--json]
   filegrc create <mutation.json|-> [--json]
-  filegrc complete <obligation-id> --scaffold --window-start YYYY-MM-DD [--program program-id] [--completed-on YYYY-MM-DD]
-  filegrc complete <obligation-id> <completion-record.json|-> [--expected-revision hash] [--json]
+  filegrc complete <obligation-id> --scaffold --window-start YYYY-MM-DD [--program program-id] [--completed-on YYYY-MM-DD] [--population-as-of YYYY-MM-DD]
+  filegrc complete <obligation-id> <completion-record.json|-> [--population-as-of YYYY-MM-DD] [--expected-revision hash] [--json]
+  filegrc correct-obligation-rule <rule-id> [payload.json] [--scaffold | --preview | --yes] [--json]
   filegrc activate-obligation-rule <rule-id> [payload.json] [--scaffold] [--json]
-  filegrc reconcile-obligation <obligation-id> --scaffold --window-start YYYY-MM-DD [--program program-id] [--as-of YYYY-MM-DD] [--correct-finalized]
+  filegrc reconcile-obligation <obligation-id> --scaffold --window-start YYYY-MM-DD [--program program-id] [--as-of YYYY-MM-DD] [--population-as-of YYYY-MM-DD] [--correct-finalized]
   filegrc reconcile-obligation <obligation-id> <occurrence.json|-> [--program program-id] [--expected-revision hash] [--json]
   filegrc correct-audit-population <population-id> --scaffold [--as-of YYYY-MM-DD]
   filegrc correct-audit-population <population-id> <correction.json|-> [--expected-revision hash] [--json]
@@ -1828,6 +1851,7 @@ function agentOverview(model, connection) {
     previewMutation: "filegrc preview-mutation <preview.json> --json",
     create: "filegrc create <mutation.json>",
     complete: "filegrc complete <obligation-id> <completion-mutation.json>",
+    correctObligationRule: "filegrc correct-obligation-rule <rule-id> [--scaffold | <correction.json|-> --preview | <correction.json|-> --yes] --json",
     reconcileObligation: "filegrc reconcile-obligation <obligation-id> --scaffold --window-start <date>",
     completeAction: "filegrc complete-action <action-item-id> <completion-mutation.json> --completed-on <date>",
     completeEvent: "filegrc complete-event <obligation-event-id> --completed-on <date>",

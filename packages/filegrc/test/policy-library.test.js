@@ -1457,7 +1457,10 @@ test("upgrades the preceding untouched Vendor starter and Policy", async (contex
   const priorRecords = JSON.parse(await readFile(new URL("./fixtures/security-starter-v5-vendor-records.json", import.meta.url), "utf8"));
   const current = new Map();
   for (const { path, record } of priorRecords) {
-    current.set(record.id, JSON.parse(await readFile(join(root, path), "utf8")));
+    const expected = JSON.parse(await readFile(join(root, path), "utf8"));
+    // A guidance upgrade preserves the older rule's coverage criterion.
+    if (record.type === "obligation-rule" && !record.completionCoverage) delete expected.completionCoverage;
+    current.set(record.id, expected);
     await writeJson(join(root, path), record);
   }
   const currentPolicy = await readFile(policyPath(root), "utf8");

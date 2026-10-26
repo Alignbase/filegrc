@@ -3009,3 +3009,33 @@ test("guided Evidence verification preserves hidden attachments and clears only 
   assert.equal(external.filePaths, undefined);
   assert.equal(external.sourceComponentId, undefined);
 });
+
+
+test("waiting population work remains visible in the neutral queue", () => {
+  const source = APP_SCRIPT.slice(APP_SCRIPT.indexOf("function activeOperationItems"), APP_SCRIPT.indexOf("function policyEventTrigger", APP_SCRIPT.indexOf("function activeOperationItems")));
+  const select = vm.runInNewContext(source + "\nactiveOperationItems");
+  const waiting = { status: "waiting", title: "Population cutoff pending" };
+  assert.equal(select([waiting, { status: "complete" }]).length, 1);
+  assert.equal(select([waiting])[0], waiting);
+  assert.match(APP_STYLES, /status-waiting\{background:#e8ebed;color:#4b5960/);
+});
+
+test("snapshot date selection reuses a frozen occurrence date and skips fixed cutoffs", async () => {
+  const source = APP_SCRIPT.slice(APP_SCRIPT.indexOf("function observationDateForItem"), APP_SCRIPT.indexOf("async function openObligationRuleCorrection"));
+  const rule = { id: "rule-snapshot", selector: { cutoff: "window-end" } };
+  const occurrence = { id: "occurrence-snapshot", membershipCutoffAt: "2026-10-20" };
+  const select = vm.runInNewContext(source + "\nobservationDateForItem", { state: { resources: [rule, occurrence].map((record) => ({ record })) } });
+  const item = { ruleId: rule.id, occurrenceId: occurrence.id };
+  assert.equal(await select(item), undefined);
+  rule.selector.cutoff = "review-date";
+  assert.equal(await select(item), "2026-10-20");
+});
+
+
+test("waiting card timing never claims completion or an actionable deadline", () => {
+  const source = APP_SCRIPT.slice(APP_SCRIPT.indexOf("function windowText"), APP_SCRIPT.indexOf("function relativeEventWindow"));
+  const timing = vm.runInNewContext(source + "\n({ windowText, timingText })", { formatCalendarDate: String });
+  const item = { status: "waiting", dueWindowStart: "2026-10-01", dueWindowEnd: "2026-10-31", overdueOn: "2026-11-01" };
+  assert.equal(timing.timingText(item), "Awaiting population cutoff");
+  assert.equal(timing.windowText(item), "Recorded work window: 2026-10-01 through 2026-10-31.");
+});

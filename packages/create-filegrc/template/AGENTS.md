@@ -188,6 +188,8 @@ Program records, owners, Person email addresses, and dates remain authoritative 
 
 Run `npx filegrc obligations --json` to see scheduled work, event tasks, owners, deadlines, and requested proof. In Step 4, record the work shown there. Use `npx filegrc guide obligation --json` and `data/AGENTS.md` for the completion and event-trigger commands. The resulting dated operating record or completed Action Item is the output.
 
+A periodic review or test may inspect a point in time without claiming continuous coverage. Read [Obligation population timing](https://github.com/Alignbase/filegrc/blob/main/docs/obligation-population-timing.md) before choosing `completionCoverage` and selector cutoff. A `review-date` snapshot requires the actual `--population-as-of` observation date and committed scope. A `whole-period` duty requires explicit proof range coverage after the recurrence period ends. Preserve existing end-cutoff campaigns and unfinished members. Waiting means current member work is recorded but the population is still open; final reconciliation remains required. Use `npx filegrc correct-obligation-rule RULE_ID --scaffold --json` for a reviewed successor correcting an inappropriate open snapshot rule, preserving the original window, proofs and approvals. Upgrade local and hosted readers to the 0.21 line before adopting these optional model v13 fields.
+
 ## Headless Markdown
 
 Create and update JSON plus Markdown in one mutation envelope when practical. You can also inspect or replace a companion directly:

@@ -21,6 +21,7 @@ export const INTERNAL_WORKFLOW_CAPABILITIES = Object.freeze({
   auditPopulationSupersession: Symbol("audit-population-supersession"),
   obligationOccurrenceReconciliation: Symbol("obligation-occurrence-reconciliation"),
   obligationOccurrenceSupersession: Symbol("obligation-occurrence-supersession"),
+  obligationRuleCorrection: Symbol("obligation-rule-correction"),
   obligationRuleActivation: Symbol("obligation-rule-activation"),
   collectionReviewReassessment: Symbol("collection-review-reassessment"),
   reportingRouteSetProposal: Symbol("reporting-route-set-proposal"),
@@ -756,7 +757,8 @@ function assertImmutableWorkflowRecord(existing, next, options = {}, loaded = nu
     && ![
       INTERNAL_WORKFLOW_CAPABILITIES.obligationOccurrenceReconciliation,
       INTERNAL_WORKFLOW_CAPABILITIES.obligationOccurrenceSupersession,
-      INTERNAL_WORKFLOW_CAPABILITIES.obligationRuleActivation
+      INTERNAL_WORKFLOW_CAPABILITIES.obligationRuleActivation,
+      INTERNAL_WORKFLOW_CAPABILITIES.obligationRuleCorrection
     ].includes(capability)
   ) {
     throw new Error(`Obligation occurrence "${existing.id}" is workflow-managed. Scaffold and save its reconciliation instead of editing it directly.`);
@@ -770,7 +772,7 @@ function assertImmutableWorkflowRecord(existing, next, options = {}, loaded = nu
     );
   }
   if (existing.type === "obligation-rule" && ["active", "retired"].includes(existing.status)) {
-    const retirement = capability === INTERNAL_WORKFLOW_CAPABILITIES.obligationRuleActivation
+    const retirement = [INTERNAL_WORKFLOW_CAPABILITIES.obligationRuleActivation, INTERNAL_WORKFLOW_CAPABILITIES.obligationRuleCorrection].includes(capability)
       && existing.status === "active"
       && next.status === "retired"
       && preservesExisting(["status", "retiredOn"]);
@@ -780,11 +782,11 @@ function assertImmutableWorkflowRecord(existing, next, options = {}, loaded = nu
     existing.type === "obligation-rule"
     && existing.status !== "active"
     && next.status === "active"
-    && capability !== INTERNAL_WORKFLOW_CAPABILITIES.obligationRuleActivation
+    && ![INTERNAL_WORKFLOW_CAPABILITIES.obligationRuleActivation, INTERNAL_WORKFLOW_CAPABILITIES.obligationRuleCorrection].includes(capability)
   ) {
     throw new Error(`Obligation rule "${existing.id}" activation is workflow-managed. Review and activate the rule instead of editing it directly.`);
   }
-  if (existing.type === "obligation" && capability !== INTERNAL_WORKFLOW_CAPABILITIES.obligationRuleActivation) {
+  if (existing.type === "obligation" && ![INTERNAL_WORKFLOW_CAPABILITIES.obligationRuleActivation, INTERNAL_WORKFLOW_CAPABILITIES.obligationRuleCorrection].includes(capability)) {
     const managedFields = ["scheduleMode", "ruleIds", "activeRuleId"];
     if (managedFields.some((field) => JSON.stringify(next[field]) !== JSON.stringify(existing[field]))) {
       throw new Error(`Obligation "${existing.id}" rule adoption is workflow-managed. Activate a reviewed rule instead of editing its schedule binding directly.`);
@@ -793,7 +795,7 @@ function assertImmutableWorkflowRecord(existing, next, options = {}, loaded = nu
   if (
     existing.type === "obligation"
     && existing.scheduleMode === "rule"
-    && capability !== INTERNAL_WORKFLOW_CAPABILITIES.obligationRuleActivation
+    && ![INTERNAL_WORKFLOW_CAPABILITIES.obligationRuleActivation, INTERNAL_WORKFLOW_CAPABILITIES.obligationRuleCorrection].includes(capability)
     && JSON.stringify(next.completionResourceIds) !== JSON.stringify(existing.completionResourceIds)
   ) {
     throw new Error(`Obligation "${existing.id}" historical completion links are immutable after rule activation.`);
@@ -801,7 +803,8 @@ function assertImmutableWorkflowRecord(existing, next, options = {}, loaded = nu
   if (existing.type === "obligation-occurrence" && ["reconciled", "superseded"].includes(existing.status)) {
     const supersession = [
       INTERNAL_WORKFLOW_CAPABILITIES.obligationOccurrenceSupersession,
-      INTERNAL_WORKFLOW_CAPABILITIES.obligationRuleActivation
+      INTERNAL_WORKFLOW_CAPABILITIES.obligationRuleActivation,
+      INTERNAL_WORKFLOW_CAPABILITIES.obligationRuleCorrection
     ].includes(capability)
       && existing.status === "reconciled"
       && next.status === "superseded"
@@ -917,7 +920,8 @@ function assertSpecializedWorkflowCreate(record, options = {}, loaded = null) {
     record?.type === "obligation-occurrence"
     && ![
       INTERNAL_WORKFLOW_CAPABILITIES.obligationOccurrenceReconciliation,
-      INTERNAL_WORKFLOW_CAPABILITIES.obligationOccurrenceSupersession
+      INTERNAL_WORKFLOW_CAPABILITIES.obligationOccurrenceSupersession,
+      INTERNAL_WORKFLOW_CAPABILITIES.obligationRuleCorrection
     ].includes(options.workflowCapability)
   ) {
     throw new Error(`Obligation occurrence "${record.id || ""}" is workflow-managed. Scaffold and save its reconciliation instead of creating it directly.`);

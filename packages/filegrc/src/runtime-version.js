@@ -19,7 +19,8 @@ export function assessRuntimeCompatibility(runtimeVersion, repositoryVersion, op
   const repositoryLine = runtimeCompatibilityLine(repositoryVersion);
   // New optional record shapes require explicit adoption of their release line.
   // Newer readers preserve unchanged workspaces from the supported prior lines.
-  const supportedRepositoryLines = supportedLine === "0.20.x" ? ["0.18.x", "0.19.x", "0.20.x"]
+  const supportedRepositoryLines = supportedLine === "0.21.x" ? ["0.18.x", "0.19.x", "0.20.x", "0.21.x"]
+    : supportedLine === "0.20.x" ? ["0.18.x", "0.19.x", "0.20.x"]
     : supportedLine === "0.19.x" ? ["0.18.x", "0.19.x"] : [supportedLine];
   const dataModelVersion = options.dataModelVersion ?? null;
   const requiredApiContractVersion = Object.hasOwn(options, "requiredApiContractVersion") ? options.requiredApiContractVersion : RUNTIME_API_CONTRACT_VERSION;

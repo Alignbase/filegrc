@@ -1032,7 +1032,7 @@ async function buildPolicyLibraryPlan(loaded) {
       continue;
     }
     const priorSelector = { resourceType: vendorRule ? "vendor" : "system", statuses: ["active"], criticalities: ["high", "critical"], membershipMode: "as-of", cutoff: "window-end" };
-    const nextSelector = { resourceType: vendorRule ? "vendor" : "system", statuses: ["active"], membershipMode: "as-of", cutoff: "window-end" };
+    const nextSelector = { resourceType: vendorRule ? "vendor" : "system", statuses: ["active"], membershipMode: "as-of", cutoff: entry.record.selector?.cutoff === "review-date" && entry.record.completionCoverage === "point-in-time" ? "review-date" : "window-end" };
     const vendorTitle = vendorRule && entry.record.title === "Annual critical and high-risk vendor review rule v1" ? "Annual Vendor Review rule v1" : entry.record.title;
     const selectorCurrent = !(vulnerabilityRule || vendorRule) || sameValue(entry.record.selector, nextSelector);
     if (entry.record.rationale === rationale && selectorCurrent && (!vendorRule || (sameValue(entry.record.window, vendorWindow) && entry.record.recurrence.anchorMode === "activation"))) {

@@ -309,6 +309,7 @@ test("plans flexible calendar windows with explicit due and overdue timing", () 
   assert.deepEqual(due.counts, {
     overdue: 0,
     blocked: 0,
+    waiting: 0,
     due: 1,
     upcoming: 1,
     proposed: 0,
@@ -362,6 +363,7 @@ test("puts standalone Action Items in Work Queue without a reverse source link",
   assert.deepEqual(plan.counts, {
     overdue: 0,
     blocked: 0,
+    waiting: 0,
     due: 0,
     upcoming: 1,
     proposed: 0,

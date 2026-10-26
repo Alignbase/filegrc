@@ -1,3 +1,6 @@
+import { recordedCorrectionPopulation, currentSnapshotPopulation, samePopulation } from "./obligation-snapshot.js";
+import { getGitSummary } from "./git.js";
+import { populationCutoffDate, populationIsFinal, wholePeriodCoverage, completionCoversRequiredPeriod, requiredPeriodIsFinal } from "./obligation-timing.js";
 import { occurrenceSelectorPopulation } from "./obligation-population.js";
 import { occurrenceCompletionContext } from "./obligation-completion-context.js";
 import { assessProgramAccessReview, providerAccessControls } from "./provider-access-completion.js";
@@ -135,12 +138,13 @@ export function planObligations(resources, options = {}) {
 
   for (const obligation of obligations) {
     const selectedRule = byId.get(obligation.activeRuleId);
-    const rule = obligation.scheduleMode === "rule"
+    const planningRule = obligation.scheduleMode === "rule"
       ? obligationRule(obligation, byId, { now, includeProposed: true })
         || (selectedRule?.status === "active" && selectedRule.effectiveAt
           && new Date(selectedRule.effectiveAt) > new Date(now) ? selectedRule : null)
       : null;
-    const schedule = rule || obligation;
+    let rule = planningRule;
+    let schedule = rule || obligation;
     const activity = obligationActivity(model, obligation);
     const expectedCompletionTypes = activity.completionResourceTypes;
     const programStatus = programStatusByObligationId.get(obligation.id);
@@ -200,6 +204,26 @@ export function planObligations(resources, options = {}) {
       const window = scanCalendarWindow(recurrence, schedule.window, index);
       if (!window || window.dueWindowStart > through) break;
       const cycleWindowStart = window.dueWindowStart;
+      rule = planningRule;
+      if (rule?.cutoverDecision === "correct-open-window") {
+        const retained = records.find(record => record.type === "obligation-occurrence"
+          && record.status !== "superseded" && record.obligationId === obligation.id
+          && record.programId === (program?.id || workspace?.id || "workspace")
+          && record.coverage?.kind === "range" && record.coverage.endsOn === window.dueWindowEnd
+          && record.coverage.startsOn >= window.dueWindowStart && record.coverage.startsOn <= window.dueWindowEnd);
+        const retainedRule = retained && byId.get(retained.ruleId);
+        if (retainedRule?.type === "obligation-rule" && retainedRule.obligationId === obligation.id) rule = retainedRule;
+        const seen = new Set();
+        while (rule?.cutoverDecision === "correct-open-window" && !seen.has(rule.id)) {
+          seen.add(rule.id);
+          const authorizedOn = currentCalendarDate(rule.timezone || workspace?.timezone || "UTC", new Date(rule.effectiveAt));
+          if (retained?.ruleId === rule.id || !retained && window.dueWindowStart >= authorizedOn) break;
+          const previous = byId.get(rule.supersedesId);
+          if (previous?.type !== "obligation-rule" || previous.obligationId !== obligation.id) break;
+          rule = previous;
+        }
+      }
+      schedule = rule || obligation;
       if (schedule.endsOn && window.dueWindowStart > schedule.endsOn) break;
       if (rule && activationDate && window.dueWindowStart < activationDate) {
         if (!modelSupports(model, "operating-preparation")) continue;
@@ -224,6 +248,8 @@ export function planObligations(resources, options = {}) {
         window.dueWindowStart = activationDate;
       }
       if (window.overdueOn <= from) continue;
+      const requiredCoverage = wholePeriodCoverage(rule, recurrence, window, index);
+      if (requiredCoverage) window.requiredCoverage = requiredCoverage;
       const occurrenceKey = `${program?.id || workspace?.id || "workspace"}:${obligation.id}:${window.dueWindowStart}`;
       const reconciliation = currentOccurrence(records, occurrenceKey, obligation.id, rule?.id, window);
       const legacyCompletions = obligation.scheduleMode !== "rule"
@@ -238,16 +264,19 @@ export function planObligations(resources, options = {}) {
       const completionResourceIds = reconciliation
         ? [...new Set((reconciliation.members || []).flatMap((member) => member.completionResourceIds || []))]
         : legacyCompletions.map((record) => record.id);
-      const membershipFinal = membershipIsFinal(schedule.selector, window, asOf);
+      const membershipFinal = membershipIsFinal(schedule.selector, window, asOf, reconciliation);
       const selectedMemberIds = schedule.selector
         ? selectScopedCollectionRecords({ resources: records, model }, schedule.selector, program).map(({ id }) => id).sort()
         : [...new Set(obligation.scopeResourceIds?.length ? obligation.scopeResourceIds : [workspace?.id].filter(Boolean))];
       const recordedMemberIds = (reconciliation?.members || []).map(({ resourceId }) => resourceId);
-      const expectedMemberIds = reconciliation
+      const frozenSnapshotIds = reconciliation && schedule.selector?.cutoff === "review-date"
+        ? recordedCorrectionPopulation({ root: options.root, resources: records, model }, reconciliation, rule)?.memberIds
+          || currentSnapshotPopulation({ root: options.root, resources: records, model }, reconciliation, rule) : null;
+      const expectedMemberIds = frozenSnapshotIds || (reconciliation
         ? reconciliation.status === "open" && !membershipFinal
           ? occurrenceSelectorPopulation({ resources: records, model, root: options.root }, reconciliation, schedule.selector, program, { selectedIds: selectedMemberIds }).expectedIds
           : recordedMemberIds
-        : selectedMemberIds;
+        : selectedMemberIds);
       const completedMemberIds = new Set((reconciliation?.members || [])
         .filter((member) => member.result === "passed" && member.disposition === "expected")
         .map((member) => member.resourceId));
@@ -256,11 +285,11 @@ export function planObligations(resources, options = {}) {
           const completion = byId.get(completionId);
           return completionMatchesObligation(completion, obligation, model)
             && completionMatchesOccurrenceMember(completion, activity.aggregate?.completionMemberField, member.resourceId, model, records, reconciliation, obligation, workspace?.timezone, options.root, byId, program?.id)
-            && completionFallsInWindow(completion, window, rule?.timezone || workspace?.timezone || "UTC", reconciliation?.status === "reconciled" ? undefined : model)
+            && completionFallsInWindow(completion, window, rule?.timezone || workspace?.timezone || "UTC", reconciliation?.status === "reconciled" && !reconciliation.requiredCoverage ? undefined : model)
             && completionPassesOccurrence(completion, obligation, activity, model, records, reconciliation, asOf, workspace?.timezone, options.root, byId, program?.id);
         }))
         .map((member) => member.resourceId));
-      const resolutionsComplete = membershipFinal
+      const resolutionsComplete = membershipFinal && requiredPeriodIsFinal(window, asOf)
         && expectedMemberIds.every((resourceId) => resolvedMemberIds.has(resourceId));
       const conclusionValid = ["complete", "complete-with-exceptions", "zero-population"].includes(reconciliation?.conclusion)
         && resolutionsComplete;
@@ -306,7 +335,7 @@ export function planObligations(resources, options = {}) {
         resolutionsComplete,
         conclusionValid,
         expectedCount: reconciliation?.status === "open" && !membershipFinal
-          ? expectedMemberIds.length
+          ? expectedMemberIds.filter((id) => !reconciliation.members.some((member) => member.resourceId === id && member.disposition !== "expected")).length
           : reconciliation?.expectedCount ?? expectedMemberIds.length,
         completedCount: reconciliation?.completedCount ?? completedMemberIds.size,
         membershipFinal,
@@ -337,15 +366,18 @@ export function planObligations(resources, options = {}) {
     const dueWindowEnd = coverageEnd(occurrence.coverage);
     if (!dueWindowStart || !dueWindowEnd || dueWindowStart > through) continue;
     const overdueOn = addCalendarDays(dueWindowEnd, 1);
-    const window = { dueWindowStart, dueWindowEnd, overdueOn };
+    const window = { dueWindowStart, dueWindowEnd, overdueOn, ...(occurrence.requiredCoverage ? { requiredCoverage: occurrence.requiredCoverage } : {}) };
     const programStatus = programStatusByObligationId.get(obligation.id);
     const programBlocker = programStatus === "proposed" ? obligationProgramBlocker(obligation, byId, asOf, model, now) : null;
     const activity = obligationActivity(model, obligation);
-    const membershipFinal = membershipIsFinal(rule.selector, window, asOf);
+    const membershipFinal = membershipIsFinal(rule.selector, window, asOf, occurrence);
     const recordedMemberIds = (occurrence.members || []).map(({ resourceId }) => resourceId);
-    const expectedMemberIds = occurrence.status === "open" && !membershipFinal && rule.selector
+    const frozenSnapshotIds = rule.selector?.cutoff === "review-date"
+      ? recordedCorrectionPopulation({ root: options.root, resources: records, model }, occurrence, rule)?.memberIds
+        || currentSnapshotPopulation({ root: options.root, resources: records, model }, occurrence, rule) : null;
+    const expectedMemberIds = frozenSnapshotIds || (occurrence.status === "open" && !membershipFinal && rule.selector
       ? occurrenceSelectorPopulation({ resources: records, model, root: options.root }, occurrence, rule.selector, program).expectedIds
-      : recordedMemberIds;
+      : recordedMemberIds);
     const completedMemberIds = (occurrence.members || [])
       .filter(({ disposition, result }) => disposition === "expected" && result === "passed")
       .map(({ resourceId }) => resourceId);
@@ -354,11 +386,11 @@ export function planObligations(resources, options = {}) {
         const completion = byId.get(completionId);
         return completionMatchesObligation(completion, obligation, model)
           && completionMatchesOccurrenceMember(completion, activity.aggregate?.completionMemberField, member.resourceId, model, records, occurrence, obligation, workspace?.timezone, options.root, byId, program?.id)
-          && completionFallsInWindow(completion, window, rule.timezone || workspace?.timezone || "UTC")
+          && completionFallsInWindow(completion, window, rule.timezone || workspace?.timezone || "UTC", occurrence.requiredCoverage ? model : undefined)
           && completionPassesOccurrence(completion, obligation, activity, model, records, occurrence, asOf, workspace?.timezone, options.root, byId, program?.id);
       }))
       .map(({ resourceId }) => resourceId);
-    const resolutionsComplete = membershipFinal && expectedMemberIds.every((resourceId) => resolvedMemberIds.includes(resourceId));
+    const resolutionsComplete = membershipFinal && requiredPeriodIsFinal(window, asOf) && expectedMemberIds.every((resourceId) => resolvedMemberIds.includes(resourceId));
     const conclusionValid = ["complete", "complete-with-exceptions", "zero-population"].includes(occurrence.conclusion)
       && resolutionsComplete;
     const successful = occurrence.status === "reconciled"
@@ -390,7 +422,9 @@ export function planObligations(resources, options = {}) {
       resolvedMemberIds,
       resolutionsComplete,
       conclusionValid,
-      expectedCount: occurrence.status === "open" && !membershipFinal ? expectedMemberIds.length : occurrence.expectedCount,
+      expectedCount: occurrence.status === "open" && !membershipFinal
+        ? expectedMemberIds.filter((id) => !occurrence.members.some((member) => member.resourceId === id && member.disposition !== "expected")).length
+        : occurrence.expectedCount,
       completedCount: occurrence.completedCount,
       membershipFinal,
       reconciliationStatus: occurrence.status,
@@ -447,14 +481,18 @@ export function planObligations(resources, options = {}) {
   for (const item of calendarItems) {
     if (!item.ruleId) continue;
     const selector = byId.get(item.ruleId)?.selector;
-    item.membershipCutoffAt = selector?.cutoff === "window-end" ? item.dueWindowEnd : item.dueWindowStart;
+    const occurrence = byId.get(item.occurrenceId);
+    item.membershipCutoffAt = populationCutoffDate(selector, item, occurrence);
     item.memberWorkComplete = item.expectedMemberIds.every((id) => item.resolvedMemberIds.includes(id));
-    item.awaitingPopulationCutoff = item.memberWorkComplete && !item.membershipFinal;
+    item.periodFinal = requiredPeriodIsFinal(item, asOf);
+    item.awaitingPeriodEnd = item.memberWorkComplete && !item.periodFinal;
+    item.awaitingPopulationCutoff = item.memberWorkComplete && !item.membershipFinal && Boolean(item.membershipCutoffAt);
+    if ((item.awaitingPopulationCutoff || item.awaitingPeriodEnd) && ["due", "overdue"].includes(item.status)) item.status = "waiting";
   }
   const dateDeadlines = new Map();
   const items = [...calendarItems, ...eventItems, ...standaloneItems]
     .sort((a, b) => comparePlannedItems(a, b, workspace?.timezone || "UTC", dateDeadlines));
-  const counts = { overdue: 0, blocked: 0, due: 0, upcoming: 0, proposed: 0, complete: 0 };
+  const counts = { overdue: 0, blocked: 0, due: 0, waiting: 0, upcoming: 0, proposed: 0, complete: 0 };
   for (const item of items) {
     if (counts[item.status] !== undefined) counts[item.status] += 1;
   }
@@ -709,6 +747,7 @@ async function completeObligationOccurrenceUnlocked(input, options) {
     const scaffold = await scaffoldObligationOccurrence(loaded.root, {
       obligationId: obligation.id, programId: program.id,
       windowStart: item.dueWindowStart, asOf: currentCalendarDate(loaded.workspace.timezone),
+      populationAsOf: options.populationAsOf,
       completionRecord
     });
     const occurrence = scaffold.record;
@@ -716,7 +755,7 @@ async function completeObligationOccurrenceUnlocked(input, options) {
       throw new Error("This completion does not cover any member of the occurrence population.");
     }
     const rule = loaded.resources.find(({ id }) => id === item.ruleId);
-    if (!rule?.selector && scaffold.membershipFinal && occurrence.members.length
+    if (!rule?.selector && scaffold.membershipFinal && scaffold.periodFinal && occurrence.members.length
       && occurrence.members.every((member) => member.disposition === "expected" && member.result === "passed"
         && member.completionResourceIds.includes(completionRecord.id))) {
       const reviewers = completionRecord.reviewerIds || completionRecord.reviewedByIds || [];
@@ -789,6 +828,7 @@ export async function scaffoldObligationCompletion(input, options = {}) {
   const entry = loaded.entries.find(({ record }) => record.type === target.type && record.id === target.id);
   return {
     ...mutation,
+    ...(options.populationAsOf ? { populationAsOf: options.populationAsOf } : {}),
     revision: contentRevision(entry?.source || ""),
     ...(item.ruleId && !action ? { completionContext: obligationCompletionContext(loaded, item) } : {}),
     scaffold: {
@@ -799,6 +839,8 @@ export async function scaffoldObligationCompletion(input, options = {}) {
       completionProfile: activity.completionProfile || null,
       workItemStatus: item.status,
       programStatus: item.programStatus || null,
+      populationAsOf: options.populationAsOf || null,
+      requiredCoverage: item.requiredCoverage || null,
       requiredFacts: loaded.model.completionProfiles?.[activity.completionProfile]?.requiredFacts || [],
       dueWindowStart: item.dueWindowStart || null,
       dueWindowEnd: item.dueWindowEnd || null,
@@ -849,10 +891,15 @@ export async function scaffoldObligationOccurrence(input, options = {}) {
   const existing = current?.record.status === "open" ? current : null;
   const predecessor = current && !existing ? current : null;
   const rule = loaded.resources.find(({ id }) => id === item.ruleId);
-  const cutoff = rule?.selector?.cutoff === "window-end" ? item.dueWindowEnd : item.dueWindowStart;
+  const cutoff = populationCutoffDate(rule?.selector, { ...item, populationAsOf: options.populationAsOf }, current?.record);
+  if (!cutoff) throw new Error("Choose the actual population observation date with --population-as-of YYYY-MM-DD.");
+  if (rule?.selector?.cutoff === "review-date" && (cutoff < item.dueWindowStart || cutoff > item.dueWindowEnd || cutoff > asOf)) throw new Error("The population observation date must be inside this occurrence and cannot be in the future.");
+  const membershipFinal = membershipIsFinal(rule?.selector, { ...item, populationAsOf: cutoff }, asOf, current?.record);
   let historicalSnapshot = null;
   let historicalReview = null;
-  const needsHistoricalReview = Boolean(rule?.selector) && ((!existing && !predecessor && asOf >= cutoff)
+  const correctionBasis = existing && recordedCorrectionPopulation(loaded, existing.record, rule);
+  const snapshotIds = existing && currentSnapshotPopulation(loaded, existing.record, rule);
+  const needsHistoricalReview = Boolean(rule?.selector) && !correctionBasis && !snapshotIds && ((!existing && !predecessor && asOf >= cutoff)
     || (existing && !existing.record.collectionReviewId && asOf > cutoff));
   if (needsHistoricalReview) {
     const candidates = loaded.entries.flatMap((entry) => {
@@ -892,13 +939,23 @@ export async function scaffoldObligationOccurrence(input, options = {}) {
   const existingMembers = new Map(((existing || predecessor)?.record.members || []).map((member) => [member.resourceId, member]));
   const activity = obligationActivity(loaded.model, obligation);
   const completionMemberField = activity.aggregate?.completionMemberField;
-  const populationIds = existing
+  let sourceScopeRevision = existing?.record.scopeRevision;
+  let freshSnapshotIds = null;
+  if (rule?.selector?.cutoff === "review-date" && !existing && !predecessor && !historicalReview && cutoff === asOf) {
+    sourceScopeRevision = getGitSummary(loaded.root).commit;
+    const snapshotRecord = { programId: program.id, scopeRevision: sourceScopeRevision };
+    freshSnapshotIds = currentSnapshotPopulation(loaded, snapshotRecord, rule);
+    if (!freshSnapshotIds || !samePopulation(freshSnapshotIds, selectScopedCollectionRecords(loaded, rule.selector, program).map(r => r.id))) {
+      throw new Error("Commit the actual population before capturing this review-date snapshot.");
+    }
+  }
+  const populationIds = correctionBasis?.memberIds || snapshotIds || freshSnapshotIds || (existing
     ? historicalSnapshot?.populationIds || item.expectedMemberIds
     : predecessor
       ? predecessor.record.members.map(({ resourceId }) => resourceId)
     : historicalReview
       ? historicalSnapshot.populationIds
-      : item.expectedMemberIds;
+      : item.expectedMemberIds);
   if (existing && historicalSnapshot) {
     const frozenIds = [...existingMembers.keys()].sort();
     const reviewedIds = [...historicalSnapshot.populationIds].sort();
@@ -913,10 +970,10 @@ export async function scaffoldObligationOccurrence(input, options = {}) {
     const prior = existingMembers.get(resourceId) || {};
     const matching = [...loaded.resources, ...(options.completionRecord && !byId.has(options.completionRecord.id) ? [options.completionRecord] : [])].filter((record) => (
       completionMatchesObligation(record, obligation, loaded.model)
-      && completionFallsInWindow(record, item, loaded.workspace.timezone, existing?.record.status === "reconciled" ? undefined : loaded.model)
+      && completionFallsInWindow(record, item, loaded.workspace.timezone, existing?.record.status === "reconciled" && !item.requiredCoverage ? undefined : loaded.model)
       && completionMatchesMember(record, completionMemberField, resourceId, loaded.model, byId, obligation, program.id)
     ));
-    const accepted = matching.filter((record) => completionPassesActivity(record, activity, loaded.model, byId, asOf, loaded.workspace.timezone, obligation, program.id, loaded));
+    const accepted = matching.filter((record) => completionCoversRequiredPeriod(record, item.requiredCoverage, executionDate(record, loaded.model, loaded.workspace.timezone), asOf) && completionPassesActivity(record, activity, loaded.model, byId, asOf, loaded.workspace.timezone, obligation, program.id, loaded));
     return {
       ...prior,
       resourceId,
@@ -942,11 +999,13 @@ export async function scaffoldObligationOccurrence(input, options = {}) {
       title: `${obligation.title} · ${windowStart}`
     }),
     status: "open",
+    ...(sourceScopeRevision ? { scopeRevision: sourceScopeRevision } : {}),
     programId: program.id,
     obligationId: obligation.id,
     ruleId: item.ruleId,
     occurrenceKey: item.occurrenceKey,
     coverage: { kind: "range", startsOn: item.dueWindowStart, endsOn: item.dueWindowEnd },
+    ...(item.requiredCoverage ? { requiredCoverage: item.requiredCoverage } : {}),
     membershipCutoffAt: cutoff,
     ...(historicalReview ? {
       collectionReviewId: historicalReview.record.id,
@@ -955,6 +1014,7 @@ export async function scaffoldObligationOccurrence(input, options = {}) {
       collectionRevision: historicalReview.record.collectionRevision,
       scopeRevision: historicalReview.record.scopeRevision
     } : predecessor ? Object.fromEntries([
+      "populationSourceRevision",
       "collectionReviewId",
       "collectionReviewCommit",
       "collectionReviewRevision",
@@ -976,8 +1036,9 @@ export async function scaffoldObligationOccurrence(input, options = {}) {
     operation: existing ? "update" : predecessor ? "supersede" : "create",
     record,
     revision: existing || predecessor ? contentRevision((existing || predecessor).source) : null,
-    membershipFinal: item.membershipFinal,
-    instructions: (item.membershipFinal ? "" : `Population remains open through ${cutoff}. Record work now, then reconcile after the cutoff. `) + "Review the frozen population as one occurrence. Link each member's dated completion, exception, or non-applicability decision. Set reconciled status, counts, conclusion, reviewers, and reconciledAt only after membership is final. Use a superseding record to correct a finalized occurrence."
+    membershipFinal,
+    periodFinal: requiredPeriodIsFinal(item, asOf),
+    instructions: (requiredPeriodIsFinal(item, asOf) ? "" : `The full period remains open through ${item.requiredCoverage.endsOn}. Reconcile after its inclusive final day. `) + (membershipFinal ? "" : `Population remains open through ${cutoff}. Record work now, then reconcile after the cutoff. `) + "Review the frozen population as one occurrence. Link each member's dated completion, exception, or non-applicability decision. Set reconciled status, counts, conclusion, reviewers, and reconciledAt only after membership and any required period are final. Use a superseding record to correct a finalized occurrence."
   };
 }
 
@@ -1002,7 +1063,7 @@ async function saveObligationOccurrenceUnlocked(input, options) {
   if (existing?.record.programId && existing.record.programId !== program.id) {
     throw new Error(`Existing occurrence "${record.id}" belongs to Program "${existing.record.programId}", not "${program.id}".`);
   }
-  if (record.supersedesId) {
+  if (record.supersedesId && !existing) {
     requireMutationRevision(options.expectedRevision, `Obligation occurrence "${record.supersedesId}"`);
     if (existing) throw new Error(`Superseding occurrence "${record.id}" already exists.`);
     const predecessor = loaded.entries.find(({ record: current }) => (
@@ -1025,6 +1086,7 @@ async function saveObligationOccurrenceUnlocked(input, options) {
       membershipCutoffAt: predecessor.record.membershipCutoffAt
     };
     for (const field of [
+      "populationSourceRevision",
       "collectionReviewId",
       "collectionReviewCommit",
       "collectionReviewRevision",
@@ -1048,12 +1110,13 @@ async function saveObligationOccurrenceUnlocked(input, options) {
     obligationId: record.obligationId,
     programId: record.programId,
     windowStart,
-    asOf: currentCalendarDate(loaded.workspace.timezone, now)
+    asOf: currentCalendarDate(loaded.workspace.timezone, now),
+    populationAsOf: record.membershipCutoffAt
   });
   assertOccurrenceDerivedFields(record, scaffold.record);
   assertOccurrenceMembersMatch(record, scaffold.record);
-  if (record.status === "reconciled" && !scaffold.membershipFinal) {
-    throw new Error(`Occurrence "${record.id}" cannot be reconciled until its membership cutoff is final.`);
+  if (record.status === "reconciled" && (!scaffold.membershipFinal || !scaffold.periodFinal)) {
+    throw new Error(`Occurrence "${record.id}" cannot be reconciled until its population cutoff and full required period are final.`);
   }
   if (existing) requireMutationRevision(options.expectedRevision, `Obligation occurrence "${record.id}"`);
   return existing
@@ -1077,6 +1140,8 @@ function assertOccurrenceDerivedFields(record, scaffold) {
     "ruleId",
     "occurrenceKey",
     "coverage",
+    "requiredCoverage",
+    "populationSourceRevision",
     "membershipCutoffAt",
     "collectionReviewId",
     "collectionReviewCommit",
@@ -1278,6 +1343,7 @@ function completionMatchesOccurrenceMember(record, field, memberId, model, resou
 function completionPassesOccurrence(record, obligation, activity, model, resources, occurrence, asOf, timezone, root, currentById, programId) {
   const context = occurrenceCompletionContext(root, occurrence, record, model, resources, timezone);
   const byId = context.resources === resources ? currentById : resourceIndex(context.resources).byId;
+  if (!completionCoversRequiredPeriod(record, occurrence.requiredCoverage, executionDate(record, context.model, timezone), asOf)) return false;
   return completionPassesActivity(record, activity, context.model, byId, occurrenceProofDate(occurrence, asOf, timezone), timezone, byId.get(obligation.id) || obligation, programId, { ...context, root });
 }
 
@@ -2126,6 +2192,7 @@ export function assessCompletionForObligation(record, obligation, loaded, option
   if (!completionMatchesObligation(record, obligation, loaded.model)) issues.push("Use the completion record type, activity profile, subtype, and Obligation linkage required by the adopted activity.");
   if (!completionPassesActivity(record, activity, loaded.model, byId, options.asOf, loaded.workspace?.timezone, obligation, options.programId, loaded)) issues.push("Finish the model-required actors, actual result, completion time, review and proof fields; a planned record or applicability decision is not test execution.");
   if (!date || options.asOf && date > options.asOf || options.notBefore && date < options.notBefore) issues.push("The actual completion date must cover the current implementation and cannot be in the future.");
+  if (!completionCoversRequiredPeriod(record, options.window?.requiredCoverage || options.requiredCoverage, date, options.asOf)) issues.push("This result must prove the complete required period after that period ends; a point-in-time or partial result is insufficient.");
   if (options.window && !completionFallsInWindow(record, options.window, loaded.workspace?.timezone || "UTC", loaded.model)) issues.push("This result falls outside the adopted occurrence's allowed completion dates.");
   const memberIds = options.memberIds || [];
   const missingMemberIds = memberIds.filter((id) => !completionMatchesMember(record, activity.aggregate?.completionMemberField, id, loaded.model, byId, obligation, options.programId));
@@ -2185,7 +2252,17 @@ function occurrenceStatus(window, asOf, complete) {
 
 // Planning and persisted occurrence validation must use the same activation
 // anchor, including the latest governing content cutover in operating models.
-export function obligationScheduleRecurrence(obligation, rule, byId, model, timezone = "UTC") {
+export function obligationScheduleRecurrence(obligation, rule, byId, model, timezone = "UTC", seen = new Set()) {
+  if (rule && seen.has(rule.id)) return { recurrence: null, activationDate: null };
+  if (rule) seen.add(rule.id);
+  // A reviewed snapshot correction changes the population criterion, while
+  // keeping the original recurrence anchor and initial activation boundary.
+  if (rule?.cutoverDecision === "correct-open-window" && rule.supersedesId) {
+    const prior = byId.get(rule.supersedesId);
+    if (prior?.type === "obligation-rule" && prior.obligationId === obligation.id) {
+      return obligationScheduleRecurrence(obligation, prior, byId, model, timezone, seen);
+    }
+  }
   const schedule = rule || obligation;
   const configuredAnchor = schedule.recurrence?.anchorDate || schedule.startsOn;
   const activationDate = !modelSupports(model, "operating-preparation")
@@ -2304,11 +2381,8 @@ function currentOccurrence(records, occurrenceKey, obligationId, ruleId, window)
   )) || null;
 }
 
-export function membershipIsFinal(selector, window, asOf) {
-  if (!selector) return true;
-  if (selector.cutoff === "window-end") return asOf > window.dueWindowEnd;
-  if (["as-of", "event-subject"].includes(selector.membershipMode)) return asOf > window.dueWindowStart;
-  return asOf > window.dueWindowEnd;
+export function membershipIsFinal(selector, window, asOf, occurrence = null) {
+  return populationIsFinal(selector, window, asOf, occurrence);
 }
 
 function obligationBelongsToProgram(obligation, program, byId, model) {
