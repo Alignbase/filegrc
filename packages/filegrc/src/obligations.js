@@ -1,6 +1,6 @@
 import { recordedCorrectionPopulation, currentSnapshotPopulation, samePopulation } from "./obligation-snapshot.js";
 import { getGitSummary } from "./git.js";
-import { populationCutoffDate, populationIsFinal, wholePeriodCoverage, completionCoversRequiredPeriod, requiredPeriodIsFinal } from "./obligation-timing.js";
+import { populationCutoffDate, populationIsFinal, wholePeriodCoverage, completionCoversRequiredPeriod, requiredPeriodIsFinal, wholePeriodOccurrenceWindowIssue } from "./obligation-timing.js";
 import { occurrenceSelectorPopulation } from "./obligation-population.js";
 import { occurrenceCompletionContext } from "./obligation-completion-context.js";
 import { assessProgramAccessReview, providerAccessControls } from "./provider-access-completion.js";
@@ -289,7 +289,7 @@ export function planObligations(resources, options = {}) {
             && completionPassesOccurrence(completion, obligation, activity, model, records, reconciliation, asOf, workspace?.timezone, options.root, byId, program?.id);
         }))
         .map((member) => member.resourceId));
-      const resolutionsComplete = membershipFinal && requiredPeriodIsFinal(window, asOf)
+      const resolutionsComplete = !wholePeriodOccurrenceWindowIssue(window) && membershipFinal && requiredPeriodIsFinal(window, asOf)
         && expectedMemberIds.every((resourceId) => resolvedMemberIds.has(resourceId));
       const conclusionValid = ["complete", "complete-with-exceptions", "zero-population"].includes(reconciliation?.conclusion)
         && resolutionsComplete;
@@ -390,7 +390,7 @@ export function planObligations(resources, options = {}) {
           && completionPassesOccurrence(completion, obligation, activity, model, records, occurrence, asOf, workspace?.timezone, options.root, byId, program?.id);
       }))
       .map(({ resourceId }) => resourceId);
-    const resolutionsComplete = membershipFinal && requiredPeriodIsFinal(window, asOf) && expectedMemberIds.every((resourceId) => resolvedMemberIds.includes(resourceId));
+    const resolutionsComplete = !wholePeriodOccurrenceWindowIssue(window) && membershipFinal && requiredPeriodIsFinal(window, asOf) && expectedMemberIds.every((resourceId) => resolvedMemberIds.includes(resourceId));
     const conclusionValid = ["complete", "complete-with-exceptions", "zero-population"].includes(occurrence.conclusion)
       && resolutionsComplete;
     const successful = occurrence.status === "reconciled"
@@ -483,10 +483,11 @@ export function planObligations(resources, options = {}) {
     const selector = byId.get(item.ruleId)?.selector;
     const occurrence = byId.get(item.occurrenceId);
     item.membershipCutoffAt = populationCutoffDate(selector, item, occurrence);
+    item.timingIssue = wholePeriodOccurrenceWindowIssue(item);
     item.memberWorkComplete = item.expectedMemberIds.every((id) => item.resolvedMemberIds.includes(id));
     item.periodFinal = requiredPeriodIsFinal(item, asOf);
-    item.awaitingPeriodEnd = item.memberWorkComplete && !item.periodFinal;
-    item.awaitingPopulationCutoff = item.memberWorkComplete && !item.membershipFinal && Boolean(item.membershipCutoffAt);
+    item.awaitingPeriodEnd = !item.timingIssue && item.memberWorkComplete && !item.periodFinal;
+    item.awaitingPopulationCutoff = !item.timingIssue && item.memberWorkComplete && !item.membershipFinal && Boolean(item.membershipCutoffAt);
     if ((item.awaitingPopulationCutoff || item.awaitingPeriodEnd) && ["due", "overdue"].includes(item.status)) item.status = "waiting";
   }
   const dateDeadlines = new Map();
@@ -879,6 +880,7 @@ export async function scaffoldObligationOccurrence(input, options = {}) {
   if (!item || !item.ruleId) {
     throw new Error(`No rule-based ${obligation.id} occurrence starts on ${windowStart}.`);
   }
+  if (item.timingIssue) throw new Error(item.timingIssue);
   if (item.programStatus !== "accepted" && !item.occurrenceId) {
     throw new Error(`Obligation "${obligation.id}" is still proposed. Activate its reviewed rule and governing program records first.`);
   }

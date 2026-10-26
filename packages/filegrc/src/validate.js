@@ -1,6 +1,6 @@
 import { workspaceEngineVersion, runtimeCompatibilityLine } from "./runtime-version.js";
 import { recordedCorrectionPopulation, currentSnapshotPopulation, samePopulation } from "./obligation-snapshot.js";
-import { populationCutoffDate, wholePeriodCoverage, requiredPeriodIsFinal } from "./obligation-timing.js";
+import { populationCutoffDate, wholePeriodCoverage, requiredPeriodIsFinal, wholePeriodRuleWindowIssue, wholePeriodOccurrenceWindowIssue } from "./obligation-timing.js";
 import { occurrenceSelectorPopulation } from "./obligation-population.js";
 import { occurrenceCompletionContext } from "./obligation-completion-context.js";
 import { attestationBindingIssue } from "./attestation-integrity.js";
@@ -524,6 +524,12 @@ function validateObligationRule(record, model, byId, path, diagnostics) {
     recurrence: record.recurrence,
     window: record.window
   }, model, byId, path, diagnostics);
+  if (record.completionCoverage === "whole-period") {
+    const workspaceTimezone = [...byId.values()].find(({ type }) => type === "workspace")?.timezone || "UTC";
+    const { recurrence } = obligationScheduleRecurrence(obligation, record, byId, model, workspaceTimezone);
+    const timingIssue = wholePeriodRuleWindowIssue(record, recurrence);
+    if (timingIssue) diagnostics.push((record.status === "retired" ? warning : error)("invalid-obligation-period-window", path, timingIssue));
+  }
   if (record.selector?.cutoff === "review-date" && record.completionCoverage !== "point-in-time"
     || record.selector?.cutoff === "coverage-end" && record.completionCoverage !== "whole-period"
     || record.completionCoverage === "whole-period" && record.selector?.cutoff === "review-date") {
@@ -613,6 +619,8 @@ function validateObligationOccurrence(record, model, resources, entries, root, w
   }
   const rule = byId.get(record.ruleId);
   const obligation = byId.get(record.obligationId);
+  const timingIssue = wholePeriodOccurrenceWindowIssue({ dueWindowEnd: record.coverage?.endsOn, requiredCoverage: record.requiredCoverage });
+  if (timingIssue) diagnostics.push((record.status === "superseded" ? warning : error)("invalid-obligation-period-window", path, timingIssue));
   const loaded = { root, resources, model };
   const correctionPopulation = recordedCorrectionPopulation(loaded, record, rule);
   const snapshotPopulation = currentSnapshotPopulation(loaded, record, rule);
@@ -890,7 +898,8 @@ function validateOccurrenceScheduleBinding(record, obligation, rule, resources, 
     || governingRule?.id !== rule.id
     || JSON.stringify([...(record.ownerIds || [])].sort()) !== JSON.stringify([...(obligation.ownerIds || [])].sort())
   ) {
-    if (allowHistorical && rule.recurrence?.anchorMode === "activation") {
+    if (allowHistorical && (rule.recurrence?.anchorMode === "activation"
+      || record.status === "superseded" && rule.status === "retired")) {
       const basis = record.supersedesId ? resources.find(({ id }) => id === record.supersedesId) : record;
       const history = basis && getDataRecordHistoryIndex(root).historiesById.get(basis.id);
       // The first saved window must itself have been valid in its original
