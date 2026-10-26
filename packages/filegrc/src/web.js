@@ -568,7 +568,7 @@ function renderHome(main) {
     || setupSystem.status !== "active"
     || activeProgram().assuranceGoal === "none";
   const acceptedEventTriggers = activePolicyEventTriggers(state.obligations.triggers);
-  const openObligations = activeOperationItems(state.obligations.items);
+  const openObligations = activeOperationItems(queueState().items);
   const previewObligations = distinctObligationPreviews(openObligations, 3);
   const setupBanner = setupPending ? initialSetupBanner() : "";
   const auditPanel = program.evidenceReady
@@ -576,7 +576,7 @@ function renderHome(main) {
       (activeAudit ? auditProgress(activeAudit.record) + auditEngagementPrompt(activeAudit.record) : auditEngagementPrompt()) + '</section>'
     : "";
   const obligationPanel = state.sections?.obligations === "complete" && (program.evidenceReady || openObligations.length)
-    ? '<section class="panel obligation-panel"><div class="panel-head"><div><p class="kicker">Policy obligations</p><h3>Due Windows</h3></div><a href="#/stage/run">Open board</a></div>' + obligationPreview(previewObligations) + '</section>'
+    ? '<section class="panel obligation-panel"><div class="panel-head"><div><p class="kicker">Work Queue</p><h3>Due Windows</h3></div><a href="#/stage/run">Open board</a></div>' + obligationPreview(previewObligations) + '</section>'
     : "";
   const eventPanel = acceptedEventTriggers.length
     ? '<section class="panel event-reminder-panel"><div class="panel-head"><div><p class="kicker">Event reminders</p><h3>Did Something Change?</h3></div><a href="#/stage/run?section=events">Trigger work</a></div>' + eventReminderPreview(orderedPolicyEventTriggers(acceptedEventTriggers).slice(0, 4)) + '</section>'
@@ -2178,7 +2178,12 @@ function workflowUiStage(stageId) {
   return ["operate", "operation"].includes(stageId) ? "run" : stageId;
 }
 
+function queueState() {
+  return state.workQueue || state.obligations;
+}
+
 function operationProgress() {
+  if (state.workQueue?.loading) return { percent: 0, complete: 0, total: 1, status: "Checking work", tone: "neutral", detail: "Checking the Work Queue and source-record deadlines." };
   const program = state.programReadiness;
   const goal = program?.target?.goal || activeProgram().assuranceGoal || "none";
   const asOf = program?.asOf || currentDate();
@@ -2187,10 +2192,10 @@ function operationProgress() {
     : goal === "soc-2-type-1"
       ? Boolean(program?.target?.candidateCoverage?.kind === "as-of")
       : Boolean(program?.evidenceReady);
-  const overdue = state.obligations.counts.overdue || 0;
-  const blocked = state.obligations.counts.blocked || 0;
+  const overdue = queueState().counts.overdue || 0;
+  const blocked = queueState().counts.blocked || 0;
   const complete = Boolean(program?.operating);
-  if (complete) {
+  if (complete && !overdue && !blocked) {
     return {
       percent: 100,
       complete: 1,
@@ -2309,11 +2314,12 @@ function renderExternalEvidenceSection() {
 function renderObligations(main, params = new URLSearchParams()) {
   const stage = READINESS_STAGES.find((candidate) => candidate.id === "run");
   const plan = state.obligations;
+  const queue = queueState();
   const operationLocked = !state.programReadiness?.evidenceReady;
   const visibleCardLimit = 6;
   const renderBoard = (items, statuses) => statuses.map((status) => {
     const statusItems = obligationBoardItems(items, status);
-    const cards = statusItems.map((item, index) => obligationCard(item, index >= visibleCardLimit)).join("");
+    const cards = statusItems.map((item, index) => item.kind === "source-deadline" ? sourceDeadlineCard(item, index >= visibleCardLimit) : obligationCard(item, index >= visibleCardLimit)).join("");
     const more = statusItems.length > visibleCardLimit
       ? '<button class="button obligation-more" type="button" data-expand-obligations="' + status + '" data-total="' + statusItems.length + '" aria-expanded="false">Show ' + (statusItems.length - visibleCardLimit) + ' more</button>'
       : "";
@@ -2323,8 +2329,8 @@ function renderObligations(main, params = new URLSearchParams()) {
   const orderedTriggers = orderedPolicyEventTriggers(plan.triggers);
   const acceptedTriggers = activePolicyEventTriggers(orderedTriggers);
   const proposedTriggers = orderedTriggers.filter(({ programStatus }) => programStatus === "proposed");
-  const currentItems = activeOperationItems(plan.items);
-  const proposedItems = plan.items.filter(({ status }) => status === "proposed");
+  const currentItems = activeOperationItems(queue.items);
+  const proposedItems = queue.items.filter(({ status }) => status === "proposed");
   const renderEvents = (items, scope, description) => {
     const triggers = items.map((trigger, index) => policyEventTrigger(trigger, index, index >= eventTriggerLimit, scope)).join("");
     const eventMore = items.length > eventTriggerLimit
@@ -2332,7 +2338,7 @@ function renderObligations(main, params = new URLSearchParams()) {
       : "";
     return '<section class="workflow-section event-reminders" data-policy-event-section="' + scope + '"><div class="section-head"><div><p class="kicker">Changes that create work</p><h2>Policy Events</h2><p>' + description + '</p></div></div><div class="policy-event-list">' + (triggers || empty("No event-driven obligations are configured.")) + '</div>' + eventMore + '</section>';
   };
-  const renderQueue = (items, statuses, description) => '<section class="workflow-section work-queue-section"><div class="section-head"><div><p class="kicker">Recurring, event, and assigned work</p><h2>Work Queue</h2><p>' + description + '</p></div><div class="page-actions">' + (!state.readOnly ? '<button class="button" type="button" data-new-action-item>New task</button>' : "") + '<a class="button" href="#/resources/obligation">Edit schedules</a></div></div><div class="obligation-board">' + renderBoard(items, statuses) + '</div></section>';
+  const renderQueue = (items, statuses, description) => '<section class="workflow-section work-queue-section"><div class="section-head"><div><p class="kicker">Recurring work and dated follow-up</p><h2>Work Queue</h2><p>' + description + '</p></div><div class="page-actions">' + (!state.readOnly ? '<button class="button" type="button" data-new-action-item>New task</button>' : "") + '<a class="button" href="#/resources/obligation">Edit schedules</a></div></div><div class="obligation-board">' + renderBoard(items, statuses) + '</div></section>';
   const feedback = policyEventFeedback
     ? '<section class="policy-event-feedback" role="status" aria-live="polite"><span class="status-dot good"></span><div><strong>Work added to the Work Queue</strong><p>' + esc(policyEventFeedback.name + " created " + policyEventFeedback.taskCount + " " + pluralize("task", policyEventFeedback.taskCount) + ".") + '</p></div><button class="button" type="button" data-view-added-work>View Work Queue</button><button class="icon-button" type="button" data-dismiss-policy-event-feedback aria-label="Dismiss confirmation">×</button></section>'
     : "";
@@ -2344,7 +2350,7 @@ function renderObligations(main, params = new URLSearchParams()) {
       (currentItems.length ? renderQueue(currentItems, ["upcoming", "due", "overdue", "blocked", "waiting"], "Complete work the program has already adopted. Each card shows its due window, source, and next action.") : "")
     : "";
   const setupTriggers = operationLocked ? proposedTriggers : orderedTriggers;
-  const setupItems = operationLocked ? proposedItems : plan.items;
+  const setupItems = operationLocked ? proposedItems : queue.items;
   const setupStatuses = operationLocked ? ["proposed"] : ["upcoming", "due", "overdue", "blocked", "waiting", "proposed"];
   const operationSetupOpen = operationLocked ? "" : " open";
   const operationSetupSummary = operationLocked
@@ -2439,7 +2445,7 @@ function obligationBoardItems(items, status) {
   if (status !== "proposed") return matching;
   const seen = new Set();
   return matching.filter((item) => {
-    const source = item.actionItemId ? "action:" + item.actionItemId : "obligation:" + item.obligationId;
+    const source = item.kind === "source-deadline" ? item.key : item.actionItemId ? "action:" + item.actionItemId : "obligation:" + item.obligationId;
     if (seen.has(source)) return false;
     seen.add(source);
     return true;
@@ -2516,6 +2522,12 @@ function defaultClassificationId() {
   }
   const definitions = state.workspace.classificationDefinitions || {};
   return Object.hasOwn(definitions, "internal") ? "internal" : Object.keys(definitions)[0] || "";
+}
+
+function sourceDeadlineCard(item, collapsed = false) {
+  const href = "#/resource/" + encodeURIComponent(item.source.type) + "/" + encodeURIComponent(item.source.id);
+  const owners = (item.ownerIds || []).map(formatReference).join("") || '<small>Owner not assigned</small>';
+  return '<article class="obligation-card status-' + esc(item.status) + '" data-work-source="' + esc(item.source.type + ":" + item.source.id) + '"' + (collapsed ? ' data-collapsed hidden' : "") + '><div class="obligation-card-head"><span>' + esc(state.model.resources[item.source.type]?.title || properCase(item.source.type)) + '</span><strong>' + esc(timingText(item)) + '</strong></div><h3><a href="' + href + '">' + esc(titleCase(item.title)) + '</a></h3><p>Due ' + esc(item.dueOn) + '.</p>' + (item.blockingReason ? '<p>' + esc(item.blockingReason) + '</p>' : '') + '<div class="obligation-card-foot"><div class="obligation-links">' + owners + '</div><a class="obligation-action" href="' + href + '">Review record</a></div></article>';
 }
 
 function obligationCard(item, collapsed = false) {
@@ -3279,7 +3291,7 @@ function renderAuditPacket(main, params = new URLSearchParams()) {
     ["Engagement", selected ? selected.title : "No audit record", "#/resources/audit", selected ? "good" : "warn"],
     ["filegrc Evidence", filegrcRecords.length + " operating " + pluralize("record", filegrcRecords.length), "#/stage/run", "neutral"],
     ["Evidence Artifacts", evidence.length + " " + pluralize("record", evidence.length), "#/resources/evidence", evidence.length ? "good" : "neutral"],
-    ["Policy work", state.obligations.counts.overdue ? state.obligations.counts.overdue + " overdue" : state.obligations.counts.blocked ? state.obligations.counts.blocked + " blocked" : state.obligations.counts.due ? state.obligations.counts.due + " due" : state.obligations.counts.proposed ? state.obligations.counts.proposed + " proposals" : "No work due", "#/stage/run", state.obligations.counts.overdue || state.obligations.counts.blocked ? "bad" : state.obligations.counts.due ? "warn" : state.obligations.counts.proposed ? "neutral" : "good"]
+    ["Policy work", queueState().counts.overdue ? queueState().counts.overdue + " overdue" : queueState().counts.blocked ? queueState().counts.blocked + " blocked" : queueState().counts.due ? queueState().counts.due + " due" : queueState().counts.proposed ? queueState().counts.proposed + " proposals" : "No work due", "#/stage/run", queueState().counts.overdue || queueState().counts.blocked ? "bad" : queueState().counts.due ? "warn" : queueState().counts.proposed ? "neutral" : "good"]
   ];
   const evidencePaths = '<section class="panel audit-evidence-paths"><div class="panel-head"><div><p class="kicker">Evidence workflow</p><h3>Review both evidence paths</h3><p>Use the formal audit date or period. Each selected control may need one or both paths.</p></div></div><div class="audit-evidence-path-grid"><a href="#/stage/run"><span class="step-label">filegrc Evidence</span><h4>Review operating records</h4><p>Confirm the applicable Step 4 records are complete and linked to their Controls.</p></a><a href="#/resources/evidence"><span class="step-label">Evidence Artifacts</span><h4>Review imported or referenced proof</h4><p>Confirm each artifact is fixed, verified, and linked to its source Component and Controls.</p></a></div></section>';
   const dateFields = typeOne
@@ -3418,6 +3430,7 @@ function windowText(item) {
 }
 
 function timingText(item) {
+  if (item.kind === "source-deadline") return (item.status === "overdue" ? "Overdue · " : item.status === "blocked" ? "Blocked · " : "Due ") + item.dueOn;
   if (item.status === "waiting") return item.awaitingPeriodEnd ? "Awaiting period end" : "Awaiting population cutoff";
   if (item.canceledAction) return "Action canceled; resolve or cancel the event";
   if (item.missingCompletion) return "Link required completion proof";

@@ -2337,7 +2337,7 @@ test("uses the Step 4 page for compact policy-event triggers and the Work Queue"
   assert.match(APP_SCRIPT, /Evidence collection is running and the Work Queue has no overdue or blocked work/);
   assert.match(stepFour, /const operationLocked = !state\.programReadiness\?\.evidenceReady/);
   assert.match(stepFour, /const acceptedTriggers = activePolicyEventTriggers\(orderedTriggers\)/);
-  assert.match(stepFour, /const currentItems = activeOperationItems\(plan\.items\)/);
+  assert.match(stepFour, /const currentItems = activeOperationItems\(queue\.items\)/);
   assert.match(stepFour, /activeOperation \+/);
   assert.match(stepFour, /Any adopted work and Policy Events that can happen now stay available below/);
   assert.match(stepFour, /setupTriggers = operationLocked \? proposedTriggers : orderedTriggers/);
@@ -2738,9 +2738,9 @@ test("renders shared obligation and evidence-packet workflows", () => {
   assert.match(APP_SCRIPT, /function renderObligations\(main, params = new URLSearchParams\(\)\)/);
   assert.match(APP_SCRIPT, /const renderBoard = \(items, statuses\) => statuses\.map/);
   assert.doesNotMatch(APP_SCRIPT, /class="metrics obligation-metrics"/);
-  assert.match(APP_SCRIPT, /state\.obligations\.counts\.overdue/);
-  assert.match(APP_SCRIPT, /state\.obligations\.counts\.blocked/);
-  assert.match(APP_SCRIPT, /state\.obligations\.counts\.proposed/);
+  assert.match(APP_SCRIPT, /queueState\(\)\.counts\.overdue/);
+  assert.match(APP_SCRIPT, /queueState\(\)\.counts\.blocked/);
+  assert.match(APP_SCRIPT, /queueState\(\)\.counts\.proposed/);
   assert.match(APP_SCRIPT, /daysUntilOverdue/);
   assert.match(APP_SCRIPT, /dueWindowStart/);
   assert.match(APP_SCRIPT, /dueWindowEnd/);

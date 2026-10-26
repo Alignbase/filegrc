@@ -1,3 +1,4 @@
+import { actionBlockingReason, planWorkQueue, sourceDeadlineWorkItems, workPriority } from "./work-queue.js";
 import { withAssessmentCache } from "./calculation-cache.js";
 import { resourceIndex } from "./resource-index.js";
 import { assertWorkspaceEngineVersion } from "./runtime-version.js";
@@ -41,48 +42,6 @@ import { notificationContacts } from "./notifications.js";
 import { loadWorkspace } from "./workspace.js";
 
 export const WORKFLOW_CONTRACT_VERSION = 1;
-
-const TERMINAL_STATUSES = new Set([
-  "accepted",
-  "approved",
-  "closed",
-  "complete",
-  "completed",
-  "done",
-  "expired",
-  "inactive",
-  "not-applicable",
-  "reconciled",
-  "remediated",
-  "resolved",
-  "retired",
-  "superseded",
-  "terminated",
-  "verified"
-]);
-
-const DATE_FIELDS = [
-  "dueOn",
-  "expiresOn",
-  "targetRemediationOn",
-  "treatmentTargetOn",
-  "reviewDueOn",
-  "scheduledFor",
-  "validThrough",
-  "fieldworkStart",
-  "fieldworkEnd",
-  "reportDate",
-  "endsOn",
-  "endDate",
-  "proposedEffectiveOn"
-];
-
-const OWNER_FIELDS = [
-  "assigneeIds",
-  "ownerIds",
-  "responsibleIds",
-  "reviewerIds"
-];
 
 /**
  * Return the shared, interface-neutral workflow assessment for a workspace.
@@ -178,12 +137,14 @@ async function assessWorkflowUnmeasured(input, options = {}) {
     ...item,
     notificationContacts: notificationContacts(item.ownerIds, loaded.resources)
   }));
+  const workQueue = planWorkQueue(loaded.resources, obligationPlan, { asOf, program: programRecord, model: loaded.model, includeComplete: Boolean(options.includeComplete) });
   const git = options.git || safeGitSummary(loaded.root);
   const assessments = buildAssessments({
     program,
     audits,
     auditPreparations,
     obligationPlan,
+    workQueue,
     findings,
     validation,
     coverage
@@ -205,6 +166,7 @@ async function assessWorkflowUnmeasured(input, options = {}) {
     recommendations: [program.hostedAutomation, program.hostedAutomation?.operating].filter(Boolean),
     findings: findings.sort(compareFindings),
     workItems: workItems.sort(compareWorkItems),
+    workQueue,
     recommended: recommended
       ? { ...recommended, rankingReason: rankingReason(recommended), context: buildActionContext(loaded, recommended) }
       : null,
@@ -1263,36 +1225,7 @@ function buildWorkItems(records, obligationPlan, options) {
   const obligationSources = new Set(items
     .map((item) => item.source?.id)
     .filter(Boolean));
-  for (const record of records) {
-    // The queue planner owns all Action Items, including filtered and terminal
-    // work. Recreating them from deadlines would undo its scope and lifecycle.
-    if (["obligation", "action-item"].includes(record.type) || obligationSources.has(record.id)) continue;
-    if (!recordBelongsToProgram(record, options.program, byId, options.model)) continue;
-    const due = firstDate(record);
-    if (!due) continue;
-    const state = sourceWorkState(record, due, options.asOf);
-    if (state === "complete" && !options.includeComplete) continue;
-    items.push({
-      key: `source:${record.type}:${record.id}:${due}`,
-      kind: "source-deadline",
-      source: { type: record.type, id: record.id },
-      subject: { type: record.type, id: record.id },
-      title: record.title,
-      ownerIds: firstOwners(record),
-      dueOn: due,
-      state,
-      priority: workPriority(state, due, options.asOf),
-      scope: workScope(record),
-      blockingReason: record.status === "blocked"
-        ? actionBlockingReason(record, byId)
-        : null,
-      dependencies: record.status === "blocked"
-        ? blockingDependencies(record.blockingResourceIds, byId)
-        : [],
-      requiredCompletionProfile: sourceCompletionProfile(record),
-      nextAction: sourceNextAction(record, due, options.asOf, records)
-    });
-  }
+  items.push(...sourceDeadlineWorkItems(records, { ...options, excludedSourceIds: obligationSources }));
   return uniqueByKey(items);
 }
 
@@ -1382,15 +1315,6 @@ function obligationNextAction(item, programId) {
   };
 }
 
-function actionBlockingReason(record, byId) {
-  if (record.status !== "blocked") return null;
-  const blockers = (record.blockingResourceIds || [])
-    .map((id) => byId.get(id)?.title || id)
-    .filter(Boolean);
-  return blockers.length
-    ? `Blocked by ${blockers.join(", ")}.`
-    : "The source record is blocked.";
-}
 
 function blockingDependencies(ids = [], byId) {
   return ids.map((id) => {
@@ -1403,15 +1327,15 @@ function blockingDependencies(ids = [], byId) {
   });
 }
 
-function buildAssessments({ program, audits, auditPreparations, obligationPlan, findings, validation, coverage }) {
+function buildAssessments({ program, audits, auditPreparations, obligationPlan, workQueue, findings, validation, coverage }) {
   const scopeStage = program.stages.find((stage) => stage.id === "scope");
   const configurationReady = stageComplete(scopeStage);
   const evidenceReady = program.evidenceReady;
   const periodFindings = findings.filter((finding) => finding.assessment === "period-health");
   const periodStarted = evidenceReady && Boolean(coverage?.start && coverage?.end);
   const periodHealthy = periodStarted
-    && obligationPlan.counts.overdue === 0
-    && obligationPlan.counts.blocked === 0
+    && workQueue.counts.overdue === 0
+    && workQueue.counts.blocked === 0
     && !periodFindings.some((finding) => blockingFinding(finding) || finding.state === "waiting");
   const auditValues = Object.values(auditPreparations);
   const auditReady = audits.length > 0
@@ -1583,101 +1507,16 @@ function findingPriority(finding) {
   return 90;
 }
 
-function workPriority(state, dueOn, asOf) {
-  if (state === "waiting") return 60;
-  if (state === "overdue") return 0;
-  if (dueOn && asOf && dueOn < asOf) return 5;
-  if (state === "due") return 10;
-  if (state === "ready" || state === "open") return 20;
-  if (state === "blocked") return 30;
-  if (state === "upcoming" || state === "scheduled") return 50;
-  return 90;
-}
 
 function activeWork(item) {
   return !["canceled", "complete", "not-applicable", "superseded"].includes(item.state);
 }
 
-function firstDate(record) {
-  if (record.type === "exception" && typeof record.approval?.expiresOn === "string") return record.approval.expiresOn;
-  if (record.completionWindow?.dueAt) return record.completionWindow.dueAt;
-  if (record.completionWindow?.dueOn) return record.completionWindow.dueOn;
-  for (const field of DATE_FIELDS) {
-    if (typeof record[field] === "string" && record[field]) return record[field];
-  }
-  return null;
-}
 
-function workScope(record) {
-  for (const field of [
-    "scopeResourceIds",
-    "systemIds",
-    "controlIds",
-    "vendorIds",
-    "requirementIds"
-  ]) {
-    if (Array.isArray(record[field]) && record[field].length) return record[field];
-  }
-  return [];
-}
 
-function sourceCompletionProfile(record) {
-  if (record.type === "action-item") return record.obligationId ? "assigned-obligation-work" : "assigned-action";
-  if (record.type === "audit-request") return "audit-request-response";
-  if (record.type === "risk") return "risk-treatment-and-review";
-  if (record.type === "vulnerability") return "vulnerability-remediation";
-  if (record.type === "finding") return "finding-remediation-and-verification";
-  if (record.type === "exception") return "exception-expiry-and-compensating-control-review";
-  if (record.type === "service-account") return "service-account-review-or-disablement";
-  if (record.type === "vendor") return "vendor-assurance-renewal-or-termination";
-  if (record.type === "access-grant") return "access-renewal-or-revocation";
-  if (record.type === "audit") return "audit-lifecycle-transition";
-  return `${record.type}-lifecycle`;
-}
 
-function sourceNextAction(record, due, asOf, records) {
-  const eventType = record.type === "exception"
-    ? (record.status === "approved" && due < asOf ? "exception-expired" : null)
-    : due <= asOf ? {
-    "service-account": "service-account-expired",
-    vulnerability: "vulnerability-overdue"
-  }[record.type] : null;
-  const alreadyRecorded = eventType && records.some((item) => (
-    item.type === "obligation-event"
-    && item.eventType === eventType
-    && (item.subjectResourceIds || []).includes(record.id)
-    && item.occurredOn >= due.slice(0, 10)
-  ));
-  if (eventType && !alreadyRecorded) {
-    return {
-      kind: "command",
-      command: `npx filegrc trigger ${eventType} --occurred-on YYYY-MM-DD --subject ${shellArgument(record.id)} --json`
-    };
-  }
-  return {
-    kind: "command",
-    command: `npx filegrc get ${shellArgument(record.id)} --mutation`
-  };
-}
 
-function firstOwners(record) {
-  for (const field of OWNER_FIELDS) {
-    if (Array.isArray(record[field]) && record[field].length) return record[field];
-  }
-  return [];
-}
 
-function sourceWorkState(record, due, asOf) {
-  if (record.type === "exception" && ["closed", "revoked"].includes(record.status)) return "complete";
-  if (!(record.type === "exception" && record.status === "approved") && TERMINAL_STATUSES.has(record.status)) return "complete";
-  if (["canceled", "superseded"].includes(record.status)) return record.status;
-  if (["draft", "in-review", "partially-implemented", "planned", "proposed"].includes(record.status)) {
-    return "proposed";
-  }
-  if (due < asOf) return "overdue";
-  if (due === asOf) return "due";
-  return "scheduled";
-}
 
 function candidateCoverage(workspace) {
   const coverage = workspace?.candidateCoverage;

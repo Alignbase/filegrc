@@ -1,3 +1,4 @@
+export { planWorkQueue } from "./work-queue.js";
 export {
   ACTIVE_MODEL_VERSION,
   getResourceDefinition,

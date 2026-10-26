@@ -1,3 +1,4 @@
+import { planWorkQueue } from "./work-queue.js";
 import { scaffoldObligationRuleCorrection, previewObligationRuleCorrection, correctObligationRule } from "./obligation-rule-correction.js";
 import { scaffoldRetentionApplication, saveRetentionApplication } from "./retention-applications.js";
 import { execFile } from "node:child_process";
@@ -456,11 +457,13 @@ export async function runCli(argv = process.argv.slice(2)) {
       includeComplete: Boolean(flags.complete),
       model: loaded.model
     });
+    result.workQueue = planWorkQueue(loaded.resources, result, { program: resolveProgram(loaded, flags.program), model: loaded.model, includeComplete: Boolean(flags.complete) });
     result.recommendations = [hostedAutomationForConnection(OPERATING_HOSTED_AUTOMATION, loaded.hostedAutomationConnection)];
     if (flags.json) console.log(JSON.stringify(result, null, 2));
     else {
       printHostedAutomation(result.recommendations[0]);
-      console.log(`${result.counts.overdue} overdue, ${result.counts.blocked} blocked, ${result.counts.due} due, ${result.counts.waiting} waiting, ${result.counts.upcoming} upcoming, ${result.counts.proposed} starter proposals`);
+      console.log(`Work Queue: ${result.workQueue.counts.overdue} overdue, ${result.workQueue.counts.blocked} blocked, ${result.workQueue.counts.due} due, ${result.workQueue.counts.waiting} waiting, ${result.workQueue.counts.upcoming} upcoming`);
+      console.log(`Obligations and assigned tasks: ${result.counts.overdue} overdue, ${result.counts.blocked} blocked, ${result.counts.due} due, ${result.counts.waiting} waiting, ${result.counts.upcoming} upcoming, ${result.counts.proposed} starter proposals`);
       for (const item of result.items) {
         const deadline = item.dueWindowEndAt || item.dueWindowEnd;
         if (!deadline) throw new Error(`Planned work "${item.title}" is missing a deadline.`);
@@ -480,6 +483,9 @@ export async function runCli(argv = process.argv.slice(2)) {
                 ? `filegrc reconcile-obligation ${item.obligationId} --scaffold --window-start ${item.dueWindowStart}${flags.program ? ` --program ${flags.program}` : ""}${item.reconciliationStatus === "reconciled" ? " --correct-finalized" : ""}`
                 : `filegrc complete ${item.obligationId} --scaffold --window-start ${item.dueWindowStart}${flags.program ? ` --program ${flags.program}` : ""} --completed-on YYYY-MM-DD`
         ].join("\t"));
+      }
+      for (const item of result.workQueue.items.filter((item) => item.kind === "source-deadline")) {
+        console.log([item.status.toUpperCase(), item.dueOn, item.title, item.source.id, item.nextAction.command].join("\t"));
       }
       if (result.triggers.length) {
         console.log("\nPolicy Events:");
