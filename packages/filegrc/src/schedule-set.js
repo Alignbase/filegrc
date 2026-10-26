@@ -84,7 +84,11 @@ export function scheduleSetIssues(loaded, program, review, options = {}) {
       const rule = options.at ? obligationRule(obligation, byId, { now: options.at }) : byId.get(obligation.activeRuleId);
       if (obligation.status !== "active" || (obligation.scheduleMode === "rule"
         && (!rule || rule.obligationId !== obligation.id || !["active", "retired"].includes(rule.status) || decision.ruleId !== obligation.activeRuleId || !reviewedRuleChainContains(obligation, decision.ruleId, rule.id, byId) || !rule.approvedByIds?.length || !rule.approvedOn))) {
-        add(obligation.id, `${obligation.title} needs its adopted, approved rule effective at cutover.`);
+        add(obligation.id, decision.ruleId !== obligation.activeRuleId && obligation.scheduleMode === "rule"
+          ? `${obligation.title}: the schedule review must name the currently adopted rule. Independently review the current Program schedule set.`
+          : options.at
+            ? `${obligation.title} needs its adopted, approved rule effective at cutover.`
+            : `${obligation.title} needs its currently adopted, approved rule. Review the current Program schedule set.`);
       } else if (rule && (rule.approvedOn > currentCalendarDate(rule.timezone || loaded.workspace?.timezone || "UTC")
         || !Array.isArray(rule.approvedByIds) || rule.approvedByIds.some((id) => !personWasActiveOn(byId.get(id), rule.approvedOn)))) {
         add(obligation.id, `${obligation.title} needs an actual rule approval by People active on its approval date.`);

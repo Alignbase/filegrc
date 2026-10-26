@@ -3039,3 +3039,32 @@ test("waiting card timing never claims completion or an actionable deadline", ()
   assert.equal(timing.timingText(item), "Awaiting population cutoff");
   assert.equal(timing.windowText(item), "Recorded work window: 2026-10-01 through 2026-10-31.");
 });
+
+
+test("snapshot population copy requests an actual observation date without inventing a cutoff", () => {
+  const card = APP_SCRIPT.slice(APP_SCRIPT.indexOf("function obligationCard"), APP_SCRIPT.indexOf("function actionCompletionPlan"));
+  const review = APP_SCRIPT.slice(APP_SCRIPT.indexOf("function occurrenceMemberReview"), APP_SCRIPT.indexOf("function applyOccurrenceMemberReview"));
+  const context = vm.createContext({ state: { readOnly: true }, esc: String, titleCase: String, properCase: String, formatReference: String, timingText: () => "Upcoming", windowText: () => "Allowed window", obligationCompletionPlan: () => null });
+  vm.runInContext(card + review, context);
+  context.item = { obligationId: "review", ruleId: "rule-review", title: "Periodic review", status: "upcoming", kind: "calendar", expectedCount: 1, completedCount: 0, membershipFinal: false, membershipCutoffAt: null };
+  let html = vm.runInContext("obligationCard(item)", context);
+  assert.match(html, /record the actual population observation date/);
+  assert.doesNotMatch(html, /through \.|null|undefined/);
+  context.record = { members: [], membershipCutoffAt: null };
+  html = vm.runInContext("occurrenceMemberReview(record, false)", context);
+  assert.match(html, /date you actually observed this population/);
+  assert.doesNotMatch(html, /through \.|null|undefined/);
+  context.item.membershipCutoffAt = "2026-10-31";
+  context.record.membershipCutoffAt = "2026-10-31";
+  assert.match(vm.runInContext("obligationCard(item)", context), /population remains open through 2026-10-31/);
+  assert.match(vm.runInContext("occurrenceMemberReview(record, false)", context), /Population remains open through 2026-10-31/);
+  context.item.awaitingPeriodEnd = true;
+  context.item.requiredCoverage = { endsOn: "2026-12-31" };
+  context.record.requiredCoverage = { endsOn: "2026-12-31" };
+  assert.match(vm.runInContext("obligationCard(item)", context), /awaiting full period end 2026-12-31/);
+  assert.match(vm.runInContext("occurrenceMemberReview(record, true, false)", context), /inclusive final day/);
+  delete context.item.requiredCoverage;
+  delete context.record.requiredCoverage;
+  assert.match(vm.runInContext("obligationCard(item)", context), /review the required period end/);
+  assert.match(vm.runInContext("occurrenceMemberReview(record, true, false)", context), /Review the required period end/);
+});
