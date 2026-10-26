@@ -320,3 +320,21 @@ test("replacement event coverage uses the rule effective at cutover", () => {
   assert.ok(scheduleSetIssues(loaded, program, review, { at: "2026-10-13T00:00:00Z" }).some(({ message }) => /required incident-declared event/.test(message)));
   assert.deepEqual(scheduleSetIssues(loaded, program, review, { at: "2099-12-01T00:00:00Z" }), []);
 });
+
+
+test("a successor awaiting schedule oversight does not imply missing historical cutover approval", () => {
+  const { loaded, program } = fixture();
+  const obligation = loaded.resources.find(({ id }) => id === "calendar");
+  const predecessor = loaded.resources.find(({ id }) => id === "rule-calendar");
+  predecessor.status = "retired";
+  loaded.resources.push({ ...predecessor, id: "rule-current", status: "active", supersedesId: predecessor.id, effectiveAt: "2026-10-25T00:00:00Z" });
+  obligation.activeRuleId = "rule-current";
+  const review = { scopeResourceIds: [program.id], scheduleDecisions: [adopted, exclusion] };
+  const issues = scheduleSetIssues(loaded, program, review, { at: "2026-10-12T00:00:00Z" });
+  assert.ok(issues.some(({ message }) => /schedule review must name the currently adopted rule/.test(message)));
+  assert.ok(issues.every(({ message }) => !/effective at cutover/.test(message)));
+  review.scheduleDecisions[0] = { ...adopted, ruleId: "rule-current" };
+  assert.deepEqual(scheduleSetIssues(loaded, program, review, { at: "2026-10-12T00:00:00Z" }), []);
+  predecessor.approvedByIds = [];
+  assert.ok(scheduleSetIssues(loaded, program, review, { at: "2026-10-12T00:00:00Z" }).some(({ message }) => /effective at cutover/.test(message)));
+});
