@@ -146,8 +146,13 @@ test("a setup Component confirmation survives later inventory and procedure chan
   assert.doesNotMatch(componentStep.title, /proposal/i);
   const operatingChange = readiness.stages.find(({ id }) => id === "operation").items
     .find(({ id }) => id === "operating-component-component-new-workforce-source");
-  assert.equal(operatingChange?.status, "action");
+  assert.equal(operatingChange?.status, "later");
   assert.equal(operatingChange?.resourceId, added.id);
+  assert.match(operatingChange.message, /Keep its planned or evaluating status/);
+  loaded.resources.push({ id: "source-coverage-new-workforce-source", type: "source-coverage", status: "active", componentId: added.id });
+  const reliedOn = await assessProgramReadiness(loaded, { programId: program.id });
+  assert.equal(reliedOn.stages.find(({ id }) => id === "operation").items
+    .find(({ id }) => id === "operating-component-component-new-workforce-source")?.status, "action");
 });
 
 test("a Framework selection change reopens its specific setup review", async (context) => {

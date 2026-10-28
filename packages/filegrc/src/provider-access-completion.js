@@ -21,8 +21,19 @@ export function providerAccessControls(loaded, program, controls = loaded.resour
       || byId.get(schedule.activeRuleId)?.controlIds?.includes(control.id)));
 }
 
-export function providerAccessPopulation(loaded, program, controls) {
-  const componentIds = unique([...programComponents(loaded, program).filter(({ status }) => status === "active").map(({ id }) => id),
+export function providerAccessPopulation(loaded, program, controls, options = {}) {
+  const activeGrantComponents = new Set(loaded.resources.filter((record) => record.type === "access-grant" && record.status === "active").map(({ componentId }) => componentId));
+  const historicalIds = options.historicalReviewComponentIds && new Set(options.historicalReviewComponentIds);
+  // A provisioned setup login needs an account boundary review even when the
+  // provider's service and data processing remain only proposals.
+  // New setup-account classifications do not enlarge an already committed
+  // review's dated population. Its active providers, selected Control sources
+  // and explicitly reviewed setup boundaries remain checked. Current readiness
+  // still assesses every real active setup account under the current rules.
+  const componentIds = unique([...programComponents(loaded, program).filter(({ id, status }) => (
+    ["active", "deprecated"].includes(status)
+      || status === "planned" && activeGrantComponents.has(id) && (!historicalIds || historicalIds.has(id))
+  )).map(({ id }) => id),
     ...controls.flatMap((control) => [...control.componentIds || [], ...control.evidenceSourceComponentIds || []])]);
   const grants = loaded.resources.filter((grant) => grant.type === "access-grant" && componentIds.includes(grant.componentId) && grant.status === "active");
   return { componentIds, grants };
@@ -108,7 +119,8 @@ export function assessProgramAccessReview(candidate, loaded, program, controls, 
     }
   }
   const byId = new Map(loaded.resources.map((record) => [record.id, record]));
-  const population = providerAccessPopulation(loaded, program, controls);
+  const population = providerAccessPopulation(loaded, program, controls, loaded.historicalCommit
+    ? { historicalReviewComponentIds: candidate.componentIds || [] } : {});
   const componentIds = unique([...population.componentIds, ...options.historicalComponentIds || []]);
   const grants = options.historicalComponentIds ? loaded.resources.filter((record) => record.type === "access-grant"
     && record.status === "active" && componentIds.includes(record.componentId)) : population.grants;
@@ -130,9 +142,14 @@ export function assessProgramAccessReview(candidate, loaded, program, controls, 
   if (!valid(candidate)) return { resourceId: candidate.id, complete: false, missingFacts: ["valid-access-review"], missingScopeIds: [], missingGrantIds: [], missingSourceIds: [], invalidGrantIds: [], unresolvedDecisionIds: [], permittedExceptionIds: [], remediationIds: [] };
   const issues = [], missingScopeIds = componentIds.filter((id) => !candidate.componentIds?.includes(id));
   const decisions = candidate.grantDecisions || [];
+  const scopedComponentIds = new Set(programComponents(loaded, program).map(({ id }) => id));
   const invalidGrantIds = grants.filter((grant) => {
     const subject = byId.get(grant.subjectId);
-    return byId.get(grant.componentId)?.status !== "active" || !valid(grant) || grant.expiresOn && grant.expiresOn < asOf || !grant.provisionedOn || grant.provisionedOn > candidate.completedOn
+    const component = byId.get(grant.componentId);
+    const currentBoundary = ["active", "deprecated"].includes(component?.status)
+      || component?.status === "planned" && scopedComponentIds.has(component.id);
+    return !currentBoundary || !valid(grant) || grant.expiresOn && grant.expiresOn < asOf || !grant.provisionedOn || grant.provisionedOn > candidate.completedOn
+      || !actualPeople(grant.approvedByIds, grant.approvedOn) || !actualPeople(grant.provisionedByIds, grant.provisionedOn)
       || !subject || subject.type === "person" && !personWasActiveOn(subject, asOf)
       || subject.type === "service-account" && (subject.status !== "active" || currentPartyPeople(subject.ownerIds || [], byId).size === 0);
   }).map(({ id }) => id);

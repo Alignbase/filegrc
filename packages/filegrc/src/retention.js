@@ -612,6 +612,7 @@ function substantiveReviewSource(record, currentModel, reviewer = null, lifecycl
       .map(({ requirementId, decision }) => ({ requirementId, decision }))
       .sort((left, right) => left.requirementId.localeCompare(right.requirementId))
   } : { ...record };
+  delete source.periodImpactReview;
   if (source.applicabilityReview) {
     source.applicabilityReview = { decision: source.applicabilityReview.decision };
   }

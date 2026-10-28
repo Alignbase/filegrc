@@ -738,6 +738,19 @@ Key format: `namespace`.
 | `holdsPreserved` | boolean | Yes | All approved holds and required records remain protected. |
 | `noConflictingDuties` | boolean | Yes | No legal, contractual or other duty conflicts with this application. |
 
+### `period-impact-review`
+
+| Property | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `reviewedByIds` | array of id | Yes | References: `person` |
+| `reviewedOn` | date | Yes |  |
+| `effectiveOn` | date | Yes |  |
+| `conclusion` | enum | Yes | Values: `no-material-change`, `material-change-reviewed` |
+| `rationale` | string | Yes |  |
+| `reviewedRevision` | string | Yes |  |
+| `reviewedTransitionKeys` | array of string | No |  |
+| `policyEventIds` | array of id | No | References: `obligation-event` |
+
 ## Common fields
 
 | Field | Type | Required | Meaning |
@@ -977,6 +990,7 @@ Markdown companions:
 | `procedureEffectiveOn` | date | No | Procedure effective date |
 | `componentIds` | array of id | No | Operating and supporting Components References: `component` |
 | `evidenceSourceComponentIds` | array of id | Conditional | Authoritative evidence-source Components References: `component` Required when `status` is `implemented`. |
+| `periodImpactReview` | object (`period-impact-review`) | No | Period impact review |
 
 #### `control-test`
 
@@ -1161,6 +1175,7 @@ Record Markdown: available when needed as an implicit companion file.
 | `evidenceIds` | array of id | No | References: `evidence` |
 | `statusTransition` | object (`status-transition`) | Conditional | Required when `status` is one of `ended`. Allowed when `status` is one of `ended`. |
 | `independenceRationale` | string | No | Independence rationale |
+| `periodImpactReview` | object (`period-impact-review`) | No | Period impact review |
 
 #### `team`
 
@@ -1284,6 +1299,7 @@ Markdown companions:
 | `programRole` | enum | No | Program role Values: `required`, `conditional`, `alternative`, `supporting` |
 | `proposedEffectiveOn` | date | No | Proposed effective date Allowed when `status` is one of `draft`, `in-review`, `approved`. |
 | `reportingRouteRequirements` | array of object (`reporting-route-requirement`) | No | Reporting route requirements |
+| `periodImpactReview` | object (`period-impact-review`) | No | Period impact review |
 
 #### `policy-review`
 
@@ -1970,6 +1986,7 @@ Record Markdown: shown by default as an implicit companion file.
 | `internetExposed` | boolean | No |  |
 | `continuityObjectives` | object (`continuity-objectives`) | No |  |
 | `statusTransition` | object (`status-transition`) | Conditional | Required when `status` is one of `deprecated`, `retired`. Allowed when `status` is one of `deprecated`, `retired`. |
+| `periodImpactReview` | object (`period-impact-review`) | No | Period impact review |
 
 #### `asset`
 
@@ -2160,6 +2177,7 @@ Markdown companions:
 | `classificationId` | id | No | Highest classification References: `classification` |
 | `continuityObjectives` | object (`continuity-objectives`) | No |  |
 | `statusTransition` | object (`status-transition`) | Conditional | Required when `status` is one of `deprecated`, `retired`. Allowed when `status` is one of `deprecated`, `retired`. |
+| `periodImpactReview` | object (`period-impact-review`) | No | Period impact review |
 
 ### Security Operations
 
@@ -2520,6 +2538,7 @@ Record Markdown: shown by default as an implicit companion file.
 | `statusTransition` | object (`status-transition`) | Conditional | Required when `status` is `retired`. Allowed when `status` is `retired`. |
 | `componentId` | id | Conditional | Authoritative Component References: `component` Required when `coverageKind` is `external-component` and `status` is `active`. |
 | `retrievalMethodKey` | string (id) | No | Retrieval method key |
+| `periodImpactReview` | object (`period-impact-review`) | No | Period impact review |
 
 #### `control-activity`
 
@@ -2704,7 +2723,7 @@ Instructions: One immutable reviewed revision of an Obligation schedule, populat
 
 Policy basis: A reusable schedule must be reviewed before it governs work. The rule records the exact management rationale or authoritative source used for that decision.
 
-Timing: Create a proposed revision, review it, then activate it at a real effective time. Never backdate a late decision or rewrite a prior effective rule.
+Timing: Create a proposed revision, review it, then activate it at a real effective time. Never backdate a late decision or rewrite a prior effective rule. Withdraw a proposed or approved rule that never took effect with its actual decision actors, date, and reason. Preserve any approval and the withdrawn proposal; withdrawal does not approve a schedule or cancel an effective rule.
 
 Path: `data/obligation-rules/<id>.json`
 
@@ -2712,7 +2731,7 @@ Record Markdown: available when needed as an implicit companion file.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
-| `status` | enum | Yes | Values: `proposed`, `approved`, `active`, `retired` |
+| `status` | enum | Yes | Values: `proposed`, `approved`, `active`, `retired`, `withdrawn` |
 | `obligationId` | id | Yes | References: `obligation` |
 | `activityDefinitionVersion` | string | No |  |
 | `recurrence` | object (`recurrence`) | Yes |  |
@@ -2729,6 +2748,9 @@ Record Markdown: available when needed as an implicit companion file.
 | `retiredOn` | date | Conditional | Required when `status` is `retired`. |
 | `preparationPurpose` | enum | No | Preparation purpose Values: `operation`, `applicability-review`, `test-execution` |
 | `completionCoverage` | enum | No | Required proof coverage Values: `point-in-time`, `whole-period` |
+| `withdrawnByIds` | array of id | Conditional | References: `person` Required when `status` is `withdrawn`. |
+| `withdrawnOn` | date | Conditional | Required when `status` is `withdrawn`. |
+| `withdrawalReason` | string | Conditional | Required when `status` is `withdrawn`. |
 
 #### `obligation-occurrence`
 

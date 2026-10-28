@@ -1,4 +1,6 @@
-import { planWorkQueue } from "./work-queue.js";
+import { scaffoldPeriodImpactReview, previewPeriodImpactReview, recordPeriodImpactReview } from "./period-impact.js";
+import { scaffoldObligationRuleWithdrawal, previewObligationRuleWithdrawal, withdrawObligationRule } from "./obligation-rule-withdrawal.js";
+import { planWorkQueue, sourceDeadlineValidation } from "./work-queue.js";
 import { scaffoldObligationRuleCorrection, previewObligationRuleCorrection, correctObligationRule } from "./obligation-rule-correction.js";
 import { scaffoldRetentionApplication, saveRetentionApplication } from "./retention-applications.js";
 import { firstOperatingTasks } from "./operating-preparation.js";
@@ -268,7 +270,7 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
           includeComplete: url.searchParams.get("includeComplete") === "true",
           model: loaded.model
         });
-        const workQueue = planWorkQueue(loaded.resources, obligations, { program: resolveProgram(loaded, url.searchParams.get("programId") || undefined), model: loaded.model, includeComplete: url.searchParams.get("includeComplete") === "true" });
+        const workQueue = planWorkQueue(loaded.resources, obligations, { validationOk: await sourceDeadlineValidation(loaded), program: resolveProgram(loaded, url.searchParams.get("programId") || undefined), model: loaded.model, includeComplete: url.searchParams.get("includeComplete") === "true" });
         return json(response, 200, { ...obligations, workQueue, recommendations: [hostedAutomationForConnection(OPERATING_HOSTED_AUTOMATION, loaded.hostedAutomationConnection)] });
       }
       if (request.method === "GET" && url.pathname === "/api/workflow") {
@@ -493,6 +495,30 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
             ? requireRevision(payload.revision, `obligation-occurrence/${payload.record.supersedesId}`)
             : payload.revision
         })));
+      }
+      if (request.method === "POST" && url.pathname.startsWith("/api/period-impact-reviews")) {
+        const action = url.pathname.slice("/api/period-impact-reviews".length);
+        if (["/scaffold", "/preview", ""].includes(action)) {
+          const payload = await readJson(request);
+          if (!safeSegment(payload.resourceId)) return json(response, 400, { error: "A safe resource ID is required." });
+          if (action === "/scaffold") return json(response, 200, await scaffoldPeriodImpactReview(input, payload));
+          if (action === "/preview") return json(response, 200, await previewPeriodImpactReview(input, payload));
+          return json(response, 201, await browserMutation(input, requestOptions, {
+            message: () => `Review period impact: ${payload.resourceId}`
+          }, () => recordPeriodImpactReview(input, payload)));
+        }
+      }
+      if (request.method === "POST" && url.pathname.startsWith("/api/obligation-rule-withdrawals")) {
+        const action = url.pathname.slice("/api/obligation-rule-withdrawals".length);
+        if (["/scaffold", "/preview", ""].includes(action)) {
+          const payload = await readJson(request);
+          if (!safeSegment(payload.ruleId)) return json(response, 400, { error: "A safe Obligation Rule ID is required." });
+          if (action === "/scaffold") return json(response, 200, await scaffoldObligationRuleWithdrawal(input, payload));
+          if (action === "/preview") return json(response, 200, await previewObligationRuleWithdrawal(input, payload));
+          return json(response, 201, await browserMutation(input, requestOptions, {
+            message: () => `Withdraw obligation rule: ${payload.ruleId}`
+          }, () => withdrawObligationRule(input, payload)));
+        }
       }
       if (request.method === "POST" && url.pathname.startsWith("/api/obligation-rule-corrections")) {
         const action = url.pathname.slice("/api/obligation-rule-corrections".length);

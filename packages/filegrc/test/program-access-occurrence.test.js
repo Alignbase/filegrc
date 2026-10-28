@@ -10,6 +10,7 @@ import { scaffoldObligationOccurrence, saveObligationOccurrence, loadWorkspace, 
 import { occurrenceCompletionContext } from "../src/obligation-completion-context.js";
 import { reviewHistoryContext } from "../src/historical-workspace.js";
 import { assessCompletionForObligation, completionMatchesMember } from "../src/obligations.js";
+import { assessProgramAccessReview, providerAccessControls } from "../src/provider-access-completion.js";
 
 async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), "filegrc-program-access-"));
@@ -86,6 +87,56 @@ test("committed reconciliations retain their dated population after provider and
   const occurrence = current.resources.find(({ type }) => type === "obligation-occurrence");
   await f.save({ ...occurrence, reconciledAt: "2026-07-08T18:00:00Z" });
   assert.ok((await validateWorkspace(f.root)).diagnostics.some(({ code }) => code === "missing-passing-member-completion"));
+});
+
+test("new setup-account classification preserves a frozen review while current real accounts remain actionable", async t => {
+  const f = await fixture(t);
+  const payload = await scaffold(f), occurrence = reconcile(payload.record);
+  await saveObligationOccurrence(f.root, { record: occurrence });
+  const initial = await loadWorkspace(f.root);
+  const grant = initial.resources.find(record => record.type === "access-grant");
+  const setupComponent = { ...f.component, id: "component-unused-setup", title: "Unused setup service", status: "planned" };
+  const setupGrant = { ...grant, id: "access-grant-unused-setup", componentId: setupComponent.id, businessNeed: "Evaluate an unused provider account." };
+  // These records model the old classifier's committed source population; the
+  // new classifier must not recast its already finalized review as unfinished.
+  await f.save(setupComponent); await f.save(setupGrant);
+  await initializeGitWorkspace(f.root);
+  const occurrencePath = join(f.root, "data/obligation-occurrences", `${occurrence.id}.json`);
+  const reviewPath = join(f.root, "data/access-reviews", `${f.review.id}.json`);
+  const originalOccurrence = await readFile(occurrencePath, "utf8"), originalReview = await readFile(reviewPath, "utf8");
+  let loaded = await loadWorkspace(f.root);
+  let program = loaded.resources.find(record => record.type === "program");
+  let assessment = assessProgramAccessReview(f.review, loaded, program, providerAccessControls(loaded, program), "2026-07-07");
+  assert.equal(assessment.complete, false, "Actual live setup access still needs current reconciliation.");
+  assert.ok(assessment.missingFacts.includes("all-provider-components"));
+  assert.deepEqual((await validateWorkspace(f.root)).diagnostics.filter(({ code }) => /occurrence|member|population/.test(code)), []);
+  const correction = { ...setupGrant, status: "approved" };
+  delete correction.provisionedByIds; delete correction.provisionedOn;
+  await f.save(correction);
+  loaded = await loadWorkspace(f.root); program = loaded.resources.find(record => record.type === "program");
+  assessment = assessProgramAccessReview(f.review, loaded, program, providerAccessControls(loaded, program), "2026-07-07");
+  assert.equal(assessment.complete, true, JSON.stringify(assessment.missingFacts));
+  assert.deepEqual((await validateWorkspace(f.root)).diagnostics.filter(({ code }) => /occurrence|member|population/.test(code)), []);
+  assert.equal(await readFile(occurrencePath, "utf8"), originalOccurrence);
+  assert.equal(await readFile(reviewPath, "utf8"), originalReview);
+});
+
+test("historical setup handling cannot hide a real active provider missing from frozen proof", async t => {
+  for (const status of ["active", "deprecated", "planned"]) {
+    const f = await fixture(t);
+    const payload = await scaffold(f), occurrence = reconcile(payload.record);
+    await saveObligationOccurrence(f.root, { record: occurrence });
+    const loaded = await loadWorkspace(f.root), grant = loaded.resources.find(record => record.type === "access-grant");
+    const missingProvider = { ...f.component, id: "component-missing-operating-provider", title: "Operating provider", status };
+    await f.save(missingProvider);
+    await f.save({ ...grant, id: "access-grant-missing-provider", componentId: missingProvider.id });
+    if (status === "planned") {
+      const control = loaded.resources.find(record => record.type === "control");
+      await f.save({ ...control, componentIds: [...control.componentIds || [], missingProvider.id] });
+    }
+    await initializeGitWorkspace(f.root);
+    assert.ok((await validateWorkspace(f.root)).diagnostics.some(({ code }) => code === "missing-passing-member-completion"), status);
+  }
 });
 
 

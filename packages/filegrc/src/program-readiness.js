@@ -1,4 +1,4 @@
-import { planWorkQueue } from "./work-queue.js";
+import { planWorkQueue, sourceDeadlineValidation } from "./work-queue.js";
 import { withAssessmentCache } from "./calculation-cache.js";
 import { assessOperatingPreparation, firstOperatingTasks } from "./operating-preparation.js";
 import { reportingCutoverIssues } from "./activation-readiness.js";
@@ -314,14 +314,18 @@ async function assessProgramReadinessUncached(input, options = {}) {
     complete && resourceType !== "retention-schedule-item"
   ))) {
     for (const proposal of assessment.incompleteRecordProposals || []) {
+      const dormant = proposal.operatingStatus === "later";
       stages.at(-1).items.push(item(
         `operating-${assessment.resourceType}-${proposal.resourceId}`,
-        "action",
-        `Finish ${proposal.title}`,
-        "Finish or retire this new record, check its affected Systems and Controls, and start a change event only if the change is material under an approved Policy.",
+        dormant ? "later" : "action",
+        dormant ? `${proposal.title} remains a proposal` : `Check ${proposal.title} before relying on it`,
+        dormant
+          ? "No operational reliance is recorded. Keep its planned or evaluating status while considering it, and reconcile any setup accounts separately. Complete the service, processing and Control requirements before operational use begins."
+          : "Check the actual use and affected Systems and Controls, then complete this record to match current practice. Start a change event only if the change is material under an approved Policy.",
         { type: assessment.resourceType, id: proposal.resourceId, title: proposal.title },
         {
           resourceType: assessment.resourceType,
+          ...(proposal.operatingDependencyIds?.length ? { operatingDependencyIds: proposal.operatingDependencyIds } : {}),
           destination: { kind: "record", resourceType: assessment.resourceType, resourceId: proposal.resourceId },
           commands: [
             `npx filegrc guide ${assessment.resourceType} --json`,
@@ -2014,7 +2018,7 @@ async function operationStage(loaded, workspace, scope, records, byId, asOf, evi
   }
 
   const obligations = planObligations(records, { root: loaded.root, programId: workspace.id, asOf, through: asOf, model });
-  const workQueue = planWorkQueue(records, obligations, { program: workspace, model });
+  const workQueue = planWorkQueue(records, obligations, { validationOk: await sourceDeadlineValidation(loaded), program: workspace, model });
   const start = progressWindow?.start || null;
   const end = progressWindow?.end || null;
   const formalWindow = progressWindow?.source === "audit";

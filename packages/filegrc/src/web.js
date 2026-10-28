@@ -2708,6 +2708,98 @@ function observationDateForItem(item) {
   });
 }
 
+async function openPeriodImpactReview(resourceId) {
+  try {
+    const response = await localFetch("/api/period-impact-reviews/scaffold", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ resourceId }) });
+    const scaffold = await response.json();
+    if (!response.ok) throw new Error(scaffold.error || "Could not prepare the impact review.");
+    const record = state.resources.find(entry => entry.record.id === resourceId).record;
+    const dialog = document.createElement("dialog");
+    dialog.className = "editor rule-withdrawal";
+    dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">Operating change</p><h2>Review period impact</h2></div><button type="button" class="icon-button" data-cancel aria-label="Close">×</button></div><p>Review the actual change to ' + esc(record.title) + '. Reuse work already performed. This records its impact, not a new approval, retrieval test or risk acceptance.</p><div class="form-grid"><label class="field-group"><span>Reviewed on</span><input type="date" name="reviewedOn" required max="' + esc(currentDate()) + '"></label><label class="field-group"><span>Effective business date</span><input type="date" name="effectiveOn" required max="' + esc(currentDate()) + '"></label><fieldset class="field-group full"><legend>Reviewed by</legend><div class="checkbox-list">' + resourcesOfType("person").map(({ record }) => '<label><input type="checkbox" name="actor" value="' + esc(record.id) + '"><span>' + esc(record.title) + '</span></label>').join("") + '</div></fieldset><label class="field-group full"><span>Conclusion</span><select name="conclusion" required><option value="">Select the actual conclusion</option><option value="no-material-change">No material change</option><option value="material-change-reviewed">Material change reviewed</option></select></label><label class="field-group full"><span>Impact and source continuity</span><textarea name="rationale" rows="3" required></textarea></label></div><p>Required approvals, effective dates, source coverage and Policy Events keep their normal checks.</p><section class="panel withdrawal-preview" hidden aria-live="polite"></section><div class="dialog-error" role="alert"></div><div class="dialog-actions"><button type="button" class="button" data-cancel>Cancel</button><button type="submit" class="button primary">Preview review</button><button type="button" class="button primary" data-apply hidden>Record review</button></div></form>';
+    document.body.append(dialog); dialog.showModal();
+    dialog.addEventListener("close", () => dialog.remove());
+    dialog.querySelectorAll("[data-cancel]").forEach(button => button.addEventListener("click", () => dialog.close()));
+    const form = dialog.querySelector("form"), error = dialog.querySelector(".dialog-error"), output = dialog.querySelector(".withdrawal-preview"), apply = dialog.querySelector("[data-apply]");
+    let candidate = null, generation = 0;
+    form.addEventListener("input", () => { generation++; candidate = null; output.hidden = true; apply.hidden = true; });
+    form.addEventListener("submit", async event => {
+      event.preventDefault(); error.textContent = "";
+      const requested = ++generation;
+      try {
+        const payload = { ...scaffold, review: { ...scaffold.review, reviewedByIds: [...form.querySelectorAll('input[name="actor"]:checked')].map(input => input.value), reviewedOn: form.elements.reviewedOn.value, effectiveOn: form.elements.effectiveOn.value, conclusion: form.elements.conclusion.value, rationale: form.elements.rationale.value } };
+        const response = await localFetch("/api/period-impact-reviews/preview", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+        const preview = await response.json();
+        if (requested !== generation) return;
+        if (!response.ok) throw new Error(preview.error || "Impact preview failed.");
+        candidate = payload;
+        output.innerHTML = '<h3>Review the recorded decision</h3><p>' + esc(record.title) + '</p><dl class="metadata"><div><dt>Reviewed on</dt><dd>' + esc(payload.review.reviewedOn) + '</dd></div><div><dt>Effective on</dt><dd>' + esc(payload.review.effectiveOn) + '</dd></div><div><dt>Conclusion</dt><dd>' + esc(humanize(payload.review.conclusion)) + '</dd></div></dl><p>' + esc(payload.review.rationale) + '</p>' + (preview.materialityQuestions?.length ? '<p>' + (payload.review.conclusion === 'no-material-change' ? 'This decision also resolves the listed materiality questions for these exact reviewed transitions.' : 'Material changes retain their normal Policy Event work.') + '</p><ul>' + [...new Set(preview.materialityQuestions.map(question => question.message))].map(message => '<li>' + esc(message) + '</li>').join('') + '</ul>' : '') + '<p>The review binds the current facts and all companion procedures. Later substantive changes require another impact decision.</p>';
+        output.hidden = false; apply.hidden = false;
+      } catch (caught) { error.textContent = caught.message; }
+    });
+    apply.addEventListener("click", async () => {
+      if (!candidate) return;
+      setButtonBusy(apply, true, "Recording…");
+      try {
+        const response = await localFetch("/api/period-impact-reviews", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(candidate) });
+        if (!response.ok) throw new Error(await responseMessage(response));
+        applyMutationState(await response.json()); dialog.close(); render();
+      } catch (caught) { error.textContent = caught.message; setButtonBusy(apply, false); }
+    });
+  } catch (error) { showError(error.message); }
+}
+
+async function openObligationRuleWithdrawal(ruleId) {
+  try {
+    const response = await localFetch("/api/obligation-rule-withdrawals/scaffold", {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ruleId })
+    });
+    const scaffold = await response.json();
+    if (!response.ok) throw new Error(scaffold.error || "Could not prepare this rule for withdrawal.");
+    const rule = state.resources.find(({ record }) => record.id === ruleId).record;
+    const people = resourcesOfType("person");
+    const dialog = document.createElement("dialog");
+    dialog.className = "editor rule-withdrawal";
+    dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">Unused schedule</p><h2>Withdraw rule</h2></div><button type="button" class="icon-button" data-cancel aria-label="Close">×</button></div><p>Withdraw ' + esc(rule.title) + ' because it never took effect. The rule and any prior approval stay in the program history. Schedule approval remains a separate decision.</p><div class="form-grid"><label class="field-group"><span>Withdrawn on</span><input type="date" name="withdrawnOn" required max="' + esc(currentDate()) + '"' + (rule.approvedOn ? ' min="' + esc(rule.approvedOn) + '"' : '') + '></label><fieldset class="field-group full"><legend>Decision made by</legend><div class="checkbox-list">' + people.map(({ record }) => '<label><input type="checkbox" name="actor" value="' + esc(record.id) + '"><span>' + esc(record.title) + (record.status !== "active" ? '<small>Must have been active on the decision date</small>' : '') + '</span></label>').join("") + '</div></fieldset><label class="field-group full"><span>Reason for withdrawal</span><textarea name="withdrawalReason" rows="3" required></textarea></label></div><section class="panel withdrawal-preview" hidden aria-live="polite"></section><div class="dialog-error" role="alert"></div><div class="dialog-actions"><button type="button" class="button" data-cancel>Cancel</button><button type="submit" class="button primary">Preview withdrawal</button><button type="button" class="button primary" data-apply hidden>Withdraw rule</button></div></form>';
+    document.body.append(dialog);
+    dialog.showModal();
+    dialog.addEventListener("close", () => dialog.remove());
+    dialog.querySelectorAll("[data-cancel]").forEach((button) => button.addEventListener("click", () => dialog.close()));
+    const form = dialog.querySelector("form");
+    const error = dialog.querySelector(".dialog-error");
+    const apply = dialog.querySelector("[data-apply]");
+    const output = dialog.querySelector(".withdrawal-preview");
+    let previewedPayload = null;
+    let previewGeneration = 0;
+    form.addEventListener("input", () => { previewGeneration += 1; previewedPayload = null; apply.hidden = true; output.hidden = true; });
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault(); error.textContent = "";
+      const requestedGeneration = ++previewGeneration;
+      try {
+        const candidate = { ...scaffold, withdrawnOn: form.elements.withdrawnOn.value,
+          withdrawnByIds: [...form.querySelectorAll('[name="actor"]:checked')].map(({ value }) => value),
+          withdrawalReason: form.elements.withdrawalReason.value };
+        const response = await localFetch("/api/obligation-rule-withdrawals/preview", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(candidate) });
+        const preview = await response.json();
+        if (requestedGeneration !== previewGeneration) return;
+        if (!response.ok) throw new Error(preview.error || "Withdrawal preview failed.");
+        previewedPayload = candidate;
+        output.innerHTML = '<h3>Review withdrawal</h3><p>' + esc(rule.title) + ' will change from ' + esc(properCase(preview.previousStatus)) + ' to Withdrawn.</p><dl class="metadata"><div><dt>Decision date</dt><dd>' + esc(preview.record.withdrawnOn) + '</dd></div><div><dt>Decision made by</dt><dd>' + preview.record.withdrawnByIds.map((id) => esc(people.find(({ record }) => record.id === id)?.record.title || id)).join(', ') + '</dd></div><div><dt>Reason</dt><dd>' + esc(preview.record.withdrawalReason) + '</dd></div></dl><p>' + (rule.approvedOn ? 'The existing approval dated ' + esc(rule.approvedOn) + ' stays unchanged.' : 'No approval or effective date will be recorded.') + '</p>';
+        output.hidden = false; apply.hidden = false;
+      } catch (caught) { error.textContent = caught.message; }
+    });
+    apply.addEventListener("click", async () => {
+      if (!previewedPayload) return;
+      setButtonBusy(apply, true, "Withdrawing…");
+      try {
+        const response = await localFetch("/api/obligation-rule-withdrawals", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(previewedPayload) });
+        if (!response.ok) throw new Error(await responseMessage(response));
+        applyMutationState(await response.json()); dialog.close(); render();
+      } catch (caught) { error.textContent = caught.message; setButtonBusy(apply, false); }
+    });
+  } catch (error) { showError(error.message); }
+}
+
 async function openObligationRuleCorrection(ruleId) {
   try {
     const response = await localFetch("/api/obligation-rule-corrections/scaffold", {
@@ -3642,11 +3734,13 @@ function renderDetail(main, type, id, params = new URLSearchParams()) {
   }
   if (entry.historyLoaded === false) loadResourceHistory(type, id);
   const fields = { ...state.model.commonFields, ...definition.fields };
+  const withdrawnRuleLocked = type === "obligation-rule" && entry.record.status === "withdrawn";
   const recordContent = recordContentDefinition(type);
   const narrative = recordNarrative(entry.record, fields);
   const narrativeNames = new Set(narrative.map(([name]) => name));
   const visible = Object.entries(entry.record).filter(([name]) => (
     !["id", "type", "title", "extensions"].includes(name)
+    && name !== "periodImpactReview"
     && !fields[name]?.content
     && !narrativeNames.has(name)
   ));
@@ -3657,8 +3751,8 @@ function renderDetail(main, type, id, params = new URLSearchParams()) {
   const narrativeContent = narrative.length
     ? '<div class="content-label"><span>Record</span></div><div class="record-prose">' + narrative.map(([name, value]) => '<section><h3>' + esc(titleCase(fields[name]?.label || humanize(name))) + '</h3><p>' + esc(value) + '</p></section>').join("") + '</div>'
     : "";
-  const markdownContent = content.map(([name, item]) => '<article class="markdown"><div class="content-label"><span>' + esc(fieldLabel(type, name)) + ' · ' + esc(item.path) + '</span>' + (!state.readOnly ? '<button class="text-button" data-edit-content="' + esc(name) + '">Edit Markdown</button>' : "") + '</div>' + item.html + '</article>').join("");
-  const addRecordContent = recordContent && !entry.content[recordContent.slot] && !state.readOnly
+  const markdownContent = content.map(([name, item]) => '<article class="markdown"><div class="content-label"><span>' + esc(fieldLabel(type, name)) + ' · ' + esc(item.path) + '</span>' + (!state.readOnly && !withdrawnRuleLocked ? '<button class="text-button" data-edit-content="' + esc(name) + '">Edit Markdown</button>' : "") + '</div>' + item.html + '</article>').join("");
+  const addRecordContent = recordContent && !entry.content[recordContent.slot] && !state.readOnly && !withdrawnRuleLocked
     ? '<div class="record-content-action"><button class="button" type="button" id="add-record-content">Add Record Markdown</button></div>'
     : "";
   const hasRecordBody = Boolean(narrativeContent || markdownContent);
@@ -3706,7 +3800,18 @@ function renderDetail(main, type, id, params = new URLSearchParams()) {
   const amendmentAllowed = !state.readOnly && amendmentTarget && Object.values(state.model.nonmaterialAmendments || {}).some((rule) => rule.resourceTypes.includes(amendmentTarget.record.type))
     && (type !== "reporting-route-set" || ["approved", "proposed"].includes(entry.record.status));
   const retentionApplicationAction = !state.readOnly && type === "retention-schedule-item" && entry.record.status === "active" && state.model.resources["retention-application"] ? '<button class="button" type="button" data-apply-retention-rule>Apply approved rule</button>' : "";
+  const periodImpactAction = !state.readOnly && (entry.workflow?.findings || state.workflow?.findings)?.some(finding => finding.key === "period.change." + type + "." + entry.record.id && finding.state === "ready")
+    ? '<button class="button" type="button" data-review-period-impact>Review period impact</button>' : "";
+  const ruleWithdrawalAction = !state.readOnly && type === "obligation-rule"
+    && fields.status.values.includes("withdrawn") && ["proposed", "approved"].includes(entry.record.status)
+    && !entry.record.effectiveAt && !entry.record.retiredOn
+    && !state.resources.some(({ record }) => record.activeRuleId === entry.record.id || record.type === "obligation-occurrence" && record.ruleId === entry.record.id)
+    ? '<button class="button" type="button" data-withdraw-obligation-rule>Withdraw rule</button>' : "";
   const ruleCorrectionAction = !state.readOnly && type === "obligation-rule" && entry.record.status === "active" && entry.record.selector && entry.record.completionCoverage !== "whole-period" ? '<button class="button" type="button" data-correct-obligation-rule>Correct snapshot cutoff</button>' : "";
+  const impactReview = entry.record.periodImpactReview;
+  const periodImpactPanel = impactReview ? '<section class="panel nonmaterial-current-panel"><div class="panel-head"><h3>Period impact decision</h3></div><dl class="metadata"><div><dt>Reviewed on</dt><dd>' + esc(impactReview.reviewedOn) + '</dd></div><div><dt>Effective on</dt><dd>' + esc(impactReview.effectiveOn) + '</dd></div><div><dt>Reviewed by</dt><dd>' + (impactReview.reviewedByIds || []).map(id => esc(referenceTitle(id))).join(', ') + '</dd></div><div><dt>Conclusion</dt><dd>' + esc(humanize(impactReview.conclusion)) + '</dd></div></dl><p>' + esc(impactReview.rationale) + '</p></section>' : "";
+  const ruleWithdrawalPanel = withdrawnRuleLocked && entry.record.withdrawnOn
+    ? '<section class="panel nonmaterial-current-panel"><div class="panel-head"><h3>Withdrawal decision</h3></div><p>This rule never took effect. Its proposal and any prior approval remain in the program history.</p><dl class="metadata"><div><dt>Withdrawn on</dt><dd>' + esc(entry.record.withdrawnOn) + '</dd></div><div><dt>Decision made by</dt><dd>' + (entry.record.withdrawnByIds || []).map((id) => esc(state.resources.find(({ record }) => record.id === id)?.record.title || id)).join(', ') + '</dd></div><div><dt>Reason</dt><dd>' + esc(entry.record.withdrawalReason) + '</dd></div></dl></section>' : "";
   const amendmentAction = amendmentAllowed ? '<button class="button" type="button" data-amend-nonmaterial>Nonmaterial amendment</button>' : "";
   const amendmentView = entry.nonmaterialView;
   const amendmentPanel = amendmentView?.amendmentIds.length ? '<section class="panel nonmaterial-current-panel"><div class="panel-head"><h3>Current administrative details</h3></div><p>The source record and any original approval remain unchanged. These are owner-authorized administrative corrections.</p><dl class="metadata">' + (type === "reporting-route-set" ? ["primaryLane", "alternateLane"].filter((name) => amendmentView.record[name]).map((name) => '<div><dt>' + (name === "primaryLane" ? "Normal channel" : "Fallback channel") + '</dt><dd>' + esc(amendmentView.record[name].destination) + '</dd></div>').join("") : '<div><dt>Current label</dt><dd>' + esc(amendmentView.record.title) + '</dd></div>') + '</dl><p>' + amendmentView.amendmentIds.map((id) => '<a href="#/resource/nonmaterial-amendment/' + encodeURIComponent(id) + '">' + esc(state.resources.find(({ record }) => record.id === id)?.record.title || id) + '</a>').join(" · ") + '</p></section>' : "";
@@ -3725,15 +3830,17 @@ function renderDetail(main, type, id, params = new URLSearchParams()) {
     metadataPanel: hasStructuredMetadata ? "" : recordFieldsPanel,
     attachmentPanel
   });
-  const mayDelete = !state.readOnly && !routeSetLocked && !definition.singleton;
+  const mayDelete = !state.readOnly && !routeSetLocked && !withdrawnRuleLocked && !definition.singleton;
   const applicabilityStatus = state.applicabilityReviewStatuses?.[entry.record.id];
   const applicabilityAction = !state.readOnly && ["requirement", "control", "commitment", "complementary-control"].includes(type)
     && ["stale", "missing"].includes(applicabilityStatus)
     ? '<a class="button" href="#/resources/' + encodeURIComponent(type) + '?review=1">' + (applicabilityStatus === "stale" ? "Reconfirm" : "Review") + ' applicability</a>'
     : "";
   const recordMenu = '<details class="record-overflow"><summary aria-label="More record actions" title="More record actions"><svg viewBox="0 0 18 4" aria-hidden="true"><circle cx="2" cy="2" r="2"></circle><circle cx="9" cy="2" r="2"></circle><circle cx="16" cy="2" r="2"></circle></svg></summary><div class="record-overflow-menu" aria-label="Record actions"><button type="button" data-record-modal="info">Record info</button><button type="button" data-record-modal="connections">Connections</button><button type="button" data-record-modal="history"' + (entry.historyLoaded === false ? ' disabled' : '') + '>File history' + (entry.historyLoaded === false ? ' (loading)' : '') + '</button>' + (mayDelete ? '<div class="record-overflow-separator"></div><button class="danger-text" type="button" data-delete-resource>Delete record</button>' : '') + '</div></details>';
-  main.innerHTML = '<div class="page"><div class="detail-head"><div><div class="breadcrumbs header-breadcrumbs"><a href="' + collectionHref + '">' + esc(collectionLabel) + '</a><span>/</span><span>' + esc(entry.record.title) + '</span></div><h2>' + esc(titleCase(entry.nonmaterialView?.record.title || entry.record.title)) + '</h2></div><div class="actions">' + reportingRouteSetActions + ruleCorrectionAction + amendmentAction + retentionApplicationAction + auditCycleAction + auditPopulationCorrectionAction + (type === "audit" ? '<a class="button primary" href="#/audit-packet?auditId=' + encodeURIComponent(entry.record.id) + '">Audit Evidence &amp; Packet</a>' : "") + governanceActions + lifecycleActions + issueActions + applicabilityAction + addRecordContentAction + (!state.readOnly && !routeSetLocked ? '<button class="button" id="edit-resource">Edit</button>' : "") + recordMenu + '</div></div>' + amendmentPanel + '<div class="detail-grid ' + (hasRecordBody ? "" : "detail-grid-structured") + (type === "control" ? " detail-control" : "") + '">' + detailMain + supportPanels + (hasStructuredMetadata ? recordFieldsPanel : "") + '</div></div>';
+  main.innerHTML = '<div class="page"><div class="detail-head"><div><div class="breadcrumbs header-breadcrumbs"><a href="' + collectionHref + '">' + esc(collectionLabel) + '</a><span>/</span><span>' + esc(entry.record.title) + '</span></div><h2>' + esc(titleCase(entry.nonmaterialView?.record.title || entry.record.title)) + '</h2></div><div class="actions">' + reportingRouteSetActions + periodImpactAction + ruleWithdrawalAction + ruleCorrectionAction + amendmentAction + retentionApplicationAction + auditCycleAction + auditPopulationCorrectionAction + (type === "audit" ? '<a class="button primary" href="#/audit-packet?auditId=' + encodeURIComponent(entry.record.id) + '">Audit Evidence &amp; Packet</a>' : "") + governanceActions + lifecycleActions + issueActions + applicabilityAction + addRecordContentAction + (!state.readOnly && !routeSetLocked && !withdrawnRuleLocked ? '<button class="button" id="edit-resource">Edit</button>' : "") + recordMenu + '</div></div>' + amendmentPanel + periodImpactPanel + ruleWithdrawalPanel + '<div class="detail-grid ' + (hasRecordBody ? "" : "detail-grid-structured") + (type === "control" ? " detail-control" : "") + '">' + detailMain + supportPanels + (hasStructuredMetadata ? recordFieldsPanel : "") + '</div></div>';
   main.querySelectorAll("[data-completion-requirements]").forEach((button) => button.addEventListener("click", () => openCompletionRequirementsDialog(button.dataset.completionRequirements)));
+  main.querySelector("[data-review-period-impact]")?.addEventListener("click", () => openPeriodImpactReview(entry.record.id));
+  main.querySelector("[data-withdraw-obligation-rule]")?.addEventListener("click", () => openObligationRuleWithdrawal(entry.record.id));
   main.querySelector("[data-correct-obligation-rule]")?.addEventListener("click", () => openObligationRuleCorrection(entry.record.id));
   main.querySelector("[data-select-program-for-review]")?.addEventListener("click", () => {
     selectProgram(entry.record.id, "#/resources/requirement?review=1");
@@ -5695,11 +5802,12 @@ function editorField(type, name, field, value, required, editing, oneOfRequired 
     const values = field.values || (field.type === "rating" ? state.model.primitives.rating : state.model.primitives.outcome) || [];
     const activationManagedType = ["policy", "document"].includes(type)
       || (type === "training" && Boolean(state.model.resources.training?.fields?.activatedContentRevisions));
+    const editableValues = type === "obligation-rule" && name === "status" ? values.filter((item) => item !== "withdrawn" || item === value) : values;
     const availableValues = type === "reporting-route-set" && name === "status" && editing
       ? values.filter((item) => item === value)
       : activationManagedType && name === "status" && value !== "active"
         ? values.filter((item) => item !== "active")
-        : values;
+        : editableValues;
     control = '<select><option value="">Select</option>' + availableValues.map((item) => '<option value="' + esc(item) + '" ' + (value === item ? "selected" : "") + '>' + esc(properCase(item)) + '</option>').join("") + '</select>';
     const enumHelp = activationManagedType && name === "status"
       ? type === "document"
@@ -7146,6 +7254,7 @@ dialog::backdrop{background:rgba(0,0,24,.62)}
 .obligation-card-foot{display:flex;align-items:flex-end;justify-content:space-between;gap:9px;margin-top:10px}.obligation-card-foot .obligation-links{margin-top:0;min-width:0}.obligation-action{flex:0 0 auto;border:0;border-radius:6px;background:var(--accent-soft);color:var(--accent);padding:7px 9px;font-family:inherit;font-size:10.8px;font-weight:700;line-height:1;text-decoration:none;cursor:pointer}.obligation-action:hover{filter:brightness(1.08)}.obligation-action.blocked{background:var(--surface-muted);color:var(--muted)}.obligation-more{width:100%;margin-top:9px}.workflow-section{scroll-margin-top:92px}
 .occurrence-review{margin:14px 0;border:1px solid var(--line);border-radius:8px;overflow:hidden}.occurrence-review-head{display:flex;justify-content:space-between;gap:12px;padding:10px 12px;background:var(--surface-soft);font-size:10.8px}.occurrence-review-head span,.occurrence-member small{color:var(--muted)}.occurrence-members{display:grid}.occurrence-member{display:grid;grid-template-columns:minmax(150px,1.4fr) minmax(110px,.7fr) minmax(170px,1.2fr) minmax(150px,1fr);gap:8px;align-items:end;padding:10px 12px;border-top:1px solid var(--line)}.occurrence-member:first-child{border-top:0}.occurrence-member-name{align-self:center;min-width:0}.occurrence-member-name strong,.occurrence-member-name small{display:block;overflow:hidden;text-overflow:ellipsis}.occurrence-member label span{display:block;margin-bottom:4px;color:var(--muted);font-size:9.6px}.occurrence-member input,.occurrence-member select{width:100%}.occurrence-empty,.occurrence-pending{margin:0;padding:12px;color:var(--muted);font-size:10.8px}.occurrence-pending{border-bottom:1px solid var(--line);background:#fff7df;color:#765410}
 .activation-review{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:14px 0}.activation-review>div{padding:10px 12px;border:1px solid var(--line);border-radius:7px;background:var(--surface-soft)}.activation-review .full{grid-column:1/-1}.activation-review span,.activation-review strong,.activation-review small{display:block}.activation-review span{color:var(--muted);font-size:9.6px;text-transform:uppercase;letter-spacing:.06em}.activation-review strong{margin-top:4px;font-size:12px}.activation-review small{margin-top:3px;color:var(--muted);font-size:9.6px}.confirmation{display:flex!important;align-items:flex-start;gap:8px}.confirmation input{flex:none;width:auto!important;margin-top:2px}.cutover-note{margin:12px 0;padding:9px 11px;border-radius:7px;background:#fff7df;color:#765410;font-size:10.8px}
+.rule-withdrawal .field-group{display:grid;gap:6px;min-width:0}.rule-withdrawal .form-grid>.full{grid-column:1/-1}.rule-withdrawal fieldset{border:0;margin:0;padding:0}.rule-withdrawal legend{margin-bottom:6px}.rule-withdrawal input[type="date"]{width:100%;min-height:40px;border:1px solid var(--line);border-radius:7px;background:var(--field);padding:9px 10px}.rule-withdrawal select{width:100%;min-height:40px;border:1px solid var(--line);border-radius:7px;background:var(--field);color:var(--ink);padding:9px 10px;font:inherit}.rule-withdrawal textarea{height:96px;min-height:80px;max-height:150px;font:inherit;background:var(--field);color:var(--ink);padding:10px;resize:vertical}.rule-withdrawal .withdrawal-preview{padding:18px;margin-top:16px}.rule-withdrawal .withdrawal-preview h3{margin:0 0 10px}.rule-withdrawal .withdrawal-preview p:last-child{margin-bottom:0}
 .nonmaterial-current-panel{margin-bottom:16px;padding:20px}.nonmaterial-current-panel .metadata{margin-bottom:12px}.nonmaterial-amendment-dialog .form-field.full{grid-column:1/-1}.nonmaterial-amendment-dialog .form-field>span{display:block;margin-bottom:6px}.nonmaterial-amendment-dialog .form-field.confirmation{display:flex;align-items:center;gap:10px}.nonmaterial-amendment-dialog .form-field.confirmation>span{margin:0}.nonmaterial-amendment-dialog .form-field.confirmation input{width:auto;min-height:0}.nonmaterial-amendment-dialog .form-field textarea{height:100px;min-height:100px;font:inherit;resize:vertical}.nonmaterial-amendment-dialog .checkbox{display:flex;align-items:center;gap:8px;margin-top:8px}.nonmaterial-amendment-dialog .checkbox input{width:auto}
 .event-dialog label{display:block;margin-top:13px}.event-dialog label[hidden]{display:none}.event-dialog label>span{display:block;font-size:12px;font-weight:720;margin-bottom:6px}.event-dialog input,.event-dialog select,.event-dialog textarea{width:100%;min-height:40px;border:1px solid var(--line);border-radius:7px;background:var(--field);color:var(--ink);padding:9px 10px;font-size:14.4px}.event-dialog textarea{resize:vertical}.commit-dialog .form-grid label.full{grid-column:1/-1}.workflow-preview{margin-top:14px;padding:0 12px;border-radius:7px;background:var(--surface-soft)}.workflow-preview:not(:empty){padding-top:10px;padding-bottom:10px}.workflow-preview strong,.workflow-preview p{display:block;margin:0}.workflow-preview p{margin-top:5px;color:var(--muted);font-size:12px;line-height:1.5}.event-dialog-steps{display:grid;gap:6px;margin-top:15px;padding:10px;background:var(--surface-soft);border-radius:7px}.event-dialog-steps strong,.event-dialog-steps small{display:block}.event-dialog-steps strong{font-size:12px}.event-dialog-steps small{font-size:9.6px;color:var(--muted);margin-top:2px}
 .applicability-dialog{width:min(980px,calc(100vw - 30px));max-height:calc(100vh - 32px);border:0;border-radius:12px;padding:0;background:var(--panel);color:var(--ink);box-shadow:0 25px 80px rgba(0,0,24,.28)}.applicability-dialog form{padding:23px}.applicability-dialog form>p{color:var(--muted);font-size:13.2px}.applicability-dialog form>.applicability-baseline-note{padding:10px 12px;border-radius:7px;background:var(--accent-soft);color:var(--ink)}.review-context label>span{display:block;font-size:12px;font-weight:720;margin-bottom:6px}.review-context input,.review-context select,.applicability-row input,.applicability-row select{width:100%;min-height:38px;border:1px solid var(--line);border-radius:7px;background:var(--field);color:var(--ink);padding:8px 9px;font-size:13.2px}.review-context label.full{grid-column:1/-1}.applicability-rows{display:grid;gap:7px;max-height:46vh;overflow:auto;margin-top:16px;padding-right:4px}.applicability-row{display:grid;grid-template-columns:minmax(210px,1fr) 180px minmax(240px,1.3fr);gap:9px;align-items:center;padding:9px;border:1px solid var(--line);border-radius:8px}.applicability-row strong,.applicability-row small{display:block}.applicability-row small{margin-top:3px;color:var(--muted);font-size:10.8px}.applicability-row .applicability-constraint{color:var(--accent);line-height:1.35}

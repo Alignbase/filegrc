@@ -117,6 +117,7 @@ test("agent guides and scaffolds cover every resource type from the model", asyn
     "previewMutation",
     "create",
     "complete",
+    "reviewPeriodImpact", "withdrawObligationRule",
     "correctObligationRule",
     "reconcileObligation",
     "completeAction",

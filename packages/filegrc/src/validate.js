@@ -179,6 +179,12 @@ async function validateWorkspaceUnmeasured(input) {
     validateLocation(record, definition, entry.relativePath, diagnostics);
     validateRecord(record, definition, loaded.model, displayPath, diagnostics);
     validateDateRanges(record, displayPath, diagnostics);
+    if (record.periodImpactReview) {
+      const review = record.periodImpactReview;
+      if (!parseCalendarDate(review.reviewedOn) || !parseCalendarDate(review.effectiveOn) || review.reviewedOn > asOf || review.effectiveOn > review.reviewedOn) diagnostics.push(error("invalid-period-impact-review-date", displayPath, "Period impact review needs actual nonfuture review/effective dates, with the effective date no later than review."));
+      if (!review.reviewedByIds?.length || new Set(review.reviewedByIds).size !== review.reviewedByIds?.length || review.reviewedByIds?.some(id => !personWasActiveOn(byId.get(id), review.reviewedOn))) diagnostics.push(error("invalid-period-impact-reviewer", displayPath, "Period impact review must name the actual People active on its review date."));
+    }
+
     validateProposedEffectiveDate(record, asOf, displayPath, diagnostics);
     if (record.type === "appointment") validateAppointment(record, byId, displayPath, diagnostics);
     if (record.type === "program") validateProgram(record, displayPath, diagnostics);
@@ -517,6 +523,28 @@ function validateDocumentWorkflowScopes(resources, model, byId, pathById, diagno
 }
 
 function validateObligationRule(record, model, byId, path, diagnostics) {
+  if (record.status === "withdrawn") {
+    if ((record.withdrawnByIds || []).some((id) => !personWasActiveOn(byId.get(id), record.withdrawnOn))) {
+      diagnostics.push(error("invalid-obligation-rule-withdrawal-actor", path, "Withdrawal actors must have been active on the withdrawal date."));
+    }
+    if (record.effectiveAt || record.retiredOn || byId.get(record.obligationId)?.activeRuleId === record.id
+      || [...byId.values()].some((item) => item.type === "obligation-occurrence" && item.ruleId === record.id)) {
+      diagnostics.push(error("effective-obligation-rule-withdrawal", path, "An effective or operated rule cannot be withdrawn. Preserve it and use prospective rule activation and retirement."));
+    }
+    if ((record.approvedOn || record.approvedByIds?.length) && (!record.approvedOn || !record.approvedByIds?.length || !record.timezone)) {
+      diagnostics.push(error("incomplete-withdrawn-rule-approval", path, "Preserve the complete existing approval when withdrawing an approved rule."));
+    }
+    if (record.approvedOn && record.withdrawnOn < record.approvedOn) {
+      diagnostics.push(error("backdated-obligation-rule-withdrawal", path, "Withdrawal cannot precede the preserved approval."));
+    }
+    if (record.withdrawnOn > currentCalendarDate([...byId.values()].find(({ type }) => type === "workspace")?.timezone || "UTC", new Date())) {
+      diagnostics.push(error("future-obligation-rule-withdrawal", path, "Record the actual withdrawal date, which cannot be in the future."));
+    }
+    return;
+  }
+  if (record.withdrawnByIds || record.withdrawnOn || record.withdrawalReason) {
+    diagnostics.push(error("unexpected-obligation-rule-withdrawal", path, "Withdrawal facts belong only on a withdrawn rule."));
+  }
   const obligation = byId.get(record.obligationId);
   if (obligation?.type !== "obligation") return;
   validateObligation({

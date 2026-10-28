@@ -1,3 +1,9 @@
+import { assessReportingRoutePeriod } from "./reporting-route-sets.js";
+import { assessPeriodImpact } from "./period-impact.js";
+import { markdownEntries } from "./resource-markdown.js";
+import { supersededOperatingProofIds } from "./historical-operating-proof.js";
+import { currentPartyPeople, partiesIndependent } from "./parties.js";
+import { personWasActiveOn } from "./soc2.js";
 import { actionBlockingReason, planWorkQueue, sourceDeadlineWorkItems, workPriority } from "./work-queue.js";
 import { withAssessmentCache } from "./calculation-cache.js";
 import { resourceIndex } from "./resource-index.js";
@@ -123,8 +129,8 @@ async function assessWorkflowUnmeasured(input, options = {}) {
     ...await auditLifecycleFindings(loaded, audits, programRecord)
   ];
   const findings = [
-    ...validationFindings(validation, loaded),
-    ...removeRedundantRecordFindings(recordFinalizationFindings(loaded, programRecord), guidedFindings),
+    ...validationFindings(validation, loaded, program, reconciliation),
+    ...removeRedundantRecordFindings(recordFinalizationFindings(loaded, programRecord, asOf, validation.ok), guidedFindings),
     ...guidedFindings
   ];
   const workItems = buildWorkItems(loaded.resources, obligationPlan, {
@@ -132,12 +138,13 @@ async function assessWorkflowUnmeasured(input, options = {}) {
     includeComplete: Boolean(options.includeComplete),
     programId: programRecord.id,
     program: programRecord,
-    model: loaded.model
+    model: loaded.model,
+    validationOk: validation.ok
   }).map((item) => ({
     ...item,
     notificationContacts: notificationContacts(item.ownerIds, loaded.resources)
   }));
-  const workQueue = planWorkQueue(loaded.resources, obligationPlan, { asOf, program: programRecord, model: loaded.model, includeComplete: Boolean(options.includeComplete) });
+  const workQueue = planWorkQueue(loaded.resources, obligationPlan, { asOf, program: programRecord, model: loaded.model, validationOk: validation.ok, includeComplete: Boolean(options.includeComplete) });
   const git = options.git || safeGitSummary(loaded.root);
   const assessments = buildAssessments({
     program,
@@ -369,14 +376,18 @@ function auditFindings(preparation) {
   }));
 }
 
-function validationFindings(validation, loaded) {
+function validationFindings(validation, loaded, program, reconciliation) {
+  const currentChannels = program.stages.flatMap(stage => stage.items || []).some(item => item.id === "reporting-channel-cutover" && item.status === "complete");
   const entriesByPath = new Map(loaded.entries.map((entry) => [
     `data/${entry.relativePath}`,
     entry.record
   ]));
-  return (validation?.diagnostics || []).filter(diagnostic => diagnostic.path !== ".filegrc/hosted-automation.json").map((diagnostic) => {
+  return (validation?.diagnostics || []).filter(diagnostic => diagnostic.path !== ".filegrc/hosted-automation.json")
+    .filter(diagnostic => diagnostic.code !== "unreconciled-committed-transition" || !reconciliation?.candidates?.some(candidate => candidate.sourcePath === diagnostic.path && candidate.committedRevision))
+    .map((diagnostic) => {
     const record = entriesByPath.get(diagnostic.path);
-    const state = "ready";
+    const historicalChannelGap = diagnostic.code === "uncovered-reporting-route-interval" && diagnostic.severity === "warning" && currentChannels;
+    const state = historicalChannelGap ? "complete" : "ready";
     const code = `structural.${diagnostic.code}.${record?.id || pathKey(diagnostic.path)}.${stableSuffix(diagnostic.message)}`;
     return {
       key: code,
@@ -387,24 +398,25 @@ function validationFindings(validation, loaded) {
       severity: diagnostic.severity,
       requiredness: "required",
       title: record?.title || "Workspace structure",
-      message: diagnostic.message,
+      message: historicalChannelGap ? `${diagnostic.message} This historical gap remains disclosed; do not backdate approval. Current channels are operating, and period coverage is checked separately.` : diagnostic.message,
       fieldPath: diagnostic.path,
       ...(record ? { subject: { type: record.type, id: record.id } } : {}),
       dependencies: [],
-      actions: record
+      actions: historicalChannelGap ? [] : record
         ? [mutationAction(record)]
         : [{ kind: "command", command: "npx filegrc validate --json" }]
     };
   });
 }
 
-function recordFinalizationFindings(loaded, program) {
+function recordFinalizationFindings(loaded, program, asOf, validationOk) {
+  const historicalProofIds = supersededOperatingProofIds(loaded.resources, validationOk);
   const scopeIndex = createApplicabilityScopeIndex(loaded.resources, program);
   const findings = [];
   for (const record of loaded.resources) {
     if (["workspace", "renderer-settings"].includes(record.type)) continue;
-    if (["retired", "superseded"].includes(record.status)) continue;
-    const incomplete = recordIncompleteReason(record, loaded, program);
+    if (["retired", "superseded", "withdrawn"].includes(record.status)) continue;
+    const incomplete = historicalProofIds.has(record.id) ? null : recordIncompleteReason(record, loaded, program, asOf);
     if (incomplete) {
       findings.push(finalizationFinding(record, incomplete, loaded.model));
     }
@@ -465,7 +477,8 @@ function subjectKey(subject) {
   return `${subject.type}:${subject.id}`;
 }
 
-function recordIncompleteReason(record, loaded, program) {
+function recordIncompleteReason(record, loaded, program, asOf) {
+  if (record.type === "risk" && ["open", "monitoring"].includes(record.status)) return riskOperatingGuidance(record, loaded, asOf);
   if (record.type === "requirement" && record.applicability === "undetermined") {
     return {
       state: "ready",
@@ -515,6 +528,24 @@ function recordIncompleteReason(record, loaded, program) {
       ? "Keep this starter in \"Draft\" until its audience, program role, or audit stage applies. Complete it when it applies; otherwise retire it."
       : messages[record.status]
   };
+}
+
+function riskOperatingGuidance(record, loaded, asOf) {
+  const byId = resourceIndex(loaded.resources).byId;
+  const owned = currentPartyPeople(record.ownerIds || [], byId).size > 0;
+  const reviewed = loaded.resources.some(assessment => assessment.type === "risk-assessment" && assessment.status === "complete"
+    && [...assessment.riskIds || [], ...assessment.newRiskIds || [], ...assessment.changedRiskIds || []].includes(record.id)
+    && assessment.completedOn && assessment.completedOn <= asOf && assessment.approvedOn >= assessment.completedOn && assessment.approvedOn <= asOf
+    && assessment.assessorIds?.length && assessment.reviewerIds?.length
+    && assessment.assessorIds.every(id => personWasActiveOn(byId.get(id), assessment.completedOn))
+    && assessment.reviewerIds.every(id => personWasActiveOn(byId.get(id), assessment.approvedOn))
+    && partiesIndependent(assessment.assessorIds, assessment.reviewerIds, byId) && assessment.evidenceIds?.length);
+  const acceptanceCurrent = record.response !== "accept" || record.acceptance?.rationale?.trim() && record.acceptance.acceptedOn <= asOf && record.acceptance.expiresOn >= asOf && record.acceptance.acceptedByIds?.length && record.acceptance.acceptedByIds.every(id => personWasActiveOn(byId.get(id), record.acceptance.acceptedOn));
+  const dates = [record.treatmentTargetOn, record.reviewDueOn, record.response === "accept" ? record.acceptance?.expiresOn : null].filter(Boolean).sort();
+  if (owned && acceptanceCurrent && record.response && record.inherentRating && reviewed && record.reviewDueOn && (record.response !== "mitigate" || record.treatmentTargetOn) && dates[0] > asOf) {
+    return { state: "scheduled", requiredness: "required", message: `Continue the recorded ${record.response} response and review progress by ${dates[0]}. An open risk does not need to be closed to operate the program; its assigned actions and deadlines remain separate.` };
+  }
+  return { state: "ready", requiredness: "required", message: !acceptanceCurrent ? "Review the expired or incomplete risk acceptance; do not treat it as an ongoing accepted response." : !owned ? "Assign a current owner for this risk." : !record.response || !record.inherentRating ? "Record the rating and actual response decision." : !reviewed ? "Complete the risk's normal assessment and review with actual results and proof." : !record.reviewDueOn || record.response === "mitigate" && !record.treatmentTargetOn ? "Set the actual risk review and treatment checkpoints." : `The risk's review or treatment checkpoint is due. Review progress and record the resulting response; do not close an unresolved risk merely to clear this prompt.` };
 }
 
 function recordFinalizationRequiredness(record, loaded, program) {
@@ -631,7 +662,7 @@ function finalizationFinding(record, details, model) {
     state: details.state,
     severity: details.state === "blocked" ? "error" : "warning",
     requiredness: details.requiredness,
-    title: `Finalize ${record.title}`,
+    title: record.type === "risk" ? `Review risk: ${record.title}` : `Finalize ${record.title}`,
     message: details.message,
     subject: { type: record.type, id: record.id },
     dependencies: details.dependencies || [],
@@ -779,8 +810,8 @@ async function assessPeriodHealth(loaded, options) {
     "source-coverage",
     "system",
     "component"
-  ].includes(record.type));
-  const paths = relevantEntries.map(({ relativePath }) => `data/${relativePath}`);
+  ].includes(record.type) && recordBelongsToProgram(record, target, resourceIndex(loaded.resources).byId, loaded.model));
+  const paths = relevantEntries.flatMap(({ relativePath, record }) => [`data/${relativePath}`, ...markdownEntries(loaded.model, record).map(({ path }) => `data/${path}`)]);
   const histories = getWorkspaceHistories(loaded.root, paths, 50, {
     deadlineAt: options.historyDeadlineAt,
     strict: options.strictHistory === true
@@ -873,6 +904,13 @@ async function assessPeriodHealth(loaded, options) {
   }
 
   const periodThrough = [coverage.end, options.asOf].sort()[0];
+  if (loaded.model.resources["reporting-route-set"]) {
+    const routePeriod = await assessReportingRoutePeriod(loaded, { programId: target.id, start: coverage.start, end: periodThrough, timezone: loaded.workspace.timezone || "UTC" });
+    for (const issue of routePeriod.issues) {
+      const source = recordById.get(issue.resourceId);
+      findings.push(periodFinding(`period.reporting-channel.${issue.code}.${issue.resourceId}.${stableSuffix(issue.message)}`, "Review reporting-channel period coverage", `${issue.message} Preserve the actual gap and approvals; record its audit impact or an allowed Exception rather than backdating.`, "ready", source ? { type: source.type, id: source.id } : { type: target.type, id: target.id }, source ? [mutationAction(source)] : []));
+    }
+  }
   const periodResources = loaded.resources.filter((record) => (
     record.type !== "obligation"
     || !(record.controlIds || []).length
@@ -922,18 +960,13 @@ async function assessPeriodHealth(loaded, options) {
   for (const entry of relevantEntries) {
     const record = entry.record;
     const history = histories.get(`data/${entry.relativePath}`) || [];
-    const changesInsidePeriod = history.filter(({ timestamp }) => (
-      timestamp?.slice(0, 10) > coverage.start
-      && timestamp?.slice(0, 10) <= coverage.end
-    ));
-    if (changesInsidePeriod.length > 1 && ["appointment", "control", "policy", "source-coverage", "system"].includes(record.type)) {
+    const impact = await assessPeriodImpact(loaded, record, histories, coverage, options.asOf);
+    if (impact) {
       findings.push(periodFinding(
         `period.change.${record.type}.${record.id}`,
-        `Review period impact for ${record.title}`,
-        `${changesInsidePeriod.length} committed revisions fall inside the period. Confirm the effective date, review, source continuity, and any needed Policy Event or Exception.`,
-        "ready",
-        { type: record.type, id: record.id },
-        [mutationAction(record)]
+        impact.state === "complete" ? `Period history for ${record.title}` : `Review period impact for ${record.title}`,
+        impact.message, impact.state, { type: record.type, id: record.id },
+        impact.state === "complete" ? [] : [{ kind: "command", command: `npx filegrc review-period-impact ${shellArgument(record.id)} --scaffold` }]
       ));
     }
     if (record.type === "evidence") {
