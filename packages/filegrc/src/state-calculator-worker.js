@@ -21,7 +21,7 @@ parentPort.on("message", async ({ id, snapshotId, loaded, section, options, dead
         if (section !== "validation") return createAppStateSection(snapshot.loaded, section, options);
         const { ok, counts, diagnostics, reconciliation } = await validateWorkspace(snapshot.loaded);
         return { ok, counts, diagnostics, reconciliation };
-      })));
+      })), { commandTimeoutMs: 10_000 });
     parentPort.postMessage({ id, result });
   } catch (error) {
     parentPort.postMessage({ id, error: { message: error.message, code: error.code, source: error.source } });

@@ -1126,6 +1126,7 @@ test("clears review revision binding busy state after a request failure", async 
   const harness = new Function("dependencies", `
     const esc = String;
     const localFetch = dependencies.localFetch;
+    const pendingStateFetch = dependencies.localFetch;
     const responseMessage = async () => "request failed";
     const retentionUseReviewIds = () => [];
     ${source}
@@ -1304,6 +1305,7 @@ test("ends supplemental history loading after a request failure", async () => {
     const state = dependencies.state;
     const resourceDetailRequests = new Map();
     const localFetch = dependencies.localFetch;
+    const pendingStateFetch = dependencies.localFetch;
     const refreshExpiredAppState = async () => {};
     const responseMessage = async () => "request failed";
     const parseRoute = () => ({ name: "detail", type: "person", id: "person-owner" });
@@ -1338,6 +1340,7 @@ test("ignores a supplemental history failure from a stale state snapshot", async
     let state = dependencies.state;
     const resourceDetailRequests = new Map();
     const localFetch = dependencies.localFetch;
+    const pendingStateFetch = dependencies.localFetch;
     const refreshExpiredAppState = async () => {};
     const responseMessage = async () => "request failed";
     const parseRoute = () => ({ name: "detail", type: "person", id: "person-owner" });
@@ -2508,6 +2511,7 @@ test("resource detail retries when a concurrent section refresh replaces its sta
     const stateSectionRequests = new Map();
     let expiredStateRefresh = null;
     const localFetch = dependencies.localFetch;
+    const pendingStateFetch = dependencies.localFetch;
     const fetch = dependencies.fetch;
     const normalizeAppState = (value) => value;
     const responseMessage = async () => "request failed";
@@ -2581,6 +2585,7 @@ test("state sections start a new request after refreshing an expired token", asy
     };
     const stateSectionRequests = new Map();
     const localFetch = dependencies.localFetch;
+    const pendingStateFetch = dependencies.localFetch;
     const refreshExpiredAppState = async () => { state.stateToken = "token-b"; state.sections.program = "idle"; };
     const responseMessage = async () => "request failed";
     const render = () => {};
@@ -3067,4 +3072,44 @@ test("snapshot population copy requests an actual observation date without inven
   delete context.record.requiredCoverage;
   assert.match(vm.runInContext("obligationCard(item)", context), /review the required period end/);
   assert.match(vm.runInContext("occurrenceMemberReview(record, true, false)", context), /Review the required period end/);
+});
+
+
+test("browser pending reads keep waiting for actual state and stop on errors or changed tokens", async () => {
+  const start = APP_SCRIPT.indexOf("async function pendingStateFetch");
+  const end = APP_SCRIPT.indexOf("async function localFetch", start);
+  const source = APP_SCRIPT.slice(start, end);
+  function harness(responses, now = () => 0) {
+    let calls = 0;
+    const state = { stateToken: "token-a" };
+    const load = new Function("dependencies", `
+      const state = dependencies.state;
+      const programSelectionGeneration = 0;
+      const Date = { now: dependencies.now };
+      const setTimeout = (resolve) => { resolve(); };
+      const localFetch = dependencies.fetch;
+      ${source}
+      return pendingStateFetch;
+    `)({ state, now, fetch: async (_url, options) => {
+      assert.equal(options.headers.prefer, "respond-async");
+      const next = responses[calls++];
+      return typeof next === "function" ? next(state) : next;
+    } });
+    return { load, calls: () => calls };
+  }
+  const pending = () => new Response(JSON.stringify({ stateToken: "token-a", status: "pending" }), { status: 202 });
+  const complete = new Response(JSON.stringify({ stateToken: "token-a", state: {} }), { status: 200 });
+  const ordinary = harness([pending(), pending(), complete]);
+  assert.equal(await ordinary.load("/api/state/repository?token=token-a"), complete);
+  assert.equal(ordinary.calls(), 3);
+  const failed = harness([new Response("failure", { status: 503 })]);
+  assert.equal((await failed.load("/api/state/repository?token=token-a")).status, 503);
+  assert.equal(failed.calls(), 1);
+  const changed = harness([(state) => { state.stateToken = "token-b"; return pending(); }]);
+  assert.equal((await changed.load("/api/state/repository?token=token-a")).status, 409);
+  assert.equal(changed.calls(), 1);
+  let clock = 0;
+  const bounded = harness([pending()], () => clock++ === 0 ? 0 : 135_000);
+  await assert.rejects(bounded.load("/api/state/repository?token=token-a"), /taking too long/);
+  assert.equal(bounded.calls(), 1);
 });

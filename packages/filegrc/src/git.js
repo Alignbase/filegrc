@@ -50,6 +50,7 @@ const repositorySnapshotPromises = new Map();
 const repositoryObjectFormats = new Map();
 const gitCommandCaches = new AsyncLocalStorage();
 const gitCommandDeadlines = new AsyncLocalStorage();
+const gitCommandTimeoutLimits = new AsyncLocalStorage();
 const gitCommandAdapters = new AsyncLocalStorage();
 const gitCommandCacheBytes = new WeakMap();
 let gitCommandInterceptor = null;
@@ -80,10 +81,16 @@ export function withGitCommandCache(cache, callback) {
   return gitCommandCaches.run(cache, callback);
 }
 
-export function withGitCommandDeadline(deadlineAt, callback) {
+export function withGitCommandDeadline(deadlineAt, callback, options = {}) {
   if (!Number.isFinite(deadlineAt))
     throw new TypeError("The Git command deadline must be finite.");
-  return gitCommandDeadlines.run(deadlineAt, callback);
+  const limit = options.commandTimeoutMs;
+  if (limit === undefined) return gitCommandDeadlines.run(deadlineAt, callback);
+  if (!Number.isFinite(limit) || limit <= 0)
+    throw new TypeError("The individual Git command timeout must be positive and finite.");
+  const inherited = gitCommandTimeoutLimits.getStore();
+  return gitCommandTimeoutLimits.run(Math.min(limit, inherited ?? limit), () =>
+    gitCommandDeadlines.run(deadlineAt, callback));
 }
 
 function gitEnvironment(overrides = {}) {
@@ -4081,6 +4088,7 @@ function runGitCommandNative(cwd, args, options = {}) {
     cwd,
     args: [...args],
     options: { ...options },
+    timeoutMs,
   });
   return new Promise((resolveCommand, rejectCommand) => {
     const child = spawn("git", args, {
@@ -4344,7 +4352,7 @@ function boundedGitTimeout(configured, fallback) {
 }
 
 function gitTimeoutPlan(configured, fallback) {
-  const requested = Math.max(1, Number(configured) || fallback);
+  const requested = Math.min(Math.max(1, Number(configured) || fallback), gitCommandTimeoutLimits.getStore() ?? Infinity);
   const deadlineAt = gitCommandDeadlines.getStore();
   if (deadlineAt === undefined)
     return { timeoutMs: requested, deadlineLimited: false };

@@ -318,7 +318,7 @@ function renderStateLoading(main, route, sections) {
   const message = failed
     ? state.sectionErrors?.[failed] || "Reload the workspace and try again."
     : "Records are ready. FileGRC is calculating the information needed for this page.";
-  main.innerHTML = '<div class="page"><section class="panel state-loading" role="' + (failed ? "alert" : "status") + '" aria-live="polite"' + (failed ? "" : ' aria-busy="true"') + '>' + (failed ? "" : '<span class="spinner spinner-large" aria-hidden="true"></span>') + '<div><p class="kicker">' + (failed ? "Loading error" : "One moment") + '</p><h2>' + esc(title) + '</h2><p>' + esc(message) + '</p></div></section></div>';
+  main.innerHTML = '<div class="page"><section class="panel state-loading" role="' + (failed ? "alert" : "status") + '" aria-live="polite"' + (failed ? "" : ' aria-busy="true"') + '>' + (failed ? "" : '<span class="spinner spinner-large" aria-hidden="true"></span>') + '<div><p class="kicker">' + (failed ? "Loading error" : "One moment") + '</p><h2>' + esc(title) + '</h2><p>' + esc(message) + '</p>' + (failed ? '<button class="button" type="button" data-retry-state>Retry loading</button>' : '') + '</div></section></div>';
 }
 
 function loadStateForRoute() {
@@ -332,7 +332,7 @@ function loadStateSection(section, refreshExpired = true) {
   state.sections[section] = "loading";
   const token = state.stateToken;
   const programQuery = state.selectedProgramId ? "&programId=" + encodeURIComponent(state.selectedProgramId) : "";
-  const request = localFetch("/api/state/" + encodeURIComponent(section) + "?token=" + encodeURIComponent(token) + programQuery)
+  const request = pendingStateFetch("/api/state/" + encodeURIComponent(section) + "?token=" + encodeURIComponent(token) + programQuery)
     .then(async (response) => {
       if (response.status === 409 && refreshExpired && state.stateToken === token) {
         await refreshExpiredAppState(token);
@@ -4082,7 +4082,7 @@ async function loadResourceDetail(type, id) {
       let detail = null;
       for (let attempt = 0; attempt < 3; attempt += 1) {
         const tokenQuery = token ? "?token=" + encodeURIComponent(token) + "&history=false&workflow=true" : "?history=false&workflow=true";
-        const response = await localFetch("/api/resource/" + encodeURIComponent(type) + "/" + encodeURIComponent(id) + tokenQuery);
+        const response = await pendingStateFetch("/api/resource/" + encodeURIComponent(type) + "/" + encodeURIComponent(id) + tokenQuery);
         if (response.status === 409 && token) {
           await refreshExpiredAppState(token);
           token = state.stateToken;
@@ -4107,7 +4107,10 @@ async function loadResourceDetail(type, id) {
       const route = parseRoute();
       if (route.name === "detail" && route.type === type && route.id === id) {
         const main = root.querySelector("main");
-        if (main) main.innerHTML = '<div class="page"><section class="panel"><div class="dialog-error" role="alert">' + esc(error.message) + '</div></section></div>';
+        if (main) {
+          main.innerHTML = '<div class="page"><section class="panel"><div class="dialog-error" role="alert">' + esc(error.message) + '</div><button class="button" type="button" data-retry-state>Retry loading</button></section></div>';
+          main.querySelector("[data-retry-state]").addEventListener("click", () => location.reload());
+        }
       }
     } finally {
       for (const [requestKey, pending] of resourceDetailRequests) {
@@ -4126,7 +4129,7 @@ async function loadResourceHistory(type, id) {
     const token = state.stateToken;
     try {
       const tokenQuery = (token ? "?token=" + encodeURIComponent(token) + "&" : "?") + "history=only";
-      const response = await localFetch("/api/resource/" + encodeURIComponent(type) + "/" + encodeURIComponent(id) + tokenQuery);
+      const response = await pendingStateFetch("/api/resource/" + encodeURIComponent(type) + "/" + encodeURIComponent(id) + tokenQuery);
       if (response.status === 409 && token) {
         await refreshExpiredAppState(token);
         const route = parseRoute();
@@ -6345,6 +6348,7 @@ async function selectProgram(programId, destination = null) {
 }
 
 function bindCommon() {
+  root.querySelector("[data-retry-state]")?.addEventListener("click", () => location.reload());
   root.querySelector("[data-program-select]")?.addEventListener("change", (event) => {
     selectProgram(event.currentTarget.value);
   });
@@ -7039,6 +7043,25 @@ async function responseMessage(response) {
   const source = await response.text();
   try { return JSON.parse(source).error || source; } catch { return source; }
 }
+// Pending reads share a bounded server calculation. Keep the loading state,
+// rather than treating an ordinary cold calculation as failed Git or bad data.
+async function pendingStateFetch(url) {
+  const token = state.stateToken;
+  const generation = programSelectionGeneration;
+  const expiresAt = Date.now() + 135_000;
+  while (true) {
+    const response = await localFetch(url, { headers: { prefer: "respond-async" } });
+    if (response.status !== 202) return response;
+    const pending = await response.json();
+    if (pending.status !== "pending" || pending.stateToken !== token) throw new Error("The workspace calculation returned an invalid pending response. Retry loading.");
+    if (state.stateToken !== token || generation !== programSelectionGeneration) {
+      return new Response(JSON.stringify({ error: "The workspace state changed. Retry loading." }), { status: 409 });
+    }
+    if (Date.now() >= expiresAt) throw new Error("This workspace calculation is taking too long. Retry loading.");
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+  }
+}
+
 async function localFetch(url, options) {
   const requestProgramId = state?.selectedProgramId || null;
   const requestProgramGeneration = programSelectionGeneration;
