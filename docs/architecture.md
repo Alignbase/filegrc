@@ -887,3 +887,12 @@ Never-effective Obligation Rules may be withdrawn with actual actors, date and r
 Raw edit-envelope export reads the target JSON and its companion bytes and revisions only. It does not calculate unrelated workflow or Git history. Actual mutation validation and stale-write protection remain unchanged.
 
 The new optional source shapes require explicit adoption of a dependency and lockfile for FileGRC 0.21.6 or newer. Shared actions and structural validation enforce the same minimum; unchanged older workspaces remain readable. Correcting a mistaken older pin restores current validity without rewriting business decisions. Historical snapshots retain their actual reader limitation and cannot supply a typed review as though the older reader supported it.
+
+
+### Authorization history and selected coverage
+
+Approval authorizes an exact proposed revision. Activation and effective dates determine when that revision governs operation. A pending or approved successor does not pause a valid, still-effective predecessor. Operating checks resolve the actual lineage and cutovers; an invalid claimed cutover cannot borrow the predecessor to conceal a gap.
+
+A first recorded approval does not establish that a channel or control failed before that date. Reporting diagnostics describe missing authorization evidence with an exact Program and interval. When a valid baseline resolves that limitation wholly before selected coverage, validation retains it as `info`, with no current action. A resolved limitation wholly after an earlier examination is retained as subsequent information. Overlapping or unresolved evidence limitations remain actionable. Actual invalid changes, missing approvals and stale proof retain their normal checks.
+
+The selected Audit's agreed range or as-of date takes precedence over a management candidate period. `validateWorkspace` accepts optional `programId`, `auditId` and `coverage` context; shared workflow and packet checks use the same classification. Cached information is restored to its original diagnostic before assessing a different Program or examination interval. Global structural errors remain visible. Validation counts report `information` separately from errors and warnings.

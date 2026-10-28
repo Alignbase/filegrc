@@ -1,3 +1,4 @@
+import { governedContentBaseline, governedApprovalContentMatches } from "./governed-content-baseline.js";
 import { assessProgramAccessReview, providerAccessPopulation, providerAccessControls } from "./provider-access-completion.js";
 import { readFile } from "node:fs/promises";
 import { markdownEntries, resourceDataPath } from "./resource-markdown.js";
@@ -12,6 +13,7 @@ import { programComponents, recordBelongsToProgram } from "./program.js";
 import { selectScopedCollectionRecords } from "./collection-scope.js";
 import { planObligations } from "./obligations.js";
 import { currentCalendarDate, timestampFromLocalDateTime } from "./time.js";
+import { modelSupports } from "../model/index.js";
 import { assertHistoricalRecordValid } from "./validate.js";
 
 const unique = (values) => [...new Set(values.filter(Boolean))];
@@ -119,24 +121,32 @@ export async function assessProgramBaseline(loaded, program, controls, asOf, mak
     } else if (profile.id.startsWith("workforce-")) {
       const training = profile.id === "workforce-training";
       const policyIds = unique([...program.policyIds || [], ...selected.flatMap(({ policyIds = [] }) => policyIds)]);
-      const scheduledSubjects = unique(schedules.flatMap((schedule) => [...ruleFor(schedule).scopeResourceIds || [], ...schedule.scopeResourceIds || [], ruleFor(schedule).templateResourceId, schedule.templateResourceId]));
+      const scheduleSubjectIds = (schedule) => unique([...(ruleFor(schedule).scopeResourceIds || schedule.scopeResourceIds || []), ruleFor(schedule).templateResourceId || schedule.templateResourceId])
+        .map((id) => modelSupports(loaded.model, "operating-preparation")
+          ? governedContentBaseline(byId.get(id), byId, asOf, loaded.model)?.id || id : id);
+      const scheduledSubjects = modelSupports(loaded.model, "operating-preparation")
+        ? unique(schedules.flatMap(scheduleSubjectIds))
+        : unique(schedules.flatMap((schedule) => [...ruleFor(schedule).scopeResourceIds || [], ...schedule.scopeResourceIds || [], ruleFor(schedule).templateResourceId, schedule.templateResourceId]));
       const subjects = loaded.resources.filter((subject) => valid(subject) && ["approved", "active"].includes(subject.status) && (training
         ? subject.type === "training" && (subject.controlIds?.some((id) => controlIds.includes(id))
           || scheduledSubjects.includes(subject.id))
         : subject.type === "policy" && policyIds.includes(subject.id)
           || subject.type === "document" && subject.acknowledgementRequired === true && subject.workflowScope === "program"
             && (subject.controlIds?.some((id) => controlIds.includes(id)) || scheduledSubjects.includes(subject.id))));
+      const operatingSubjects = modelSupports(loaded.model, "operating-preparation")
+        ? [...new Map(subjects.map((subject) => {
+          const baseline = governedContentBaseline(subject, byId, asOf, loaded.model,
+            { contentMatches: (candidate) => governedApprovalContentMatches(loaded, candidate) }) || subject;
+          return [baseline.id, baseline];
+        })).values()] : subjects;
       // All current internal workers are included, even when a new hire has not
       // yet acquired an owner role. Explicit schedule selectors can add the
       // applicable external workforce without pulling in external reviewers.
       const workers = loaded.resources.filter((person) => person.type === "person" && person.affiliation === "internal"
         && personWasActiveOn(person, asOf));
       const internalWorkerIds = unique(workers.map(({ id }) => id));
-      const subjectSchedules = (subject) => schedules.filter((schedule) => {
-        const rule = ruleFor(schedule);
-        return unique([...(rule.scopeResourceIds || schedule.scopeResourceIds || []), rule.templateResourceId || schedule.templateResourceId]).includes(subject.id);
-      });
-      const subjectPopulations = subjects.map((subject) => {
+      const subjectSchedules = (subject) => schedules.filter((schedule) => scheduleSubjectIds(schedule).includes(subject.id));
+      const subjectPopulations = operatingSubjects.map((subject) => {
         const matching = subjectSchedules(subject);
         const roleOnly = training && matching.length > 0 && matching.every(({ activityType }) => activityType === "role-training");
         const people = roleOnly ? [] : [...internalWorkerIds];
@@ -156,7 +166,7 @@ export async function assessProgramBaseline(loaded, program, controls, asOf, mak
       const missingAudiences = subjectPopulations.filter(({ audienceConfigured }) => !audienceConfigured);
       const results = [];
       const missing = [];
-      for (const subject of subjects) {
+      for (const subject of operatingSubjects) {
         const subjectCurrent = subject.approvedOn && subject.approvedOn <= asOf
           && await currentProcedureContent(loaded, subject, subject.approvedContentRevisions);
         for (const personId of subjectPopulations.find(({ subjectId }) => subjectId === subject.id).personIds) {
@@ -164,8 +174,8 @@ export async function assessProgramBaseline(loaded, program, controls, asOf, mak
           let accepted;
           for (const candidate of eligible) {
             if (subjectCurrent && valid(candidate) && candidate.status === "completed" && permittedDate(candidate.completedOn, windows.filter((window) => {
-              const schedule = byId.get(window.obligationId); const rule = ruleFor(schedule);
-              const ids = unique([...(rule.scopeResourceIds || schedule.scopeResourceIds || []), rule.templateResourceId || schedule.templateResourceId]);
+              const schedule = byId.get(window.obligationId);
+              const ids = scheduleSubjectIds(schedule);
               return !ids.length || ids.includes(subject.id);
             }))
               && candidate.completedOn >= (byId.get(personId)?.startDate || "") && candidate.completedOn >= subject.approvedOn
@@ -177,15 +187,15 @@ export async function assessProgramBaseline(loaded, program, controls, asOf, mak
           else missing.push({ personId, subjectId: subject.id, candidateIds: eligible.map(({ id }) => id), missingFacts: [training ? "current-training-completion" : "current-policy-acknowledgement"] });
         }
       }
-      complete = subjects.length > 0 && population.length > 0 && missing.length === 0 && missingAudiences.length === 0;
+      complete = operatingSubjects.length > 0 && population.length > 0 && missing.length === 0 && missingAudiences.length === 0;
       record = missing.length ? byId.get(missing[0].candidateIds[0]) : byId.get(results[0]);
       title = training ? "Complete current workforce training" : "Collect current workforce policy acknowledgements";
       work = `${training ? "Have each current worker finish the approved security training and its passing criteria" : "Have each current worker read and acknowledge the approved program policies and required Documents"}. Compare the workforce roster with the person-by-subject gaps below, including new hires. Reuse completed Attestations only for the current content revision and applicable worker. Record actual completion dates and retain signed or external completion proof when used. An export rehearsal, pending assignment or old-content acknowledgement does not complete this work.`;
       acceptance = "Each current worker has a completed, unexpired Attestation for every applicable current subject revision. External or signed completion also retains actual completion Evidence. Resolve an empty roster or missing subjects through the existing inventory and content workflow.";
       details = { ...details, instructions: [...missingAudiences.map(({ subjectId }) => `Define the applicable people for ${byId.get(subjectId)?.title || subjectId} in its existing role-training Obligation selector or explicit person scope; do not assign it to unrelated workers.`), ...missing.map(({ personId, subjectId }) => `${byId.get(personId)?.title || personId}: ${training ? "complete training and its passing criteria" : "read and acknowledge"} for ${byId.get(subjectId)?.title || subjectId}; retain a dated Attestation of its current revision.`)],
         suggestedValues: missing.length ? { programId: program.id, personId: missing[0].personId, subjectResourceIds: [missing[0].subjectId] } : {},
-        populationIds: population, subjectPopulations, subjectIds: subjects.map(({ id }) => id), missingMembers: missing, resultIds: unique(results),
-        missingFacts: complete ? [] : [...(!subjects.length ? ["approved-subjects"] : []), ...(!population.length ? ["current-workforce"] : []), ...(missingAudiences.length ? ["configured-role-training-audience"] : []), ...unique(missing.flatMap(({ missingFacts }) => missingFacts))] };
+        populationIds: population, subjectPopulations, subjectIds: operatingSubjects.map(({ id }) => id), missingMembers: missing, resultIds: unique(results),
+        missingFacts: complete ? [] : [...(!operatingSubjects.length ? ["approved-subjects"] : []), ...(!population.length ? ["current-workforce"] : []), ...(missingAudiences.length ? ["configured-role-training-audience"] : []), ...unique(missing.flatMap(({ missingFacts }) => missingFacts))] };
     } else if (profile.id === "provider-access") {
       const { componentIds, grants } = providerAccessPopulation(loaded, program, selected);
       const assessments = await Promise.all(candidates.map(async (candidate) => {

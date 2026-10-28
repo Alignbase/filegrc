@@ -1,3 +1,4 @@
+import { governedContentBaseline, pendingGovernedSuccessor, governedApprovalContentMatches } from "./governed-content-baseline.js";
 import { planWorkQueue, sourceDeadlineValidation } from "./work-queue.js";
 import { withAssessmentCache } from "./calculation-cache.js";
 import { assessOperatingPreparation, firstOperatingTasks } from "./operating-preparation.js";
@@ -303,6 +304,20 @@ async function assessProgramReadinessUncached(input, options = {}) {
     policyStage,
     controlStage
   ];
+  if (modelSupports(loaded.model, "operating-preparation")) {
+    for (const current of evidenceGateStages) {
+      for (const entry of current.items) {
+        const record = byId.get(entry.resourceId);
+        const baseline = pendingGovernedSuccessor(record, byId, asOf, loaded.model,
+          { contentMatches: (candidate) => governedApprovalContentMatches(loaded, candidate) });
+        if (!baseline) continue;
+        entry.status = "info";
+        entry.progressUnit = false;
+        entry.operatingBaselineId = baseline.id;
+        entry.message = `${baseline.title || baseline.id} remains the effective operating baseline while this successor awaits cutover. ${entry.message}`;
+      }
+    }
+  }
   const prioritizedSetupItems = prioritizeReviewDependencies(evidenceGateStages, loaded, program);
   for (const current of evidenceGateStages) finalizeStage(current);
   const evidenceReady = evidenceGateStages.every((current) => current.counts.action === 0);
@@ -1430,6 +1445,8 @@ async function governedContentItems(scope, records, byId, readMarkdown, asOf, mo
           assignmentScheduled: operatingSchedules.some((obligation) => (
             obligation.templateResourceId === record.id
             || (obligation.scopeResourceIds || []).includes(record.id)
+            || modelSupports(model, "operating-preparation") && [obligation.templateResourceId, ...(obligation.scopeResourceIds || [])]
+              .some((id) => governedContentBaseline(byId.get(id), byId, asOf, model)?.id === record.id)
           )),
           activationRecorded: ["recorded", "legacy-v5"].includes(record.activationBasis),
           activated: record.activationBasis === "legacy-v5" || Boolean(record.activatedOn),
@@ -1612,7 +1629,9 @@ async function assessPolicyActivations(policies, controls, records, byId, readMa
       : [];
     const missingGovernedDocumentIds = linkedGovernedDocumentIds.filter((id) => {
       const document = byId.get(id);
-      return !governedDocumentIsOperating(document, asOf, model);
+      return modelSupports(model, "operating-preparation")
+        ? !governedContentBaseline(document, byId, asOf, model)
+        : !governedDocumentIsOperating(document, asOf, model);
     });
     const relevantExceptions = records.filter((record) => (
       record.type === "exception"

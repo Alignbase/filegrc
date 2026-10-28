@@ -1,3 +1,5 @@
+import { reclassifyTemporalValidation } from "./temporal-diagnostics.js";
+import { governedContentCoversPeriod, governedApprovalContentMatches } from "./governed-content-baseline.js";
 import { assessReportingRoutePeriod } from "./reporting-route-sets.js";
 import { assessPeriodImpact } from "./period-impact.js";
 import { markdownEntries } from "./resource-markdown.js";
@@ -103,13 +105,12 @@ async function assessWorkflowUnmeasured(input, options = {}) {
     includeComplete: Boolean(options.includeComplete),
     model: loaded.model
   });
-  const validation = options.validation || await validateWorkspace(loaded);
+  const rawValidation = options.validation || await validateWorkspace(loaded);
   const reconciliation = options.reconciliation || await planReconciliation(loaded);
   const coverage = normalizeCoverage(
-    options.coverage
-    || (options.auditId ? audits[0]?.coverage : null)
-    || programRecord?.candidateCoverage
+    (options.auditId ? audits[0]?.coverage : options.coverage || programRecord?.candidateCoverage)
   );
+  const validation = reclassifyTemporalValidation(rawValidation, loaded, { programId: programRecord.id, auditId: options.auditId, coverage });
   const periodFindings = await assessPeriodHealth(loaded, {
     coverage,
     asOf,
@@ -129,7 +130,7 @@ async function assessWorkflowUnmeasured(input, options = {}) {
     ...await auditLifecycleFindings(loaded, audits, programRecord)
   ];
   const findings = [
-    ...validationFindings(validation, loaded, program, reconciliation),
+    ...validationFindings(validation, loaded, program, reconciliation, programRecord.id),
     ...removeRedundantRecordFindings(recordFinalizationFindings(loaded, programRecord, asOf, validation.ok), guidedFindings),
     ...guidedFindings
   ];
@@ -376,19 +377,19 @@ function auditFindings(preparation) {
   }));
 }
 
-function validationFindings(validation, loaded, program, reconciliation) {
-  const currentChannels = program.stages.flatMap(stage => stage.items || []).some(item => item.id === "reporting-channel-cutover" && item.status === "complete");
+function validationFindings(validation, loaded, program, reconciliation, programId) {
   const entriesByPath = new Map(loaded.entries.map((entry) => [
     `data/${entry.relativePath}`,
     entry.record
   ]));
   return (validation?.diagnostics || []).filter(diagnostic => diagnostic.path !== ".filegrc/hosted-automation.json")
+    .filter(diagnostic => !(diagnostic.programId || diagnostic.temporal?.programId) || diagnostic.severity === "error" || (diagnostic.programId || diagnostic.temporal?.programId) === programId)
     .filter(diagnostic => diagnostic.code !== "unreconciled-committed-transition" || !reconciliation?.candidates?.some(candidate => candidate.sourcePath === diagnostic.path && candidate.committedRevision))
     .map((diagnostic) => {
     const record = entriesByPath.get(diagnostic.path);
-    const historicalChannelGap = diagnostic.code === "uncovered-reporting-route-interval" && diagnostic.severity === "warning" && currentChannels;
+    const historicalInformation = diagnostic.severity === "info";
     const historicalFormatContext = diagnostic.code === "historical-source-runtime-adoption" && diagnostic.severity === "warning";
-    const state = historicalChannelGap || historicalFormatContext ? "complete" : "ready";
+    const state = historicalInformation || historicalFormatContext ? "complete" : "ready";
     const code = `structural.${diagnostic.code}.${record?.id || pathKey(diagnostic.path)}.${stableSuffix(diagnostic.message)}`;
     return {
       key: code,
@@ -399,11 +400,13 @@ function validationFindings(validation, loaded, program, reconciliation) {
       severity: diagnostic.severity,
       requiredness: "required",
       title: record?.title || "Workspace structure",
-      message: historicalChannelGap ? `${diagnostic.message} This historical gap remains disclosed; do not backdate approval. Current channels are operating, and period coverage is checked separately.` : diagnostic.message,
+      message: diagnostic.message,
+      ...(diagnostic.temporal ? { temporal: diagnostic.temporal } : {}),
+      ...(diagnostic.assessmentCoverage ? { assessmentCoverage: diagnostic.assessmentCoverage } : {}),
       fieldPath: diagnostic.path,
       ...(record ? { subject: { type: record.type, id: record.id } } : {}),
       dependencies: [],
-      actions: historicalChannelGap || historicalFormatContext ? [] : record
+      actions: historicalInformation || historicalFormatContext ? [] : record
         ? [mutationAction(record)]
         : [{ kind: "command", command: "npx filegrc validate --json" }]
     };
@@ -872,9 +875,11 @@ async function assessPeriodHealth(loaded, options) {
       const historical = ["retired", "superseded"].includes(record.status);
       const changedOn = record.statusTransition?.changedOn;
       if (historical && changedOn && changedOn <= coverage.start) continue;
-      if (record.status !== "active" || !record.effectiveOn || record.effectiveOn > coverage.start) {
-        findings.push(periodGap(record, "policy", record.effectiveOn, coverage));
-      }
+      const covered = modelSupports(loaded.model, "operating-preparation")
+        ? governedContentCoversPeriod(record, coverage.start, [coverage.end, options.asOf].sort()[0], recordById, loaded.model,
+          { contentMatches: (policy) => governedApprovalContentMatches(loaded, policy) })
+        : record.status === "active" && record.effectiveOn && record.effectiveOn <= coverage.start;
+      if (!covered) findings.push(periodGap(record, "policy", record.effectiveOn, coverage));
     }
     if (
       record.type === "control"
@@ -909,7 +914,7 @@ async function assessPeriodHealth(loaded, options) {
     const routePeriod = await assessReportingRoutePeriod(loaded, { programId: target.id, start: coverage.start, end: periodThrough, timezone: loaded.workspace.timezone || "UTC" });
     for (const issue of routePeriod.issues) {
       const source = recordById.get(issue.resourceId);
-      findings.push(periodFinding(`period.reporting-channel.${issue.code}.${issue.resourceId}.${stableSuffix(issue.message)}`, "Review reporting-channel period coverage", `${issue.message} Preserve the actual gap and approvals; record its audit impact or an allowed Exception rather than backdating.`, "ready", source ? { type: source.type, id: source.id } : { type: target.type, id: target.id }, source ? [mutationAction(source)] : []));
+      findings.push(periodFinding(`period.reporting-channel.${issue.code}.${issue.resourceId}.${stableSuffix(issue.message)}`, "Review reporting-channel period coverage", `${issue.message} Review the available authorization evidence for this interval and preserve actual approvals and cutovers. Do not infer an operating failure from an approval date or backdate the record.`, "ready", source ? { type: source.type, id: source.id } : { type: target.type, id: target.id }, source ? [mutationAction(source)] : []));
     }
   }
   const periodResources = loaded.resources.filter((record) => (

@@ -636,7 +636,7 @@ test("creates a complete generic repository with one dependency", async (context
   installedLock.packages["node_modules/filegrc"] = { version: currentEngineVersion };
   await writeFile(installedLockPath, JSON.stringify(installedLock));
   const validation = await validateWorkspace(target);
-  assert.deepEqual(validation.counts, { resources: 224, errors: 0, warnings: 3 });
+  assert.deepEqual(validation.counts, { resources: 224, errors: 0, warnings: 3, information: 0 });
   assert.equal(
     validation.diagnostics.filter(({ code }) => code === "past-proposed-effective-date").length,
     3
@@ -1315,7 +1315,7 @@ test("creates and configures a service from one JSON config", async (context) =>
   assert.match(output, /npx filegrc program-path --next --json/);
   assert.match(output, /Confirm the selected assurance goal with management: SOC 2 Type 2/);
   const validation = await validateWorkspace(target);
-  assert.deepEqual(validation.counts, { resources: 226, errors: 0, warnings: 0 });
+  assert.deepEqual(validation.counts, { resources: 226, errors: 0, warnings: 0, information: 0 });
   const workspace = JSON.parse(await readFile(join(target, "data", "workspace.json"), "utf8"));
   assert.equal(workspace.systemIds, undefined);
   const program = JSON.parse(await readFile(join(target, "data", "programs", "program-soc-2.json"), "utf8"));

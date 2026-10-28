@@ -1,3 +1,5 @@
+import { governedContentBaseline, governedApprovalContentMatches } from "./governed-content-baseline.js";
+import { currentCalendarDate } from "./time.js";
 import { applicationCoversUse, retentionApplicationIssues, retentionUseWasIndependentlyReviewed } from "./retention-applications.js";
 import { calculationMemo, hasCalculationCache } from "./calculation-cache.js";
 import { readFileSync } from "node:fs";
@@ -433,8 +435,9 @@ const approvedReviewEntries = new WeakMap();
 function effectiveReviewEntry(loaded, entry) {
   if (!entry || !loaded.root || !["policy", "document", "training"].includes(entry.record.type)) return entry;
   if (!["draft", "in-review", "approved", "active"].includes(entry.record.status)) return entry;
-  if (approvedReviewContentMatches(loaded, entry)) return entry;
-  if (["approved", "active"].includes(entry.record.status)) return entry;
+  const approvedAwaitingCutover = modelSupports(loaded.model, "operating-preparation") && entry.record.status === "approved";
+  if (approvedReviewContentMatches(loaded, entry) && !approvedAwaitingCutover) return entry;
+  if (entry.record.status === "active") return entry;
   let cache = approvedReviewEntries.get(loaded.resources);
   if (!cache) {
     cache = new Map();
@@ -445,7 +448,20 @@ function effectiveReviewEntry(loaded, entry) {
   for (const commit of [...reviewHistoryCommits(context)].reverse()) {
     const snapshot = reviewHistoricalWorkspace(context, commit);
     const historical = snapshot?.entries.find(({ record }) => record.id === entry.record.id);
-    if (!historical || !approvedReviewContentMatches(snapshot, historical, commit)) continue;
+    const asOf = currentCalendarDate(loaded.workspace?.timezone || "UTC");
+    if (approvedAwaitingCutover && historical && ["retired", "superseded"].includes(historical.record.status)
+      && (!historical.record.statusTransition?.changedOn || historical.record.statusTransition.changedOn <= asOf)) break;
+    if (!historical || !approvedReviewContentMatches(snapshot, historical, commit)) {
+      if (approvedAwaitingCutover && historical?.record.status === "active" && historical.record.effectiveOn <= asOf) break;
+      continue;
+    }
+    if (approvedAwaitingCutover) {
+      if (historical.record.status !== "active" || historical.record.effectiveOn > asOf) continue;
+      const byId = new Map(snapshot.resources.map((record) => [record.id, record]));
+      const baseline = governedContentBaseline(historical.record, byId, asOf, loaded.model,
+        { contentMatches: (record) => governedApprovalContentMatches(snapshot, record) });
+      if (!baseline || baseline.id !== entry.record.id || baseline.status !== "active") break;
+    }
     const approved = { ...historical, reviewCommit: commit, reviewFiles: snapshot.historicalFiles };
     cache.set(entry.record.id, approved);
     return approved;

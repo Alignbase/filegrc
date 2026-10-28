@@ -2,6 +2,7 @@ import { currentPartyPeople } from "./parties.js";
 import { modelSupports } from "../model/index.js";
 import { revisionsMatch } from "./revisions.js";
 import { obligationRule } from "./obligation-rule.js";
+import { governedContentBaseline } from "./governed-content-baseline.js";
 
 const requiredDocumentsByControlCache = new WeakMap();
 
@@ -76,10 +77,12 @@ export function contentRevisionBindingsMatch(left, right) {
     ));
 }
 
-export function obligationGovernedDocuments(obligation, byId, model) {
+export function obligationGovernedDocuments(obligation, byId, model, asOf = null) {
   if (!modelSupports(model, "governed-document-activation")) return [];
   const policyDocumentIds = (obligation.policyIds || []).flatMap((id) => {
-    const policy = byId.get(id);
+    const source = byId.get(id);
+    const policy = asOf && modelSupports(model, "operating-preparation")
+      ? governedContentBaseline(source, byId, asOf, model) || source : source;
     return policy?.type === "policy" ? policy.relatedDocumentIds || [] : [];
   });
   const directDocumentIds = [
@@ -91,15 +94,17 @@ export function obligationGovernedDocuments(obligation, byId, model) {
     .flatMap((id) => requiredDocumentsByControl.get(id) || []);
   return [...new Set([...policyDocumentIds, ...directDocumentIds, ...controlDocumentIds])]
     .map((id) => byId.get(id))
+    .map((record) => asOf && modelSupports(model, "operating-preparation")
+      ? governedContentBaseline(record, byId, asOf, model) || record : record)
     .filter((record) => (
       record?.type === "document"
-      && !["superseded", "retired"].includes(record.status)
+      && (asOf && modelSupports(model, "operating-preparation") || !["superseded", "retired"].includes(record.status))
       && !documentIsAuditSpecific(record, model)
     ));
 }
 
-export function obligationGovernedContent(obligation, byId, model) {
-  const documents = obligationGovernedDocuments(obligation, byId, model);
+export function obligationGovernedContent(obligation, byId, model, asOf = null) {
+  const documents = obligationGovernedDocuments(obligation, byId, model, asOf);
   if (!modelSupports(model, "governed-training-activation")) return documents;
   const directIds = [
     ...(obligation.scopeResourceIds || []),
@@ -107,7 +112,10 @@ export function obligationGovernedContent(obligation, byId, model) {
   ];
   const training = [...new Set(directIds)]
     .map((id) => byId.get(id))
-    .filter((record) => record?.type === "training" && !["superseded", "retired"].includes(record.status));
+    .map((record) => asOf && modelSupports(model, "operating-preparation")
+      ? governedContentBaseline(record, byId, asOf, model) || record : record)
+    .filter((record) => record?.type === "training"
+      && (asOf && modelSupports(model, "operating-preparation") || !["superseded", "retired"].includes(record.status)));
   return [...documents, ...training];
 }
 
@@ -138,15 +146,29 @@ export function obligationProgramStatus(obligation, byId, asOf, model, now = `${
   if (currentPartyPeople(obligation.ownerIds || [], byId).size === 0) return "proposed";
   const policyIds = obligation.policyIds || [];
   const policiesReady = policyIds.every((id) => {
-    const policy = byId.get(id);
+    const source = byId.get(id);
+    if (modelSupports(model, "operating-preparation")) {
+      const baseline = governedContentBaseline(source, byId, asOf, model);
+      if (baseline) return true;
+      // Existing standalone Policy operation keeps its original eligibility.
+      // Approval findings remain separate from recording actual completed work;
+      // substituting a successor still requires the proved baseline above.
+      const hasEffectiveSuccessor = [...byId.values()].some((record) => record.type === "policy"
+        && record.supersedesId === source?.id && ["active", "superseded", "retired"].includes(record.status)
+        && record.effectiveOn && record.effectiveOn <= asOf);
+      if (source?.supersedesId || hasEffectiveSuccessor) return false;
+    }
+    const policy = source;
     return policy?.type === "policy"
       && policy.status === "active"
       && policy.effectiveOn
       && policy.effectiveOn <= asOf;
   });
   if (!policiesReady) return "proposed";
-  const governedContentReady = obligationGovernedContent(obligation, byId, model)
-    .every((record) => governedContentIsOperating(record, asOf, model));
+  const governedContentReady = obligationGovernedContent(obligation, byId, model, asOf)
+    .every((record) => modelSupports(model, "operating-preparation")
+      ? governedContentBaseline(record, byId, asOf, model) !== null
+      : governedContentIsOperating(record, asOf, model));
   if (!governedContentReady) return "proposed";
   const controlIds = obligation.controlIds || [];
   if (!controlIds.length) return "accepted";

@@ -1,3 +1,4 @@
+import { governedContentBaseline } from "./governed-content-baseline.js";
 import { recordedCorrectionPopulation, currentSnapshotPopulation, samePopulation } from "./obligation-snapshot.js";
 import { getGitSummary } from "./git.js";
 import { populationCutoffDate, populationIsFinal, wholePeriodCoverage, completionCoversRequiredPeriod, requiredPeriodIsFinal, wholePeriodOccurrenceWindowIssue } from "./obligation-timing.js";
@@ -188,7 +189,7 @@ export function planObligations(resources, options = {}) {
 
     const configuredAnchor = schedule.recurrence?.anchorDate || schedule.startsOn;
     const { recurrence, activationDate } = obligationScheduleRecurrence(
-      obligation, rule, byId, model, workspace?.timezone || "UTC"
+      obligation, rule, byId, model, workspace?.timezone || "UTC", new Set(), asOf
     );
     if (!validCalendarRecurrence(recurrence)) continue;
     const from = rule
@@ -534,13 +535,17 @@ function obligationProgramBlocker(obligation, byId, asOf, model, now = `${asOf}T
     return { type: "obligation", id: obligation.id, label: "Assign current owner" };
   }
   for (const id of obligation.policyIds || []) {
-    const policy = byId.get(id);
+    const source = byId.get(id);
+    const policy = modelSupports(model, "operating-preparation")
+      ? governedContentBaseline(source, byId, asOf, model) : source;
     if (policy?.type !== "policy" || policy.status !== "active" || !policy.effectiveOn || policy.effectiveOn > asOf) {
       return { type: "policy", id, label: "Activate policy" };
     }
   }
-  const inactiveContent = obligationGovernedContent(obligation, byId, model)
-    .find((record) => !governedContentIsOperating(record, asOf, model));
+  const inactiveContent = obligationGovernedContent(obligation, byId, model, asOf)
+    .find((record) => modelSupports(model, "operating-preparation")
+      ? !governedContentBaseline(record, byId, asOf, model)
+      : !governedContentIsOperating(record, asOf, model));
   if (inactiveContent) {
     return { type: inactiveContent.type, id: inactiveContent.id, label: `Activate ${inactiveContent.type}` };
   }
@@ -2254,7 +2259,7 @@ function occurrenceStatus(window, asOf, complete) {
 
 // Planning and persisted occurrence validation must use the same activation
 // anchor, including the latest governing content cutover in operating models.
-export function obligationScheduleRecurrence(obligation, rule, byId, model, timezone = "UTC", seen = new Set()) {
+export function obligationScheduleRecurrence(obligation, rule, byId, model, timezone = "UTC", seen = new Set(), asOf = currentCalendarDate(timezone)) {
   if (rule && seen.has(rule.id)) return { recurrence: null, activationDate: null };
   if (rule) seen.add(rule.id);
   // A reviewed snapshot correction changes the population criterion, while
@@ -2262,15 +2267,15 @@ export function obligationScheduleRecurrence(obligation, rule, byId, model, time
   if (rule?.cutoverDecision === "correct-open-window" && rule.supersedesId) {
     const prior = byId.get(rule.supersedesId);
     if (prior?.type === "obligation-rule" && prior.obligationId === obligation.id) {
-      return obligationScheduleRecurrence(obligation, prior, byId, model, timezone, seen);
+      return obligationScheduleRecurrence(obligation, prior, byId, model, timezone, seen, asOf);
     }
   }
   const schedule = rule || obligation;
   const configuredAnchor = schedule.recurrence?.anchorDate || schedule.startsOn;
   const activationDate = !modelSupports(model, "operating-preparation")
-    ? obligationActivationDate(obligation, byId, rule || model, timezone)
-    : [obligationActivationDate(obligation, byId, rule || model, timezone),
-      obligationActivationDate(obligation, byId, model, timezone)].filter(Boolean).sort().at(-1);
+    ? obligationActivationDate(obligation, byId, rule || model, timezone, asOf)
+    : [obligationActivationDate(obligation, byId, rule || model, timezone, asOf),
+      obligationActivationDate(obligation, byId, model, timezone, asOf)].filter(Boolean).sort().at(-1);
   return {
     activationDate,
     recurrence: {
@@ -2286,7 +2291,7 @@ export function obligationScheduleRecurrence(obligation, rule, byId, model, time
   };
 }
 
-export function obligationActivationDate(obligation, byId, ruleOrModel, timezone = "UTC") {
+export function obligationActivationDate(obligation, byId, ruleOrModel, timezone = "UTC", asOf = currentCalendarDate(timezone)) {
   if (ruleOrModel?.type === "obligation-rule") {
     return ruleOrModel.effectiveAt
       ? currentCalendarDate(ruleOrModel.timezone || timezone, new Date(ruleOrModel.effectiveAt))
@@ -2295,10 +2300,12 @@ export function obligationActivationDate(obligation, byId, ruleOrModel, timezone
   const model = ruleOrModel;
   const policyDates = (obligation.policyIds || [])
     .map((id) => byId.get(id))
+    .map((record) => modelSupports(model, "operating-preparation")
+      ? governedContentBaseline(record, byId, asOf, model) || record : record)
     .filter((policy) => policy?.type === "policy")
     .map((policy) => policy.effectiveOn)
     .filter(Boolean);
-  const governedContentDates = obligationGovernedContent(obligation, byId, model)
+  const governedContentDates = obligationGovernedContent(obligation, byId, model, asOf)
     .flatMap((record) => modelSupports(model, "operating-preparation") ? [record.effectiveOn, record.activatedOn] : [record.effectiveOn])
     .filter(Boolean);
   return [...policyDates, ...governedContentDates].sort().at(-1) || null;

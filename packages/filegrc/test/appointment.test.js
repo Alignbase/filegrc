@@ -23,7 +23,7 @@ test("creates and validates a scoped active appointment", async (context) => {
     startsOn: "2026-08-02"
   });
 
-  assert.deepEqual((await validateWorkspace(root)).counts, { resources: 4, errors: 0, warnings: 0 });
+  assert.deepEqual((await validateWorkspace(root)).counts, { resources: 4, errors: 0, warnings: 0, information: 0 });
   assert.equal(
     JSON.parse(await readFile(join(root, "data", "appointments", "appointment-policy-owner.json"), "utf8")).holderId,
     "person-owner"
