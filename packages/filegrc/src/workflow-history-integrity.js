@@ -842,7 +842,7 @@ function canonicalJson(value, field = null, revisionMap = false) {
 async function compareMarkdownAtRevision(loaded, entry, historical, diagnostics, occurrenceId = null) {
   for (const markdown of markdownEntries(loaded.model, entry.record)) {
     const historicalPath = markdownEntries(loaded.model, historical.record)
-      .find(({ slot }) => slot === markdown.slot)?.path;
+      .find(({ name }) => name === markdown.name)?.path;
     const committed = historicalPath
       ? getFileAtRevision(loaded.root, historical.commit, `data/${historicalPath}`)
       : null;
