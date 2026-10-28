@@ -94,7 +94,11 @@ const STATE_SESSION_MAX_AGE_MS = 5 * 60_000;
 const MAX_STATE_SESSIONS = 8;
 const MAX_STATE_SESSION_PROMISES = 64;
 const RESOURCE_DETAIL_GIT_DEADLINE_MS = 10_000;
-const STATE_SECTION_GIT_DEADLINE_MS = 10_000;
+// A whole cold calculation can legitimately exceed a single Git command's
+// timeout. Keep Git's per-command protection, but bound the complete read too.
+const STATE_CALCULATION_DEADLINE_MS = 120_000;
+const STATE_RESPONSE_WAIT_MS = 1_000;
+const STATE_PENDING = Symbol("pending state calculation");
 
 export function createFilegrcServer(input = process.cwd(), options = {}) {
   assertWorkspaceEngineVersion(input, { allowModelDiagnostics: true });
@@ -169,14 +173,14 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
         if (!sameOriginBrowserRead(request)) {
           return json(response, 403, { error: "Cross-origin state requests are not allowed." });
         }
-        const deadlineAt = performance.now() + STATE_SECTION_GIT_DEADLINE_MS;
+        const deadlineAt = performance.now() + RESOURCE_DETAIL_GIT_DEADLINE_MS;
         for (let attempt = 0; attempt < 3; attempt += 1) {
           if (activeStateMutations > 0) {
             await awaitWithinDeadline(new Promise((resolve) => stateMutationWaiters.push(resolve)), deadlineAt);
           }
           const generation = stateInvalidationGeneration;
           if (!bootstrapSnapshotPromise) {
-            bootstrapSnapshotPromise = withGitCommandDeadline(deadlineAt, () => stableStateSnapshot(input, {
+            bootstrapSnapshotPromise = withReadGitDeadline(deadlineAt, () => stableStateSnapshot(input, {
               fileDigestCache,
               deadlineAt
             })).finally(() => {
@@ -210,6 +214,7 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
             expiresAt: Date.now() + STATE_SESSION_MAX_AGE_MS,
             revoked: false,
             promises: new Map(),
+            reads: new Map(),
             verificationPromise: null,
             calculationCache: verifiedGitCache,
             gitCommandCache: verifiedGitCache.commands
@@ -243,14 +248,18 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
         if (!session) return json(response, 409, { error: "The workspace state expired. Reload it and try again." });
         const sectionDeadlineMs = Number.isFinite(options.stateSectionDeadlineMs)
           ? Math.max(0, options.stateSectionDeadlineMs)
-          : STATE_SECTION_GIT_DEADLINE_MS;
+          : STATE_CALCULATION_DEADLINE_MS;
         const deadlineAt = performance.now() + sectionDeadlineMs;
-        const calculate = () => withGitCommandDeadline(deadlineAt, () => (
+        const calculate = () => withReadGitDeadline(deadlineAt, () => (
           loadStateSessionSection(session, section, options, url.searchParams.get("programId") || undefined, null, deadlineAt)
         ));
-        const measured = timingEnabled() ? await collectTimings(calculate) : null;
-        const state = measured ? measured.result : await calculate();
-        if (measured) console.error(`[filegrc timing] ${JSON.stringify({ operation: "state-section", section, ...measured.timings })}`);
+        const measuredCalculate = timingEnabled() ? async () => {
+          const measured = await collectTimings(calculate);
+          console.error(`[filegrc timing] ${JSON.stringify({ operation: "state-section", section, ...measured.timings })}`);
+          return measured.result;
+        } : calculate;
+        const state = await respondToStateRead(session, `section:${section}:${requestOptions.programId || ""}`, request, options, measuredCalculate);
+        if (state === STATE_PENDING) return pendingStateResponse(response, token);
         assertCurrentStateSession(session);
         return json(response, 200, { stateToken: token, section, state });
       }
@@ -780,14 +789,18 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
           const historyOnly = url.searchParams.get("history") === "only";
           if (historyOnly) {
             const history = session
-              ? await loadStateSessionResourceHistory(session, token, type, id, options)
+              ? await respondToStateRead(session, `history:${type}:${id}`, request, options,
+                () => loadStateSessionResourceHistory(session, token, type, id, options))
               : await createResourceHistory(input, type, id);
+            if (history === STATE_PENDING) return pendingStateResponse(response, token);
             if (!history) return json(response, 404, { error: "Resource not found." });
             return json(response, 200, history);
           }
           const entry = session
-            ? await loadStateSessionResource(session, token, type, id, options, requestOptions.programId, includeWorkflow, url.searchParams.get("history") !== "false")
+            ? await respondToStateRead(session, `detail:${type}:${id}:${requestOptions.programId || ""}:${includeWorkflow}:${url.searchParams.get("history") !== "false"}`, request, options,
+              () => loadStateSessionResource(session, token, type, id, options, requestOptions.programId, includeWorkflow, url.searchParams.get("history") !== "false"))
             : await createResourceDetail(input, type, id, { includeHistory: url.searchParams.get("history") !== "false" });
+          if (entry === STATE_PENDING) return pendingStateResponse(response, token);
           if (!entry) return json(response, 404, { error: "Resource not found." });
           if (includeWorkflow && !session) {
             const loaded = await loadWorkspace(input);
@@ -922,7 +935,8 @@ export async function serveWorkspace(input = process.cwd(), options = {}) {
     allowNonAuthoritativeWrites: options.allowNonAuthoritativeWrites === true,
     backgroundPushDelayMs: options.backgroundPushDelayMs,
     stateSectionDeadlineMs: options.stateSectionDeadlineMs,
-    resourceDetailDeadlineMs: options.resourceDetailDeadlineMs
+    resourceDetailDeadlineMs: options.resourceDetailDeadlineMs,
+    stateResponseWaitMs: options.stateResponseWaitMs
   });
   let usedFallbackPort = false;
   try {
@@ -1121,9 +1135,9 @@ async function loadStateSessionResource(session, token, type, id, serverOptions,
   assertCurrentStateSession(session);
   const detailDeadlineMs = Number.isFinite(serverOptions.resourceDetailDeadlineMs)
     ? Math.max(0, serverOptions.resourceDetailDeadlineMs)
-    : RESOURCE_DETAIL_GIT_DEADLINE_MS;
+    : STATE_CALCULATION_DEADLINE_MS;
   const deadlineAt = performance.now() + detailDeadlineMs;
-  return withGitCommandDeadline(deadlineAt, async () => {
+  return withReadGitDeadline(deadlineAt, async () => {
     const detail = await withGitCommandCache(session.gitCommandCache, () => createResourceDetail(session.loaded, type, id, {
       historyDeadlineAt: deadlineAt,
       includeHistory
@@ -1144,9 +1158,9 @@ async function loadStateSessionResourceHistory(session, token, type, id, serverO
   assertCurrentStateSession(session);
   const detailDeadlineMs = Number.isFinite(serverOptions.resourceDetailDeadlineMs)
     ? Math.max(0, serverOptions.resourceDetailDeadlineMs)
-    : RESOURCE_DETAIL_GIT_DEADLINE_MS;
+    : STATE_CALCULATION_DEADLINE_MS;
   const deadlineAt = performance.now() + detailDeadlineMs;
-  return withGitCommandDeadline(deadlineAt, async () => {
+  return withReadGitDeadline(deadlineAt, async () => {
     const history = await withGitCommandCache(session.gitCommandCache, () => createResourceHistory(session.loaded, type, id, {
       historyDeadlineAt: deadlineAt
     }));
@@ -1154,6 +1168,53 @@ async function loadStateSessionResourceHistory(session, token, type, id, serverO
     assertCurrentStateSession(session);
     return history ? { ...history, stateToken: token } : null;
   });
+}
+
+function withReadGitDeadline(deadlineAt, task) {
+  return withGitCommandDeadline(deadlineAt, task, { commandTimeoutMs: RESOURCE_DETAIL_GIT_DEADLINE_MS });
+}
+
+// Only opt-in browser reads use pending responses. Other API clients retain the
+// original await-until-complete contract. A pending response is never valid data.
+async function respondToStateRead(session, key, request, options, calculate) {
+  if (!prefersFastMutation(request)) return calculate();
+  assertCurrentStateSession(session);
+  let job = session.reads.get(key);
+  if (!job) {
+    if (session.reads.size >= MAX_STATE_SESSION_PROMISES) {
+      const completed = [...session.reads].find(([, value]) => value.completed)?.[0];
+      if (completed === undefined) throw stateSessionCapacityError();
+      session.reads.delete(completed);
+    }
+    job = { completed: false, promise: null };
+    // Retain failures until a caller receives them, then allow an explicit retry.
+    job.promise = Promise.resolve().then(calculate).finally(() => { job.completed = true; });
+    job.promise.catch(() => {});
+    session.reads.set(key, job);
+  }
+  const waitMs = Number.isFinite(options.stateResponseWaitMs)
+    ? Math.max(0, options.stateResponseWaitMs) : STATE_RESPONSE_WAIT_MS;
+  let timer;
+  let result;
+  try {
+    result = await Promise.race([
+      job.promise,
+      new Promise((resolve) => { timer = setTimeout(() => resolve(STATE_PENDING), waitMs); })
+    ]);
+    if (result === STATE_PENDING) { assertCurrentStateSession(session); return result; }
+    // A completed read may have waited for its next poll. Verify its snapshot
+    // again before delivering it; no stale result may enable browser writes.
+    await verifyStateSessionSnapshot(session, performance.now(), performance.now() + RESOURCE_DETAIL_GIT_DEADLINE_MS);
+    return result;
+  } finally {
+    clearTimeout(timer);
+    if (job.completed && session.reads.get(key) === job) session.reads.delete(key);
+  }
+}
+
+function pendingStateResponse(response, token) {
+  response.setHeader("Retry-After", "1");
+  return json(response, 202, { stateToken: token, status: "pending" });
 }
 
 function prefersFastMutation(request) {
