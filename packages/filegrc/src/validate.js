@@ -184,7 +184,7 @@ async function validateWorkspaceUnmeasured(input) {
     if (record.periodImpactReview) {
       const review = record.periodImpactReview;
       if (!parseCalendarDate(review.reviewedOn) || !parseCalendarDate(review.effectiveOn) || review.reviewedOn > asOf || review.effectiveOn > review.reviewedOn) diagnostics.push(error("invalid-period-impact-review-date", displayPath, "Period impact review needs actual nonfuture review/effective dates, with the effective date no later than review."));
-      if (!review.reviewedByIds?.length || new Set(review.reviewedByIds).size !== review.reviewedByIds?.length || review.reviewedByIds?.some(id => !personWasActiveOn(byId.get(id), review.reviewedOn))) diagnostics.push(error("invalid-period-impact-reviewer", displayPath, "Period impact review must name the actual People active on its review date."));
+      if (!Array.isArray(review.reviewedByIds) || !review.reviewedByIds.length || new Set(review.reviewedByIds).size !== review.reviewedByIds.length || review.reviewedByIds.some(id => !personWasActiveOn(byId.get(id), review.reviewedOn))) diagnostics.push(error("invalid-period-impact-reviewer", displayPath, "Period impact review must name the actual People active on its review date."));
     }
 
     validateProposedEffectiveDate(record, asOf, displayPath, diagnostics);

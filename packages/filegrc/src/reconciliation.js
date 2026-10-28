@@ -5,7 +5,7 @@ import { performance } from "node:perf_hooks";
 import { loadModel, modelSupports, SUPPORTED_MODEL_VERSIONS } from "../model/index.js";
 import { createObligationEvent, obligationRule } from "./obligations.js";
 import { createResource, INTERNAL_WORKFLOW_CAPABILITIES } from "./files.js";
-import { getDataRecordHistoryIndex, getFileAtRevision, getFilesAtRevisions, runGitCommandSync } from "./git.js";
+import { getDataRecordHistoryIndex, getFileAtRevision, getFilesAtRevisions, runGitCommandSync, isDataHistoryAncestor } from "./git.js";
 import { markdownEntries } from "./resource-markdown.js";
 import { loadWorkspace } from "./workspace.js";
 import { serializeWorkspaceMutation } from "./mutation.js";
@@ -447,18 +447,25 @@ export async function planReconciliation(input = process.cwd(), options = {}) {
   // across all interfaces. It never removes an existing Policy Event or its
   // tasks, and it cannot dismiss lifecycle transitions such as activation.
   const impactDecisions = new Map();
-  const answeredKeys = new Set();
-  const neededKeys = new Set(filteredCandidates.map(candidate => candidate.periodImpactKey).filter(Boolean));
-  if (neededKeys.size) {
+  const answeredCandidates = new Set();
+  const questions = filteredCandidates.filter(candidate => candidate.periodImpactKey);
+  if (questions.length) {
     const context = reviewHistoryContext(loaded.root, loaded);
     for (const [commit, records] of historyIndex.recordsByCommit) {
       for (const { record } of records.values()) {
         const review = record.periodImpactReview;
-        if (review?.conclusion !== "no-material-change" || !Array.isArray(review.reviewedTransitionKeys) || !review.reviewedTransitionKeys.some(key => neededKeys.has(key) && !answeredKeys.has(key))) continue;
+        if (review?.conclusion !== "no-material-change" || !Array.isArray(review.reviewedTransitionKeys)) continue;
+        // An opaque key is not authority to review another resource or a
+        // transition that had not occurred in this reviewed source snapshot.
+        const covered = questions.filter(candidate => candidate.subject.id === record.id
+          && candidate.committedRevision && !answeredCandidates.has(candidate.id)
+          && review.reviewedTransitionKeys.includes(candidate.periodImpactKey)
+          && isDataHistoryAncestor(loaded, candidate.committedRevision, commit));
+        if (!covered.length) continue;
         const historical = reviewHistoricalWorkspace(context, commit);
         const reviewed = historical?.resources.find(item => item.id === record.id);
         if (reviewed && await periodImpactReviewCurrent(historical, reviewed)) {
-          for (const key of review.reviewedTransitionKeys) answeredKeys.add(key);
+          for (const candidate of covered) answeredCandidates.add(candidate.id);
         }
       }
     }
@@ -466,7 +473,7 @@ export async function planReconciliation(input = process.cwd(), options = {}) {
   for (let index = filteredCandidates.length - 1; index >= 0; index--) {
     const candidate = filteredCandidates[index];
     if (!["system-material-change", "policy-revised"].includes(candidate.eventType)) continue;
-    if (answeredKeys.has(candidate.periodImpactKey)) { filteredCandidates.splice(index, 1); continue; }
+    if (answeredCandidates.has(candidate.id)) { filteredCandidates.splice(index, 1); continue; }
     const record = loaded.resources.find(item => item.id === candidate.subject.id);
     if (record?.periodImpactReview?.conclusion !== "no-material-change") continue;
     if (!record.periodImpactReview.reviewedTransitionKeys?.includes(candidate.periodImpactKey)) continue;

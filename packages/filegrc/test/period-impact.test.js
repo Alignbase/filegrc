@@ -370,3 +370,39 @@ test("ordinary service inventory history does not invent an evidence-source revi
     assert.equal(impact.state, "ready", source.type);
   }
 });
+
+test("a historical owner review cannot answer another resource's copied materiality key", async context => {
+  const fixture = await impactFixture(context, "system");
+  const other = { ...fixture.record, id: "system-other-owner", title: "Other owned service", ownerIds: ["person-approver"] };
+  const otherPath = join(fixture.root, "data/systems", `${other.id}.json`);
+  await writeFile(otherPath, JSON.stringify(other, null, 2) + "\n");
+  await fixture.commit("2026-09-29", "Record another owner's service");
+  fixture.record.boundary += " Actual changed boundary."; await fixture.saveRecord();
+  await fixture.commit("2026-10-02", "Change the first service");
+  const question = (await planReconciliation(fixture.root)).candidates.find(candidate => candidate.subject.id === fixture.record.id);
+  const loaded = await loadWorkspace(fixture.root);
+  other.periodImpactReview = { reviewedByIds: ["person-approver"], reviewedOn: "2026-10-03", effectiveOn: "2026-10-02", conclusion: "no-material-change",
+    rationale: "The other owner reviewed this other service only.", reviewedRevision: await currentPeriodImpactRevision(loaded, other), reviewedTransitionKeys: [question.periodImpactKey] };
+  await writeFile(otherPath, JSON.stringify(other, null, 2) + "\n");
+  await fixture.commit("2026-10-03", "Record another service's review");
+  const current = await loadWorkspace(fixture.root), reviewedOther = current.resources.find(record => record.id === other.id);
+  assert.equal(await periodImpactReviewCurrent(current, reviewedOther, asOf), true);
+  assert.ok((await planReconciliation(fixture.root)).candidates.some(candidate => candidate.subject.id === fixture.record.id), "an opaque foreign key conveys no authority over the actual changed resource");
+});
+
+test("a historical review cannot pre-authorize an unperformed future transition by copying its key", async context => {
+  const fixture = await impactFixture(context, "system");
+  const beforeBoundary = fixture.record.boundary;
+  fixture.record.boundary += " Planned replacement boundary."; await fixture.saveRecord();
+  const future = (await planReconciliation(fixture.root)).candidates.find(candidate => candidate.subject.id === fixture.record.id);
+  fixture.record.boundary = beforeBoundary; await fixture.saveRecord();
+  const loaded = await loadWorkspace(fixture.root);
+  fixture.record.periodImpactReview = { reviewedByIds: ["person-owner"], reviewedOn: "2026-10-01", effectiveOn: "2026-09-28", conclusion: "no-material-change",
+    rationale: "Reviewed the still-unchanged current service.", reviewedRevision: await currentPeriodImpactRevision(loaded, fixture.record), reviewedTransitionKeys: [future.periodImpactKey] };
+  await fixture.saveRecord(); await fixture.commit("2026-10-01", "Record unchanged service review");
+  fixture.record.boundary += " Planned replacement boundary."; await fixture.saveRecord();
+  await fixture.commit("2026-10-02", "Actually change the service later");
+  const questions = (await planReconciliation(fixture.root)).candidates.filter(candidate => candidate.subject.id === fixture.record.id);
+  assert.equal(questions.length, 1);
+  assert.equal(questions[0].periodImpactKey, future.periodImpactKey);
+});

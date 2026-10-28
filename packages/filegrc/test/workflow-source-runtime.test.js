@@ -107,3 +107,12 @@ test("an existing manual violation cannot authorize more unsupported generic mut
   assert.equal(await readFile(entry.path, "utf8"), original);
   assert.equal((await loadWorkspace(root)).resources.some(item => item.id === "system-third"), false);
 });
+
+test("malformed typed review actors produce diagnostics rather than an uncaught validation failure", async context => {
+  const { root, record, path } = await fixture(context, "0.21.6");
+  const loaded = await loadWorkspace(root);
+  await writeJson(path, { ...record, periodImpactReview: { reviewedByIds: "owner", reviewedOn: "2026-10-28", effectiveOn: "2026-10-28", conclusion: "no-material-change", rationale: "Malformed input.", reviewedRevision: await currentPeriodImpactRevision(loaded, record) } });
+  const result = await validateWorkspace(root);
+  assert.equal(result.ok, false);
+  assert.ok(result.diagnostics.some(item => item.code === "invalid-period-impact-reviewer"));
+});
