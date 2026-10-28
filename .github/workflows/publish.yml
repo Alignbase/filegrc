@@ -50,4 +50,13 @@ jobs:
           node --version
           git --version
           git symbolic-ref -q HEAD || true
-          node --test packages/filegrc/test/git.test.js
+          node --input-type=module <<'JS'
+          import { readFile, writeFile } from 'node:fs/promises';
+          import { resolve } from 'node:path';
+          import { runTestSuite } from './scripts/test-scheduler.mjs';
+          const path = 'scripts/test-shard-worker.mjs';
+          const source = await readFile(path, 'utf8');
+          await writeFile(path, source.replace('stream.on("test:fail", (data) => record(data, false));', 'stream.on("test:fail", (data) => { record(data, false); console.error(data.details?.error); });'));
+          const cwd = resolve('packages/filegrc');
+          await runTestSuite({ name: 'release-git-diagnostic', cwd, files: [resolve('packages/filegrc/test/git.test.js')], inputPaths: [], toolchainCommands: ['git'], cache: false });
+          JS
