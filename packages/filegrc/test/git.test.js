@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { access, chmod, mkdir, mkdtemp, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -3298,4 +3298,65 @@ test("ignored JSON paths cannot declare authoritative evidence ownership", async
     assert.equal(index.available, false);
     assert.match(index.error.message, /unreadable data record.*malformed.json/);
   }
+});
+
+
+for (const mode of ["manual", "background"]) {
+  test(`${mode} pushes accept a tracking ref already updated to the pushed commit`, async (context) => {
+    const fixture = await makeTrunkGitFixture(context, "filegrc-push-tracking-equal-");
+    let simulated = false;
+    const restore = setGitSubprocessObserverForTests(({ args }) => {
+      if (!simulated && args[0] === "update-ref" && args[3] === "refs/remotes/origin/main") {
+        simulated = true;
+        // Reproduce Git 2.56 updating a uniquely matching URL remote itself.
+        execFileSync("git", ["update-ref", args[3], args[4]], { cwd: fixture.root });
+      }
+    });
+    context.after(restore);
+    const ownerPath = join(fixture.root, "data/people/person-owner.json");
+    const owner = JSON.parse(await readFile(ownerPath, "utf8"));
+    let commit;
+    if (mode === "manual") {
+      await writeJson(ownerPath, { ...owner, department: "Updated tracking" });
+      await git(fixture.root, ["add", "data"]);
+      await git(fixture.root, ["commit", "-m", "Update source record"]);
+      const result = await pushWorkspace(fixture.root);
+      commit = result.commit;
+      assert.equal(result.trackingError, null);
+      assert.equal(result.trackingConfigured, true);
+    } else {
+      const mutation = await runBrowserMutation(fixture.root, { message: "Update source record" }, () => (
+        updateResource(fixture.root, "person", owner.id, { ...owner, department: "Updated tracking" })
+      ));
+      commit = mutation.synchronization.commit;
+      const synchronized = await waitForRepository(fixture.root, "synced");
+      assert.equal(synchronized.ahead, 0);
+    }
+    assert.equal(simulated, true);
+    assert.equal((await git(fixture.root, ["rev-parse", "refs/remotes/origin/main"])).stdout.trim(), commit);
+    assert.equal((await git(fixture.remote, ["rev-parse", "refs/heads/main"])).stdout.trim(), commit);
+  });
+}
+
+
+test("a first URL push cannot apply configured fetch mappings to unrelated local refs", async (context) => {
+  const fixture = await makeTrunkGitFixture(context, "filegrc-push-refmap-");
+  const original = (await git(fixture.root, ["rev-parse", "HEAD"])).stdout.trim();
+  await git(fixture.root, ["branch", "unrelated", original]);
+  await git(fixture.root, ["branch", "--unset-upstream"]);
+  await git(fixture.root, ["update-ref", "-d", "refs/remotes/origin/main"]);
+  await git(fixture.remote, ["update-ref", "-d", "refs/heads/main"]);
+  await git(fixture.root, ["config", "--replace-all", "remote.origin.fetch", "+refs/heads/main:refs/heads/unrelated"]);
+  await git(fixture.root, ["config", "--add", "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*"]);
+  const ownerPath = join(fixture.root, "data/people/person-owner.json");
+  const owner = JSON.parse(await readFile(ownerPath, "utf8"));
+  await writeJson(ownerPath, { ...owner, department: "Bounded push" });
+  await git(fixture.root, ["add", "data"]);
+  await git(fixture.root, ["commit", "-m", "Create first pushed change"]);
+  const pushed = await pushWorkspace(fixture.root);
+  assert.notEqual(pushed.commit, original);
+  assert.equal(pushed.trackingError, null);
+  assert.equal((await git(fixture.root, ["rev-parse", "refs/heads/unrelated"])).stdout.trim(), original);
+  assert.equal((await git(fixture.root, ["rev-parse", "refs/remotes/origin/main"])).stdout.trim(), pushed.commit);
+  assert.equal((await git(fixture.remote, ["rev-parse", "refs/heads/main"])).stdout.trim(), pushed.commit);
 });

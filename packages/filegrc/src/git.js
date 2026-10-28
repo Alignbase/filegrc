@@ -2750,25 +2750,28 @@ function captureManualPushTarget(root, before) {
   };
 }
 
+function remoteTrackingUpdates(target, commit) {
+  // Git 2.56 may already update this ref after an explicit URL push.
+  // Each attempt still compares the old value atomically.
+  return [...new Set([
+    target.expectedTrackingCommit || "0000000000000000000000000000000000000000",
+    commit,
+  ])].map((expected) => [
+    "update-ref", "-m", "FileGRC exact push", target.trackingRef, commit, expected,
+  ]);
+}
+
 function reconcileRemoteTracking(root, target, commit) {
-  try {
-    gitForWrite(
-      root,
-      [
-        "update-ref",
-        "-m",
-        "FileGRC exact push",
-        target.trackingRef,
-        commit,
-        target.expectedTrackingCommit ||
-          "0000000000000000000000000000000000000000",
-      ],
-      "reconcile the remote-tracking branch after a successful push",
-    );
-    return null;
-  } catch (error) {
-    return `${error.message} The exact commit was pushed, but the local remote-tracking branch needs reconciliation with Git.`;
+  let failure;
+  for (const args of remoteTrackingUpdates(target, commit)) {
+    try {
+      gitForWrite(root, args, "reconcile the remote-tracking branch after a successful push");
+      return null;
+    } catch (error) {
+      failure = error;
+    }
   }
+  return `${failure.message} The exact commit was pushed, but the local remote-tracking branch needs reconciliation with Git.`;
 }
 
 function exactPushArgs(target, commit) {
@@ -2776,6 +2779,12 @@ function exactPushArgs(target, commit) {
   return [
     "-c",
     "push.pushOption=",
+    // Keep the captured remote a URL match, then exclude the pushed ref from
+    // implicit fetch-refspec updates. Only our bounded CAS updates tracking.
+    "-c",
+    `remote.${target.remote}.pushurl=${target.url}`,
+    "-c",
+    `remote.${target.remote}.fetch=^${target.destination}`,
     "push",
     "--porcelain",
     "--no-follow-tags",
@@ -3129,24 +3138,16 @@ async function pushConfiguredBranch(
 }
 
 async function reconcileRemoteTrackingAsync(root, target, commit) {
-  try {
-    await gitForWriteAsync(
-      root,
-      [
-        "update-ref",
-        "-m",
-        "FileGRC exact push",
-        target.trackingRef,
-        commit,
-        target.expectedTrackingCommit ||
-          "0000000000000000000000000000000000000000",
-      ],
-      "reconcile the remote-tracking branch after a successful push",
-    );
-    return null;
-  } catch (error) {
-    return `${error.message} The exact commit was pushed, but the local remote-tracking branch needs reconciliation with Git.`;
+  let failure;
+  for (const args of remoteTrackingUpdates(target, commit)) {
+    try {
+      await gitForWriteAsync(root, args, "reconcile the remote-tracking branch after a successful push");
+      return null;
+    } catch (error) {
+      failure = error;
+    }
   }
+  return `${failure.message} The exact commit was pushed, but the local remote-tracking branch needs reconciliation with Git.`;
 }
 
 function assertSafeAutomaticTransport(root, remote, options = {}) {
