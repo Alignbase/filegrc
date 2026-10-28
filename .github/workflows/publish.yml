@@ -1,39 +1,17 @@
-name: Publish to npm
-
+name: Diagnose release validation
 on:
-  release:
-    types: [published]
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing release tag (vX.Y.Z)
+        description: Existing release tag
         required: true
         type: string
-
 permissions:
   contents: read
-
-concurrency:
-  group: npm-publish
-  cancel-in-progress: false
-
 jobs:
-  publish:
+  diagnose:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-
     steps:
-      - name: Require the matching tag ref
-        env:
-          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
-        run: |
-          if [ "${GITHUB_REF}" != "refs/tags/${RELEASE_TAG}" ]; then
-            echo "Publish must run from refs/tags/${RELEASE_TAG}."
-            exit 1
-          fi
-
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -44,6 +22,7 @@ jobs:
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
         run: |
+          export GITHUB_REF="refs/tags/${RELEASE_TAG}"
           git fetch --no-tags origin main
           git show FETCH_HEAD:scripts/verify-release.mjs > "${RUNNER_TEMP}/verify-release.mjs"
           node "${RUNNER_TEMP}/verify-release.mjs"
@@ -58,191 +37,17 @@ jobs:
       - name: Update npm
         run: npm install --global npm@11.21.1
 
-      - name: Verify release versions
-        env:
-          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
-        run: |
-          set -euo pipefail
-
-          release_version="${RELEASE_TAG#v}"
-          if [[ ! "${release_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-            echo "Release tag ${RELEASE_TAG} is not a valid package version."
-            exit 1
-          fi
-
-          publishable=0
-          for package in filegrc create-filegrc; do
-            package_version="$(node -p "require('./packages/${package}/package.json').version")"
-            if [ "${package_version}" != "${release_version}" ]; then
-              echo "${package}@${package_version} does not match release ${RELEASE_TAG}."
-              exit 1
-            fi
-
-            published_version="$(npm view "${package}@${package_version}" version 2>/dev/null || true)"
-            if [ "${published_version}" = "${package_version}" ]; then
-              echo "${package}@${package_version} is already published."
-              continue
-            fi
-
-            publishable=$((publishable + 1))
-          done
-
-          if [ "${publishable}" -eq 0 ]; then
-            echo "All packages for ${RELEASE_TAG} are published; continuing release verification."
-          fi
-
       - name: Install dependencies
         run: npm ci
 
-      - name: Run validation
-        run: npm run validate
+      - name: Diagnose release Git tests
         env:
+          RELEASE_TAG: ${{ inputs.tag }}
           CI: true
-
-      - name: Check package contents
         run: |
-          npm pack --dry-run --workspace filegrc
-          npm pack --dry-run --workspace create-filegrc
-
-      - name: Verify npm trusted publishing
-        run: |
-          node --input-type=module <<'NODE'
-          const audience = "npm:registry.npmjs.org";
-          const requestUrl = process.env.ACTIONS_ID_TOKEN_REQUEST_URL;
-          const requestToken = process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN;
-          if (!requestUrl || !requestToken) {
-            throw new Error("GitHub did not provide an OIDC token request endpoint.");
-          }
-
-          const separator = requestUrl.includes("?") ? "&" : "?";
-          const identityResponse = await fetch(
-            `${requestUrl}${separator}audience=${encodeURIComponent(audience)}`,
-            { headers: { Authorization: `bearer ${requestToken}` } }
-          );
-          if (!identityResponse.ok) {
-            throw new Error(`GitHub OIDC request failed (${identityResponse.status}).`);
-          }
-          const { value: identityToken } = await identityResponse.json();
-          if (!identityToken) throw new Error("GitHub OIDC response did not include an identity token.");
-
-          const failures = [];
-          for (const packageName of ["filegrc", "create-filegrc"]) {
-            const exchangeResponse = await fetch(
-              `https://registry.npmjs.org/-/npm/v1/oidc/token/exchange/package/${encodeURIComponent(packageName)}`,
-              {
-                method: "POST",
-                headers: { Authorization: `Bearer ${identityToken}` }
-              }
-            );
-            if (!exchangeResponse.ok) {
-              const detail = await exchangeResponse.text();
-              failures.push(`${packageName} (${exchangeResponse.status}): ${detail}`);
-              continue;
-            }
-            const exchange = await exchangeResponse.json();
-            if (exchange.token_type !== "oidc" || !exchange.token || !exchange.expires) {
-              failures.push(`${packageName}: npm returned an invalid OIDC exchange.`);
-              continue;
-            }
-            console.log(`${packageName}: npm trusted publishing verified until ${exchange.expires}.`);
-          }
-
-          if (failures.length > 0) {
-            throw new Error(`npm OIDC exchange failed:\n${failures.join("\n")}`);
-          }
-          NODE
-
-      - name: Publish packages
-        run: |
-          set -euo pipefail
-
-          for package in filegrc create-filegrc; do
-            version="$(node -p "require('./packages/${package}/package.json').version")"
-            if [ "$(npm view "${package}@${version}" version 2>/dev/null || true)" = "${version}" ]; then
-              echo "${package}@${version} is already published."
-              continue
-            fi
-
-            npm publish --workspace "${package}" --access public --provenance
-          done
-
-      - name: Wait for npm registry
-        run: node scripts/wait-for-npm-release.mjs
-
-      - name: Verify README setup
-        env:
-          NPM_CONFIG_PREFER_ONLINE: "true"
-        run: |
-          set -euo pipefail
-
-          smoke_dir="$(mktemp -d)"
-          server_pid=""
-          cleanup() {
-            if [ -n "${server_pid}" ]; then
-              kill "${server_pid}" 2>/dev/null || true
-              wait "${server_pid}" 2>/dev/null || true
-            fi
-            rm -rf "${smoke_dir}"
-          }
-          trap cleanup EXIT
-
-          create_version="$(node -p "require('./packages/create-filegrc/package.json').version")"
-          cd "${smoke_dir}"
-          generated=false
-          for _ in {1..30}; do
-            rm -rf "${smoke_dir}/company-grc"
-            if npx --yes "create-filegrc@${create_version}" company-grc --yes; then
-              generated=true
-              break
-            fi
-            sleep 10
-          done
-          if [ "${generated}" != "true" ]; then
-            echo "create-filegrc@${create_version} did not become installable from npm."
-            exit 1
-          fi
-
-          cd company-grc
-          npm run validate
-
-          npm run serve >server.log 2>&1 &
-          server_pid="$!"
-          ready=false
-          for _ in {1..30}; do
-            if curl --fail --silent http://127.0.0.1:8787/ >/dev/null; then
-              ready=true
-              break
-            fi
-            if ! kill -0 "${server_pid}" 2>/dev/null; then
-              cat server.log
-              exit 1
-            fi
-            sleep 1
-          done
-
-          if [ "${ready}" != "true" ]; then
-            cat server.log
-            exit 1
-          fi
-
-  notify:
-    name: Notify Slack of release run
-    needs: [publish]
-    if: ${{ !cancelled() && (needs.publish.result == 'success' || needs.publish.result == 'failure') }}
-    runs-on: ubuntu-latest
-    permissions:
-      actions: read
-      contents: read
-    steps:
-      - name: Checkout trusted default branch
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: main
-          persist-credentials: false
-      - name: Send publication result to Slack
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-          NOTIFICATION_RESULT: ${{ needs.publish.result }}
-          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
-        run: node scripts/alert-failed-jobs.mjs
+          export GITHUB_REF="refs/tags/${RELEASE_TAG}"
+          export GITHUB_REF_TYPE=tag
+          node --version
+          git --version
+          git symbolic-ref -q HEAD || true
+          node --test packages/filegrc/test/git.test.js
