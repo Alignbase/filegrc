@@ -192,7 +192,7 @@ Withdraw a never-effective schedule proposal with `npx filegrc withdraw-obligati
 
 When a procedure or operating fact changes during the observation period, use `npx filegrc review-period-impact RESOURCE_ID --scaffold --json`. Record the actual effective business date, reviewers and impact/continuity conclusion, reusing review work already done. Preview with `--preview` and apply with `--yes`. This review binds substantive facts, companion procedures and their meaningful history; later substantive edits or change-and-revert cycles make it stale. Exact accepted operating reviews may already cover the change, so inspect the shared result before creating another review. It does not replace independent approval, source coverage, required Policy Events or Evidence verification. Label-only changes and added rehearsal Evidence links do not create a review merely because Git has several commits.
 
-These actions need FileGRC 0.21.6 with model v13. Upgrade hosted readers before adopting their new source fields; existing records need no migration or repeat approval.
+These actions require model v13 and an explicit FileGRC 0.21.6 or newer dependency and lockfile. Upgrade hosted readers before adopting their new source fields; existing records need no migration or repeat approval. A newer hosted reader cannot authorize new shapes under an older repository pin. If an earlier manual edit used the fields too soon, repair the current dependency and preserve the disclosed historical format limitation instead of rewriting business dates or approvals.
 
 ## Work Queue and Policy Events
 

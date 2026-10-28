@@ -12,6 +12,7 @@ import { currentCalendarDate } from "./time.js";
 import { recordBelongsToProgram } from "./program.js";
 import { appointmentWasAuthorizedOn, personWasActiveOn } from "./soc2.js";
 import { parseCalendarDate } from "./recurrence.js";
+import { assertWorkflowSourceRuntimeAdopted, workflowSourceRuntimeAdopted } from "./workflow-source-runtime.js";
 
 export const PERIOD_IMPACT_TYPES = new Set(["appointment", "control", "policy", "source-coverage", "system", "component"]);
 
@@ -110,7 +111,7 @@ export async function currentPeriodImpactRevision(loaded, record) {
 
 export async function periodImpactReviewCurrent(loaded, record, asOf = currentCalendarDate(loaded.workspace.timezone || "UTC")) {
   const review = record?.periodImpactReview;
-  if (!review || !loaded.model.resources[record.type]?.fields.periodImpactReview
+  if (!review || !workflowSourceRuntimeAdopted(loaded) || !loaded.model.resources[record.type]?.fields.periodImpactReview
     || !validDate(review.reviewedOn) || !validDate(review.effectiveOn)
     || review.reviewedOn > asOf || review.effectiveOn > review.reviewedOn
     || !periodImpactReviewersAuthorized(loaded, record, review)
@@ -221,6 +222,7 @@ function validDate(value) { try { parseCalendarDate(value); return Boolean(value
 
 export async function scaffoldPeriodImpactReview(input, { resourceId } = {}) {
   const loaded = await loadWorkspace(input);
+  assertWorkflowSourceRuntimeAdopted(loaded);
   const entry = loaded.entries.find(item => item.record.id === resourceId);
   if (!entry || !PERIOD_IMPACT_TYPES.has(entry.record.type) || !loaded.model.resources[entry.record.type].fields.periodImpactReview) throw new Error("Select a resource supporting period impact review.");
   const { planReconciliation } = await import("./reconciliation.js");

@@ -14,6 +14,7 @@ import { validateWorkspace } from "../src/validate.js";
 import { planReconciliation } from "../src/reconciliation.js";
 import { makeComprehensiveWorkspace } from "./fixtures.js";
 import { makeWorkspace } from "./helpers.js";
+import { adoptWorkflowRuntime } from "./fixtures/workflow-runtime.js";
 
 const execute = promisify(execFile);
 const coverage = { start: "2026-10-01", end: "2026-10-31" };
@@ -23,6 +24,7 @@ async function impactFixture(context, type = "component", multiSlot = false) {
   const root = await mkdtemp(join(tmpdir(), "filegrc-period-impact-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   await makeWorkspace(root);
+  await adoptWorkflowRuntime(root);
   const workspacePath = join(root, "data", "workspace.json");
   const workspace = JSON.parse(await readFile(workspacePath, "utf8"));
   workspace.dataModelVersion = "13";

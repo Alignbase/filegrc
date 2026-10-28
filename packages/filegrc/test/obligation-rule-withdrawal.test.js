@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { makeComprehensiveWorkspace } from "./fixtures.js";
+import { adoptWorkflowRuntime } from "./fixtures/workflow-runtime.js";
 import { initializeGitWorkspace, initializeExistingModel12Workspace, commitWorkspaceFiles, writeJson } from "./helpers.js";
 import { currentCalendarDate } from "../src/time.js";
 import { assessCollectionReview, scaffoldCollectionReview, applyCollectionReview } from "../src/collection-review.js";
@@ -18,6 +19,7 @@ async function fixture(t, status = "proposed") {
   const root = await mkdtemp(join(tmpdir(), "filegrc-withdrawal-test-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   await makeComprehensiveWorkspace(root, "13");
+  await adoptWorkflowRuntime(root);
   const loaded = await loadWorkspace(root);
   const active = loaded.resources.find(({ type }) => type === "obligation-rule");
   const rule = { ...active, id: "obligation-rule-unused-proposal", title: "Unused schedule proposal", status };
@@ -50,6 +52,17 @@ test("withdraws an unused proposal with actual decision facts and no invented ap
   await assert.rejects(() => deleteResource(root, rule.type, rule.id), /cannot be deleted/);
   await assert.rejects(() => scaffoldObligationRuleActivation(root, { ruleId: rule.id }), /already withdrawn/);
   assert.match(buildAgentGuide(after, "obligation-rule").withdrawal, /withdraw-obligation-rule/);
+});
+
+test("an older declared reader cannot adopt withdrawal through a newer running engine", async t => {
+  const { root, rule, payload } = await fixture(t);
+  const entry = (await loadWorkspace(root)).entries.find(item => item.record.id === rule.id);
+  const before = await readFile(entry.path, "utf8");
+  await adoptWorkflowRuntime(root, "0.21.5");
+  await assert.rejects(scaffoldObligationRuleWithdrawal(root, { ruleId: rule.id }), /Adopt FileGRC 0\.21\.6/);
+  await assert.rejects(withdrawObligationRule(root, payload), /Adopt FileGRC 0\.21\.6/);
+  assert.equal(await readFile(entry.path, "utf8"), before);
+  assert.equal((await validateWorkspace(root)).diagnostics.some(item => item.code === "source-runtime-adoption-required"), false, "the unchanged proposal remains compatible");
 });
 
 test("withdrawal preserves a prior approval without changing independent schedule oversight", async (t) => {
@@ -97,6 +110,11 @@ test("HTTP and CLI use the shared withdrawal scaffold and preview", async (t) =>
   const response = await post("/api/obligation-rule-withdrawals/preview", payload);
   assert.equal(response.status, 200, await response.clone().text());
   assert.deepEqual(await response.json(), await previewObligationRuleWithdrawal(root, payload));
+  await adoptWorkflowRuntime(root, "0.21.5");
+  const denied = await post("/api/obligation-rule-withdrawals/scaffold", { ruleId: rule.id });
+  assert.equal(denied.status, 400);
+  assert.match((await denied.json()).error, /Adopt FileGRC 0\.21\.6/);
+  await adoptWorkflowRuntime(root);
   const file = join(root, "withdrawal.json");
   await writeFile(file, JSON.stringify(payload));
   const cliPreview = JSON.parse(execFileSync(process.execPath, [join(import.meta.dirname, "../bin/filegrc.js"), "withdraw-obligation-rule", rule.id, file, "--preview", "--root", root], { encoding: "utf8" }));

@@ -885,3 +885,5 @@ Git commit counts are context, not evidence that a business change needs remedia
 Never-effective Obligation Rules may be withdrawn with actual actors, date and reason. This preserves any prior approval without inventing an effective interval. Active or operated rules require normal retirement and prospective replacement. Withdrawal of an unchanged proposal explicitly excluded from an independently approved schedule set does not reopen that approval.
 
 Raw edit-envelope export reads the target JSON and its companion bytes and revisions only. It does not calculate unrelated workflow or Git history. Actual mutation validation and stale-write protection remain unchanged.
+
+The new optional source shapes require explicit adoption of a dependency and lockfile for FileGRC 0.21.6 or newer. Shared actions and structural validation enforce the same minimum; unchanged older workspaces remain readable. Correcting a mistaken older pin restores current validity without rewriting business decisions. Historical snapshots retain their actual reader limitation and cannot supply a typed review as though the older reader supported it.

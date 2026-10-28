@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { loadModel } from "../model/index.js";
 import { makeComprehensiveWorkspace } from "./fixtures.js";
+import { adoptWorkflowRuntime } from "./fixtures/workflow-runtime.js";
 import { initializeExistingModel12Workspace, commitWorkspaceFiles } from "./helpers.js";
 import { loadWorkspace } from "../src/workspace.js";
 import { assessCollectionReview, scaffoldCollectionReview, applyCollectionReview } from "../src/collection-review.js";
@@ -33,6 +34,7 @@ test("owner impact metadata preserves the committed independent schedule approva
   const root = await mkdtemp(join(tmpdir(), "filegrc-schedule-impact-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   await makeComprehensiveWorkspace(root, "13");
+  await adoptWorkflowRuntime(root);
   await initializeExistingModel12Workspace(root);
   let loaded = await loadWorkspace(root);
   const program = loaded.resources.find(({ type }) => type === "program");

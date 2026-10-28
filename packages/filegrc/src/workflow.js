@@ -387,7 +387,8 @@ function validationFindings(validation, loaded, program, reconciliation) {
     .map((diagnostic) => {
     const record = entriesByPath.get(diagnostic.path);
     const historicalChannelGap = diagnostic.code === "uncovered-reporting-route-interval" && diagnostic.severity === "warning" && currentChannels;
-    const state = historicalChannelGap ? "complete" : "ready";
+    const historicalFormatContext = diagnostic.code === "historical-source-runtime-adoption" && diagnostic.severity === "warning";
+    const state = historicalChannelGap || historicalFormatContext ? "complete" : "ready";
     const code = `structural.${diagnostic.code}.${record?.id || pathKey(diagnostic.path)}.${stableSuffix(diagnostic.message)}`;
     return {
       key: code,
@@ -402,7 +403,7 @@ function validationFindings(validation, loaded, program, reconciliation) {
       fieldPath: diagnostic.path,
       ...(record ? { subject: { type: record.type, id: record.id } } : {}),
       dependencies: [],
-      actions: historicalChannelGap ? [] : record
+      actions: historicalChannelGap || historicalFormatContext ? [] : record
         ? [mutationAction(record)]
         : [{ kind: "command", command: "npx filegrc validate --json" }]
     };

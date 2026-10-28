@@ -15,6 +15,7 @@ import { currentCalendarDate, timestampFromLocalDateTime } from "./time.js";
 import { loadWorkspace } from "./workspace.js";
 import { validateWorkspace } from "./validate.js";
 import { calculateRevision, displayRevision, revisionsMatch } from "./revisions.js";
+import { assertWorkflowSourceRecordAdopted } from "./workflow-source-runtime.js";
 
 export const INTERNAL_WORKFLOW_CAPABILITIES = Object.freeze({
   auditManagementReconciliation: Symbol("audit-management-reconciliation"),
@@ -680,6 +681,7 @@ async function updateResourceUnlocked(input, type, id, record, options) {
 }
 
 function assertImmutableWorkflowRecord(existing, next, options = {}, loaded = null) {
+  assertWorkflowSourceRecordAdopted(loaded, next);
   if (!existing) return;
   const preservesExisting = (allowed = []) => [...new Set([...Object.keys(existing), ...Object.keys(next)])].every((key) => (
     allowed.includes(key) || JSON.stringify(next[key]) === JSON.stringify(existing[key])
@@ -872,6 +874,7 @@ function assertFinalizedOccurrenceProofMutable(loaded, record) {
 }
 
 function assertWorkflowContentMutable(loaded, record) {
+  assertWorkflowSourceRecordAdopted(loaded, record);
   assertFinalizedOccurrenceProofMutable(loaded, record);
   if (
     (record.type === "obligation-rule" && ["active", "retired", "withdrawn"].includes(record.status))
@@ -903,6 +906,7 @@ function finalizedOccurrenceUsingProof(loaded, targetId) {
 }
 
 function assertSpecializedWorkflowCreate(record, options = {}, loaded = null) {
+  assertWorkflowSourceRecordAdopted(loaded, record);
   if (record?.type === "nonmaterial-amendment" && options.workflowCapability !== INTERNAL_WORKFLOW_CAPABILITIES.nonmaterialAmendment) {
     throw new Error("Use the nonmaterial amendment scaffold, preview and save workflow.");
   }

@@ -5,12 +5,14 @@ import { revisionsMatch } from "./revisions.js";
 import { currentCalendarDate } from "./time.js";
 import { parseCalendarDate } from "./recurrence.js";
 import { personWasActiveOn } from "./soc2.js";
+import { assertWorkflowSourceRuntimeAdopted } from "./workflow-source-runtime.js";
 
 export async function scaffoldObligationRuleWithdrawal(input, options = {}) {
   const loaded = await loadWorkspace(input);
   if (!loaded.model.resources["obligation-rule"]?.fields.status.values.includes("withdrawn")) {
     throw new Error("Obligation Rule withdrawal requires a model supporting the withdrawn status.");
   }
+  assertWorkflowSourceRuntimeAdopted(loaded);
   const entry = loaded.entries.find(({ record }) => record.type === "obligation-rule" && record.id === options.ruleId);
   if (!entry) throw new Error(`Obligation rule "${options.ruleId || ""}" was not found.`);
   const rule = entry.record;

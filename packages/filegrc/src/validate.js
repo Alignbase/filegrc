@@ -1,4 +1,5 @@
 import { workspaceEngineVersion, runtimeCompatibilityLine } from "./runtime-version.js";
+import { workflowSourceRuntimeIssues } from "./workflow-source-runtime.js";
 import { recordedCorrectionPopulation, currentSnapshotPopulation, samePopulation } from "./obligation-snapshot.js";
 import { populationCutoffDate, wholePeriodCoverage, requiredPeriodIsFinal, wholePeriodRuleWindowIssue, wholePeriodOccurrenceWindowIssue } from "./obligation-timing.js";
 import { occurrenceSelectorPopulation } from "./obligation-population.js";
@@ -98,6 +99,7 @@ export async function validateWorkspace(input = process.cwd()) {
 async function validateWorkspaceUnmeasured(input) {
   const loaded = typeof input === "object" && input.entries ? input : await loadWorkspace(input);
   const diagnostics = [...loaded.diagnostics];
+  diagnostics.push(...workflowSourceRuntimeIssues(loaded));
   const usesSnapshotTiming = loaded.resources.some(record => (["meeting", "vulnerability-scan", "exercise", "backup-test", "control-activity"].includes(record.type) && record.coverage) || record.completionCoverage || record.requiredCoverage
     || record.populationSourceRevision || ["review-date", "coverage-end"].includes(record.selector?.cutoff)
     || record.cutoverDecision === "correct-open-window");
