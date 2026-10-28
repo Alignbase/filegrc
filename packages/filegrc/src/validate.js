@@ -1,3 +1,4 @@
+import { reclassifyTemporalValidation } from "./temporal-diagnostics.js";
 import { workspaceEngineVersion, runtimeCompatibilityLine } from "./runtime-version.js";
 import { workflowSourceRuntimeIssues } from "./workflow-source-runtime.js";
 import { recordedCorrectionPopulation, currentSnapshotPopulation, samePopulation } from "./obligation-snapshot.js";
@@ -87,16 +88,16 @@ const COMPLETION_TIMESTAMP_FIELDS = [
 ];
 const DEFERRED_VALIDATION_CONCURRENCY = 16;
 
-export async function validateWorkspace(input = process.cwd()) {
+export async function validateWorkspace(input = process.cwd(), options = {}) {
   const timingStarted = performance.now();
   try {
-    return await withAssessmentCache(() => validateWorkspaceUnmeasured(input));
+    return await withAssessmentCache(() => validateWorkspaceUnmeasured(input, options));
   } finally {
     recordTiming("validation", performance.now() - timingStarted);
   }
 }
 
-async function validateWorkspaceUnmeasured(input) {
+async function validateWorkspaceUnmeasured(input, options) {
   const loaded = typeof input === "object" && input.entries ? input : await loadWorkspace(input);
   const diagnostics = [...loaded.diagnostics];
   diagnostics.push(...workflowSourceRuntimeIssues(loaded));
@@ -314,9 +315,10 @@ async function validateWorkspaceUnmeasured(input) {
   }
   if (modelSupports(loaded.model, "reporting-route-sets")) {
     validateReportingRouteSets(loaded, byId, pathById, diagnostics);
-    for (const issue of await reportingCutoverIssues(loaded, loaded.resources.filter((record) => ["active", "open", "monitoring"].includes(record.status)))) {
+    for (const issue of await reportingCutoverIssues(loaded, loaded.resources.filter((record) => ["active", "open", "monitoring"].includes(record.status)), { includeHistoryContext: true })) {
       const source = byId.get(issue.sourceId);
-      diagnostics.push((contentCutoverChanged(loaded, source, pathById.get(source?.id)) || historicalContentCutover(loaded, source) ? error : warning)(issue.code, pathById.get(issue.sourceId), issue.message));
+      const diagnostic = (contentCutoverChanged(loaded, source, pathById.get(source?.id)) || historicalContentCutover(loaded, source) ? error : warning)(issue.code, pathById.get(issue.sourceId), issue.message);
+      diagnostics.push({ ...diagnostic, programId: issue.programId, ...(issue.temporal ? { temporal: issue.temporal } : {}) });
     }
   }
   if (modelSupports(loaded.model, "schedule-set-review")) {
@@ -380,7 +382,7 @@ async function validateWorkspaceUnmeasured(input) {
     value: reconciliation,
     enumerable: false
   });
-  return result;
+  return reclassifyTemporalValidation(result, loaded, options);
 }
 
 async function runDeferredValidationTasks(tasks) {

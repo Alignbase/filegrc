@@ -1,3 +1,6 @@
+import { governedContentBaseline, governedApprovalContentMatches } from "./governed-content-baseline.js";
+import { modelSupports } from "../model/index.js";
+import { currentCalendarDate } from "./time.js";
 import { applicationCoversUse, retentionUseWasIndependentlyReviewed } from "./retention-applications.js";
 import { readFileSync } from "node:fs";
 import { openPlaceholderCount, substantiveMarkdown } from "./content-readiness.js";
@@ -141,4 +144,23 @@ function approvalBindingsMatch(loaded, record) {
     && actualKeys.every((key, index) => (
       key === expectedKeys[index] && revisionsMatch("content", actual[key], expected[key])
     ));
+}
+
+// Proposed schedule successors remain review work. The operating authority uses
+// only the exact live schedule and its rows, while retaining today's source,
+// inventory and row facts so a real material change cannot reuse stale approval.
+export function operatingRetentionScheduleWorkspace(loaded, asOf = currentCalendarDate(loaded.workspace?.timezone || "UTC")) {
+  if (!modelSupports(loaded.model, "operating-preparation")) return loaded;
+  const byId = new Map(loaded.resources.map((record) => [record.id, record]));
+  const excluded = new Set();
+  for (const schedule of loaded.resources.filter((record) => record.type === "document"
+    && record.documentKind === "schedule" && record.workflowScope === "program")) {
+    const baseline = governedContentBaseline(schedule, byId, asOf, loaded.model,
+      { contentMatches: (record) => governedApprovalContentMatches(loaded, record) });
+    if (baseline?.documentKind === "schedule" && baseline.workflowScope === "program" && baseline.id !== schedule.id) excluded.add(schedule.id);
+  }
+  if (!excluded.size) return loaded;
+  const include = (record) => !excluded.has(record.id)
+    && !(record.type === "retention-schedule-item" && excluded.has(record.scheduleDocumentId));
+  return { ...loaded, resources: loaded.resources.filter(include), entries: loaded.entries.filter(({ record }) => include(record)) };
 }

@@ -308,7 +308,7 @@ test("previews and atomically migrates every model v1 compatibility field", asyn
     assert.ok(records.get(id)[field].includes(preview.changes.create[0].id));
     assert.ok(!records.get(id)[field].includes("person-example"));
   }
-  assert.deepEqual((await validateWorkspace(root)).counts, { resources: 45, errors: 0, warnings: 0 });
+  assert.deepEqual((await validateWorkspace(root)).counts, { resources: 45, errors: 0, warnings: 0, information: 0 });
 
   const noop = await migrateModel(root, { targetModelVersion: "2" });
   assert.equal(noop.applied, false);
@@ -410,7 +410,7 @@ test("classifies and applies the v2-to-v3 migration without inventing decisions"
       + migrated.model.evidenceSourceFamilies.length
       + Object.keys(migrated.model.collectionReviews).length,
     errors: 0,
-    warnings: 0
+    warnings: 0, information: 0
   });
   assert.equal(result.postMigrationAssessment.contractVersion, 1);
 });

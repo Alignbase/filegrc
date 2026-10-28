@@ -1,3 +1,4 @@
+import { governedContentCoversPeriod } from "./governed-content-baseline.js";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { copyFile, mkdir, readFile, readdir, readlink, rm, writeFile } from "node:fs/promises";
@@ -64,7 +65,7 @@ const NON_EVIDENCE_RECORD_TYPES = new Set([
   "workspace"
 ]);
 export async function prepareEvidencePacket(input, options = {}) {
-  const validation = await validateWorkspace(input);
+  const validation = await validateWorkspace(input, { programId: options.programId, auditId: options.auditId, ...(options.start && options.end ? { coverage: { kind: "range", startsOn: options.start, endsOn: options.end } } : {}) });
   if (!validation.ok) throw new Error(`The workspace has ${validation.counts.errors} validation ${validation.counts.errors === 1 ? "error" : "errors"}. Fix them before generating evidence.`);
   const { loaded } = validation;
   const records = loaded.resources;
@@ -1400,7 +1401,7 @@ function packetGaps({
       for (const policyId of coverage.policyIds) {
         const policy = byId.get(policyId);
         if (!policy) continue;
-        if (!policyCoversPeriod(policy, start, end, byId)) {
+        if (!policyCoversPeriod(policy, start, end, byId, model)) {
           gaps.push(gap("error", "policy-not-effective-for-period", `${policy.title} does not show approved policy coverage for the full packet period.`, policy.id));
         }
       }
@@ -1919,16 +1920,17 @@ function auditGaps(gaps, audit, byId, records, start, end, model) {
   }
 }
 
-function policyCoversPeriod(policy, start, end, byId, seen = new Set()) {
+function policyCoversPeriod(policy, start, end, byId, model, seen = new Set()) {
+  if (modelSupports(model, "operating-preparation")) return governedContentCoversPeriod(policy, start, end, byId, model);
   if (seen.has(policy.id)) return false;
   seen.add(policy.id);
   if (!["approved", "active", "superseded"].includes(policy.status) || !policy.approvedOn || !policy.effectiveOn) return false;
   const predecessor = policy.supersedesId ? byId.get(policy.supersedesId) : null;
   if (policy.effectiveOn > end) {
-    return predecessor?.type === "policy" ? policyCoversPeriod(predecessor, start, end, byId, seen) : false;
+    return predecessor?.type === "policy" ? policyCoversPeriod(predecessor, start, end, byId, model, seen) : false;
   }
   if (policy.effectiveOn <= start) return true;
-  return predecessor?.type === "policy" ? policyCoversPeriod(predecessor, start, policy.effectiveOn, byId, seen) : false;
+  return predecessor?.type === "policy" ? policyCoversPeriod(predecessor, start, policy.effectiveOn, byId, model, seen) : false;
 }
 
 function isDescriptionRequirement(requirement) {

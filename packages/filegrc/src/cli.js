@@ -224,7 +224,7 @@ export async function runCli(argv = process.argv.slice(2)) {
     return;
   }
   if (command === "validate") {
-    const result = await validateWorkspace(positionals[0] ?? root);
+    const result = await validateWorkspace(positionals[0] ?? root, { programId: flags.program, auditId: flags.audit });
     if (flags.json) console.log(JSON.stringify({ ok: result.ok, counts: result.counts, diagnostics: result.diagnostics }, null, 2));
     else printValidation(result);
     if (!result.ok) process.exitCode = 1;
@@ -1468,7 +1468,7 @@ async function readStdin() {
 
 function printValidation(result) {
   for (const item of result.diagnostics) console.log(`${item.severity.toUpperCase()} ${item.path}: ${item.message}`);
-  console.log(`${result.counts.resources} resources, ${result.counts.errors} errors, ${result.counts.warnings} warnings`);
+  console.log(`${result.counts.resources} resources, ${result.counts.errors} errors, ${result.counts.warnings} warnings${result.counts.information ? `, ${result.counts.information} information` : ""}`);
 }
 
 async function printVersion() {
@@ -1483,7 +1483,7 @@ Usage:
   filegrc serve [root] [--host 127.0.0.1] [--port 8787] [--allow-non-authoritative-writes]
   filegrc setup [setup.json|-] [setup options] [--draft] [--preview] [--summary] [--json]
   filegrc build [root] [--output .filegrc/site]
-  filegrc validate [root] [--json]
+  filegrc validate [root] [--program PROGRAM_ID] [--audit AUDIT_ID] [--json]
   filegrc model [--json|--write-docs|--check-docs]
   filegrc migrate --to-model <${SUPPORTED_MODEL_VERSIONS.join("|")}> [--preview] [--decisions path] [--job-title text] [--starts-on YYYY-MM-DD] [--yes] [--json]
   filegrc describe <resource-type>

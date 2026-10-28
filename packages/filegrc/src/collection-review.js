@@ -18,7 +18,7 @@ import { loadWorkspace } from "./workspace.js";
 import { resolveProgram } from "./program.js";
 import { currentCalendarDate } from "./time.js";
 import { currentPartyPeople } from "./parties.js";
-import { retentionScheduleApprovalIssues } from "./retention-schedule-approval.js";
+import { retentionScheduleApprovalIssues, operatingRetentionScheduleWorkspace } from "./retention-schedule-approval.js";
 import { markdownEntries } from "./resource-markdown.js";
 import { resolveDataPath } from "./paths.js";
 import { calculateRevision, calculatedRevisionDiagnostic, displayRevision, revisionsMatch } from "./revisions.js";
@@ -188,7 +188,7 @@ function assessCollectionReviewUncached(loaded, resourceType, options) {
 
 export function retentionScheduleIsAuthoritative(loaded, program) {
   return !modelSupports(loaded.model, "retention-schedule-approval")
-    || assessCollectionReview(loaded, "retention-schedule-item", { programId: program?.id }).complete;
+    || assessCollectionReview(operatingRetentionScheduleWorkspace(loaded), "retention-schedule-item", { programId: program?.id }).complete;
 }
 
 export async function scaffoldCollectionReview(input = process.cwd(), options = {}) {

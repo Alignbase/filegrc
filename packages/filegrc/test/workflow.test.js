@@ -887,17 +887,40 @@ test("dated review deadlines agree across workflow, CLI and lazy app/API queue s
   assert.deepEqual(current, record);
 });
 
-test("historical channel warnings stay disclosed without inventing a current approval task", async context => {
+test("resolved preperiod authorization information stays disclosed and overlapping coverage remains actionable", async context => {
   const root = await mkdtemp(join(tmpdir(), "filegrc-historical-channel-guidance-"));
   context.after(() => import("node:fs/promises").then(({rm}) => rm(root, {recursive:true,force:true})));
   await makeComprehensiveWorkspace(root, "13");
   const loaded = await loadWorkspace(root), record = loaded.resources.find(record => record.type === "policy");
   const entry = loaded.entries.find(entry => entry.record.id === record.id);
-  const options = { programReadiness: { stages: [{id:"controls", items:[{id:"reporting-channel-cutover",status:"complete"}]}], evidenceReady:true }, auditPreparations:{}, obligations:{items:[],triggers:[],counts:{},asOf:"2026-10-01",through:"2026-10-01"}, validation:{ok:true,diagnostics:[{code:"uncovered-reporting-route-interval",severity:"warning",path:`data/${entry.relativePath}`,message:"Historical channel coverage gap."}]},reconciliation:{candidates:[]},git:{},asOf:"2026-10-01" };
+  const options = { programReadiness: { stages: [{id:"controls", items:[{id:"reporting-channel-cutover",status:"complete"}]}], evidenceReady:true }, auditPreparations:{}, obligations:{items:[],triggers:[],counts:{},asOf:"2026-10-01",through:"2026-10-01"}, validation:{ok:true,diagnostics:[{code:"uncovered-reporting-route-interval",severity:"warning",path:`data/${entry.relativePath}`,message:"Retained authorization evidence is incomplete.",temporal:{programId:loaded.resources.find(record=>record.type==="program").id,startsAt:"2026-08-01T00:00:00Z",endsAt:"2026-09-01T00:00:00Z",resolved:true,evidenceLimitation:true}}]},reconciliation:{candidates:[]},git:{},asOf:"2026-10-01",coverage:{kind:"range",startsOn:"2026-09-02",endsOn:"2026-10-01"} };
   let workflow = await assessWorkflow(loaded, options);
   const finding = workflow.findings.find(f => f.code.includes("uncovered-reporting-route-interval"));
-  assert.equal(finding.state,"complete"); assert.equal(finding.severity,"warning"); assert.deepEqual(finding.actions,[]); assert.match(finding.message,/do not backdate/);
-  options.programReadiness.stages[0].items[0].status="action";
+  assert.equal(finding.state,"complete"); assert.equal(finding.severity,"info"); assert.deepEqual(finding.actions,[]); assert.match(finding.message,/Retained historical context/);
+  options.coverage={kind:"range",startsOn:"2026-08-15",endsOn:"2026-10-01"};
   workflow = await assessWorkflow(loaded, options);
   assert.equal(workflow.findings.find(f=>f.code.includes("uncovered-reporting-route-interval")).state,"ready");
+});
+
+
+test("cached Program authorization context does not become another Program's gap", async context => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-temporal-program-scope-"));
+  context.after(() => import("node:fs/promises").then(({rm}) => rm(root, { recursive:true, force:true })));
+  await makeComprehensiveWorkspace(root, "13");
+  const loaded = await loadWorkspace(root);
+  const first = loaded.resources.find(record => record.type === "program");
+  const second = { ...first, id:"program-other", title:"Other Program" };
+  loaded.resources.push(second);
+  const policy = loaded.entries.find(entry => entry.record.type === "policy");
+  const warning = { code:"uncovered-reporting-route-interval", severity:"warning", programId:first.id,
+    path:`data/${policy.relativePath}`, message:"First Program lacks earlier authorization evidence.",
+    temporal:{programId:first.id,startsAt:"2026-08-01T00:00:00Z",endsAt:"2026-09-01T00:00:00Z",resolved:true,evidenceLimitation:true} };
+  const globalError = { code:"invalid-global-structure",severity:"error",path:`data/${policy.relativePath}`,message:"A genuine structural error remains global." };
+  const options = { programId:second.id, coverage:{kind:"range",startsOn:"2026-08-01",endsOn:"2026-10-01"},
+    programReadiness:{program:second,stages:[],evidenceReady:true},auditPreparations:{},
+    obligations:{items:[],triggers:[],counts:{},asOf:"2026-10-01",through:"2026-10-01"},
+    validation:{ok:false,diagnostics:[warning,globalError]},reconciliation:{candidates:[]},git:{},asOf:"2026-10-01" };
+  const workflow = await assessWorkflow(loaded, options);
+  assert.equal(workflow.findings.some(finding => finding.code.includes(warning.code)), false);
+  assert.equal(workflow.findings.some(finding => finding.code.includes(globalError.code)), true);
 });

@@ -5,7 +5,7 @@ import { assessReportingRouteSets } from "./reporting-route-sets.js";
 import { reportingRouteSourceAppliesToProgram } from "./reporting-route-integrity.js";
 import { timestampFromLocalDateTime } from "./time.js";
 
-export async function reportingCutoverIssues(loaded, updates, { operatingAsOf } = {}) {
+export async function reportingCutoverIssues(loaded, updates, { operatingAsOf, includeHistoryContext = false } = {}) {
   if (!modelSupports(loaded.model, "schedule-set-review")) return [];
   const sources = updates.filter((record) => ["policy", "document", "commitment", "risk"].includes(record.type)
     && Array.isArray(record.reportingRouteRequirements) && record.reportingRouteRequirements.length);
@@ -29,10 +29,14 @@ export async function reportingCutoverIssues(loaded, updates, { operatingAsOf } 
         if (requirement.programScope === "selected-programs" && !requirement.programIds?.includes(program.id)) continue;
         const at = new Date(requirement.effectiveAt) > new Date(effectiveAt) ? requirement.effectiveAt : effectiveAt;
         if (requirement.endsAt && new Date(requirement.endsAt) <= new Date(at)) continue;
-        const assessment = await assessReportingRouteSets(future, { programId: program.id, at });
+        const assessment = await assessReportingRouteSets(future, { programId: program.id, at, operatingOnly: true });
         const candidateIds = new Set(assessment.routeSets.filter(({ record }) => record.purposeKey === requirement.purposeKey).map(({ record }) => record.id));
         const relevant = assessment.issues.filter((issue) => issue.resourceId === source.id || candidateIds.has(issue.resourceId));
-        issues.push(...relevant.map((issue) => ({ ...issue, sourceId: source.id, programId: program.id })));
+        for (const issue of relevant) {
+          const temporal = includeHistoryContext && issue.code === "uncovered-reporting-route-interval"
+            ? await resolvedReportingAuthorizationInterval(future, issue, { programId: program.id, purposeKey: requirement.purposeKey, at }) : null;
+          issues.push({ ...issue, sourceId: source.id, programId: program.id, ...(temporal ? { temporal } : {}) });
+        }
       }
     }
   }
@@ -92,4 +96,30 @@ export function historicalContentCutover(loaded, record) {
   if (!snapshot || !modelSupports(snapshot.model, "schedule-set-review")) return null;
   const prior = snapshot.resources.find(({ id }) => id === record.id);
   return prior ? { snapshot, record: prior } : null;
+}
+
+// Missing earlier authorization records do not prove that channels were absent.
+// A valid current baseline and a dated valid effective cutover can bound the
+// retained evidence limitation. Proposal and approval review dates alone cannot.
+async function resolvedReportingAuthorizationInterval(loaded, issue, { programId, purposeKey, at }) {
+  const startsAt = new Date(at), now = new Date();
+  if (!Number.isFinite(startsAt.getTime()) || startsAt >= now) return null;
+  const current = await assessReportingRouteSets(loaded, { programId, at: now.toISOString(), operatingOnly: true });
+  const covers = assessment => {
+    const baseline = assessment.routeSets.filter(item => item.record.purposeKey === purposeKey && item.effective && !item.canceled);
+    if (baseline.length !== 1 || baseline[0].state !== "complete") return false;
+    const ids = new Set([issue.resourceId, baseline[0].record.id]);
+    return !assessment.issues.some(item => ids.has(item.resourceId));
+  };
+  if (!covers(current)) return null;
+  const boundaries = [...new Set(loaded.resources.filter(record => record.type === "reporting-route-set"
+    && record.programId === programId && record.purposeKey === purposeKey)
+    .map(record => record.approval?.effectiveAt).filter(value => typeof value === "string"
+      && Number.isFinite(Date.parse(value)) && new Date(value) > startsAt && new Date(value) <= now))].sort((a, b) => Date.parse(a) - Date.parse(b));
+  for (const boundary of boundaries) {
+    const assessment = await assessReportingRouteSets(loaded, { programId, at: boundary, operatingOnly: true });
+    if (covers(assessment)) return { programId, startsAt: startsAt.toISOString(), endsAt: new Date(boundary).toISOString(),
+      resolved: true, evidenceLimitation: true, purposeKey };
+  }
+  return null;
 }

@@ -1045,6 +1045,26 @@ test("current readiness accepts repaired legacy reporting coverage while activat
   assert.equal(early.stages.flatMap(({ items }) => items).find(({ id }) => id === "reporting-channel-cutover").status, "action");
 });
 
+test("historical missing authorization has a bounded evidence interval without inventing channel failure", async (context) => {
+  const { root, route } = await cloneApprovedRouteWorkspace(context, "filegrc-temporal-authorization-");
+  const loaded = await loadWorkspace(root);
+  loaded.model = loadModel("13");
+  const policy = loaded.resources.find(record => record.id === "policy-example");
+  const issues = await reportingCutoverIssues(loaded, [policy], { includeHistoryContext: true });
+  const missing = issues.find(issue => issue.code === "uncovered-reporting-route-interval");
+  assert.ok(missing);
+  assert.match(missing.message, /authorization-evidence limitation/);
+  assert.match(missing.message, /not proof.*unavailable/);
+  assert.equal(missing.temporal.resolved, true);
+  assert.equal(missing.temporal.evidenceLimitation, true);
+  assert.equal(missing.temporal.endsAt, new Date(route.approval.effectiveAt).toISOString());
+  const absent = { ...loaded, resources: loaded.resources.filter(record => record.id !== route.id) };
+  const unresolved = await reportingCutoverIssues(absent, [policy], { includeHistoryContext: true });
+  assert.equal(unresolved.find(issue => issue.code === missing.code).temporal, undefined);
+  const after = await assessReportingRoutePeriod(loaded, { programId: route.programId, start: "2021-09-01", end: "2021-09-02" });
+  assert.equal(after.issues.some(issue => issue.code === missing.code), false);
+});
+
 test("rejects unsupported backfilled route decisions", async (context) => {
   const { root, byId, route } = await cloneApprovedRouteWorkspace(context, "filegrc-route-decisions-");
   await git(root, "switch", "-c", "late-route-requirement");

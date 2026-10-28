@@ -149,3 +149,5 @@ export { amendedResourceView, scaffoldNonmaterialAmendment, saveNonmaterialAmend
 export { scaffoldRetentionApplication, saveRetentionApplication, retentionApplicationIssues } from "./retention-applications.js";
 
 export { scaffoldObligationRuleCorrection, previewObligationRuleCorrection, correctObligationRule } from "./obligation-rule-correction.js";
+
+export { resolveAssessmentCoverage, classifyTemporalDiagnostic, reclassifyTemporalValidation } from "./temporal-diagnostics.js";

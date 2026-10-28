@@ -124,7 +124,7 @@ export async function assessReportingRouteSets(input = process.cwd(), options = 
       record.purposeKey === requirement.purposeKey && effective && !canceled
     ));
     if (!candidates.length) {
-      issues.push(issue("uncovered-reporting-route-interval", requirement.sourceId, `No committed approved Reporting Channel Set covers ${requirement.purposeKey} at ${at.toISOString()}.`));
+      issues.push(issue("uncovered-reporting-route-interval", requirement.sourceId, `The retained records do not establish an approved, in-force Reporting Channel Set for ${requirement.purposeKey} at ${at.toISOString()}. This is an authorization-evidence limitation, not proof that a reporting channel was unavailable.`));
       continue;
     }
     if (candidates.length > 1) {
@@ -149,7 +149,14 @@ export async function assessReportingRouteSets(input = process.cwd(), options = 
       issues.push(issue("reporting-route-dependencies-not-independent", route.id, `${requirement.sourceId} requires independent channel dependencies or an applicable Exception.`));
     }
   }
-  for (const assessment of assessments) issues.push(...assessment.issues);
+  for (const assessment of assessments) {
+    const claimedOperating = ["approved", "canceled"].includes(assessment.record.status)
+      && Number.isFinite(Date.parse(assessment.record.approval?.effectiveAt))
+      && new Date(assessment.record.approval.effectiveAt) <= at
+      && !(assessment.record.status === "canceled" && Number.isFinite(Date.parse(assessment.record.cancellation?.canceledAt))
+        && new Date(assessment.record.cancellation.canceledAt) <= at);
+    if (!options.operatingOnly || claimedOperating) issues.push(...assessment.issues);
+  }
   return {
     supported: true,
     at: at.toISOString(),
@@ -343,6 +350,7 @@ export async function assessReportingRoutePeriod(input = process.cwd(), options 
     snapshots.push(await assessReportingRouteSets(loaded, {
       ...options,
       at,
+      operatingOnly: true,
       [PERIOD_REPOSITORY_SNAPSHOT]: repository
     }));
   }
