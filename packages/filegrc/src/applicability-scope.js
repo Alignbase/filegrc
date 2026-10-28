@@ -11,6 +11,7 @@ const scopeSourceTypes = new Set([
 
 const excludedResourceFields = new Set([
   "applicabilityReview",
+  "periodImpactReview",
   "applicability",
   "status",
   "statusTransition",

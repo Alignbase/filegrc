@@ -1,17 +1,15 @@
 import { loadWorkspace } from "./workspace.js";
-import { planWorkQueue } from "./work-queue.js";
+import { planWorkQueue, sourceDeadlineValidation } from "./work-queue.js";
 import { amendedResourceView } from "./nonmaterial-amendments.js";
 import { assessReportingRouteSets } from "./reporting-route-sets.js";
-import { readFile } from "node:fs/promises";
 import { assessAuditPreparation } from "./audit-preparation.js";
 import { assessCollectionReviews } from "./collection-review.js";
 import { getBrowserRepositoryState, getRepositorySnapshot, getWorkspaceHistories } from "./git.js";
 import { renderMarkdown } from "./markdown.js";
 import { planObligations } from "./obligations.js";
 import { planReconciliation } from "./reconciliation.js";
-import { resolveDataPath, resolveWorkspaceRoot } from "./paths.js";
+import { resolveWorkspaceRoot } from "./paths.js";
 import { assessProgramReadiness } from "./program-readiness.js";
-import { markdownEntries } from "./resource-markdown.js";
 import { resolveProgram } from "./program.js";
 import { currentCalendarDate } from "./time.js";
 import { serializeWorkspaceMutation } from "./mutation.js";
@@ -22,6 +20,9 @@ import { soc2RequirementApplicabilityConstraint } from "./soc2.js";
 import { modelSupports } from "../model/index.js";
 import { calculateRevision } from "./revisions.js";
 import { applicabilityReviewIsCurrent, createApplicabilityScopeIndex } from "./applicability-scope.js";
+import { readResourceContent } from "./resource-mutation.js";
+
+export { readResourceMutation } from "./resource-mutation.js";
 
 const renderedMarkdownCache = new Map();
 const MAX_RENDERED_MARKDOWN_CACHE_ENTRIES = 1_000;
@@ -175,7 +176,7 @@ export async function createAppStateSection(input, section, options = {}) {
     const obligations = planObligations(loaded.resources, { root: loaded.root,
       programId: activeProgram.id, asOf, now: options.now ?? generatedAt, model: loaded.model });
     return { generatedAt, asOf, obligations,
-      workQueue: planWorkQueue(loaded.resources, obligations, { program: activeProgram, model: loaded.model }) };
+      workQueue: planWorkQueue(loaded.resources, obligations, { validationOk: options.validation?.ok ?? await sourceDeadlineValidation(loaded), program: activeProgram, model: loaded.model }) };
   }
   if (section === "audits") {
     const programReadiness = options.programReadiness;
@@ -332,7 +333,7 @@ async function createAppStateUnlocked(input, options) {
       diagnostics: validation.diagnostics
     },
     obligations,
-    workQueue: planWorkQueue(loaded.resources, obligations, { program: activeProgram, model: loaded.model }),
+    workQueue: planWorkQueue(loaded.resources, obligations, { validationOk: validation.ok, program: activeProgram, model: loaded.model }),
     reconciliation,
     collectionReviews,
     applicabilityConstraints,
@@ -435,22 +436,9 @@ async function createStateEntry(loaded, entry, options) {
     ? amendedResourceView(loaded, record) : null;
   const routeAssessment = options.includeDetails && record.type === "reporting-route-set" && record.status === "proposed"
     ? (await assessReportingRouteSets(loaded, { programId: record.programId })).routeSets.find((candidate) => candidate.record.id === record.id) : null;
-  const content = {};
-  if (loaded.model.resources[record.type]) {
-    for (const item of markdownEntries(loaded.model, record)) {
-      try {
-        const path = resolveDataPath(loaded.root, item.path);
-        const source = await readFile(path, "utf8");
-        content[item.name] = {
-          source,
-          ...(options.includeDetails ? { html: renderMarkdownCached(source) } : {}),
-          path: item.path,
-          revision: contentRevision(source)
-        };
-      } catch {
-        // Validation reports missing required Markdown.
-      }
-    }
+  const content = await readResourceContent(loaded, record);
+  if (options.includeDetails) {
+    for (const item of Object.values(content)) item.html = renderMarkdownCached(item.source);
   }
   return {
     record,

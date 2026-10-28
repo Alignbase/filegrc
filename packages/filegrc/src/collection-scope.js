@@ -121,11 +121,52 @@ export function collectionRecordProposals(loaded, resourceType, records, program
       candidates.set(record.id, record);
     }
   }
-  return [...candidates.values()].map((record) => ({
-    resourceId: record.id,
-    title: record.title,
-    complete: scopedIds.has(record.id) && collectionRecordProposalComplete(record, loaded)
-  }));
+  return [...candidates.values()].map((record) => {
+    const complete = scopedIds.has(record.id) && collectionRecordProposalComplete(record, loaded);
+    const dependencies = complete ? [] : operatingProposalDependencies(record, loaded, program);
+    const dormant = ["planned", "evaluating"].includes(record.status) && !dependencies.length;
+    return {
+      resourceId: record.id,
+      title: record.title,
+      complete,
+      operatingStatus: complete ? "complete" : dormant ? "later" : "action",
+      ...(dependencies.length ? { operatingDependencyIds: dependencies.map(({ id }) => id).sort() } : {})
+    };
+  });
+}
+
+// A proposal describes a possible future choice. Scope links alone do not prove
+// use. Setup logins have their own account reconciliation; implementation and
+// processing remain actionable even while inventory says planned/evaluating.
+function operatingProposalDependencies(record, loaded, program) {
+  const selectedControlIds = new Set(program?.controlIds || []);
+  const componentDependencies = (componentId) => loaded.resources.filter((source) => (
+    source.type === "control" && source.status === "implemented" && selectedControlIds.has(source.id)
+      && [...(source.componentIds || []), ...(source.evidenceSourceComponentIds || [])].includes(componentId)
+    || source.type === "asset" && source.status === "active" && (source.componentIds || []).includes(componentId)
+    || source.type === "source-coverage" && source.status === "active" && source.componentId === componentId
+  ));
+  // Deprecation does not end operation. A planned Component can also already
+  // be relied on, so propagate direct operational proof without following scope
+  // links recursively or treating proposals as proof for one another.
+  const componentIsOperating = (source) => ["active", "deprecated"].includes(source.status)
+    || source.status === "planned" && componentDependencies(source.id).length > 0;
+  if (record.type === "component") return componentDependencies(record.id);
+  if (record.type === "vendor") return loaded.resources.filter((source) => (
+    source.type === "component" && source.vendorId === record.id && componentIsOperating(source)
+  ));
+  if (record.type === "information-type") return loaded.resources.filter((source) => (
+    ["system", "vendor"].includes(source.type) && ["active", "deprecated"].includes(source.status)
+      && (source.informationTypeIds || []).includes(record.id)
+    || source.type === "component" && componentIsOperating(source)
+      && (source.informationUses || []).some(({ informationTypeId }) => informationTypeId === record.id)
+  ));
+  if (record.type === "complementary-control") return loaded.resources.filter((source) => (
+    source.type === "control" && source.status === "implemented" && selectedControlIds.has(source.id)
+      && (record.relatedControlIds || []).includes(source.id)
+    || source.type === "component" && componentIsOperating(source) && (record.componentIds || []).includes(source.id)
+  ));
+  return [];
 }
 
 function collectionRecordIsCurrent(record) {

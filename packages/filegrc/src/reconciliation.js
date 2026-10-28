@@ -5,12 +5,14 @@ import { performance } from "node:perf_hooks";
 import { loadModel, modelSupports, SUPPORTED_MODEL_VERSIONS } from "../model/index.js";
 import { createObligationEvent, obligationRule } from "./obligations.js";
 import { createResource, INTERNAL_WORKFLOW_CAPABILITIES } from "./files.js";
-import { getDataRecordHistoryIndex, getFileAtRevision, getFilesAtRevisions, runGitCommandSync } from "./git.js";
+import { getDataRecordHistoryIndex, getFileAtRevision, getFilesAtRevisions, runGitCommandSync, isDataHistoryAncestor } from "./git.js";
 import { markdownEntries } from "./resource-markdown.js";
 import { loadWorkspace } from "./workspace.js";
 import { serializeWorkspaceMutation } from "./mutation.js";
 import { currentCalendarDate } from "./time.js";
 import { assertHistoricalRecordValid } from "./validate.js";
+import { periodImpactReviewCurrent, periodImpactStateRevision, periodImpactHistoryRevision } from "./period-impact.js";
+import { reviewHistoryContext, reviewHistoricalWorkspace } from "./historical-workspace.js";
 
 const TRANSITIONS = {
   person: [
@@ -355,7 +357,9 @@ export async function planReconciliation(input = process.cwd(), options = {}) {
           path,
           fingerprint,
           eventId,
-          { committedRevision: commit }
+          { committedRevision: commit, ...impactQuestionKey(loaded, transition.eventType, parent || commit, record, recordPath, previous, current,
+            changedMarkdownPaths.map(changed => historicalSource(sourceByRevisionAndPath, parent, changed)),
+            changedMarkdownPaths.map(changed => historicalSource(sourceByRevisionAndPath, commit, changed))) }
         );
         rawCandidates.push(candidate);
         if (!transitionHandled(loaded.resources, handledEventIds, handledFingerprints, {
@@ -420,7 +424,8 @@ export async function planReconciliation(input = process.cwd(), options = {}) {
       });
       const eventId = `obligation-event-git-${fingerprint.slice(0, 16)}`;
       const legacyEventId = `obligation-event-git-${legacyFingerprint.slice(0, 16)}`;
-      const candidate = reconciliationCandidate(loaded, transition, record, path, fingerprint, eventId);
+      const candidate = reconciliationCandidate(loaded, transition, record, path, fingerprint, eventId,
+        impactQuestionKey(loaded, transition.eventType, baseRevision, record, currentRecordPath || previousRecordPath, previous, current, previousMarkdown, currentMarkdown));
       rawCandidates.push(candidate);
       if (!transitionHandled(loaded.resources, [eventId, legacyEventId], [fingerprint, legacyFingerprint], {
         eventType: transition.eventType,
@@ -437,6 +442,43 @@ export async function planReconciliation(input = process.cwd(), options = {}) {
         }
       })) filteredCandidates.push(candidate);
     }
+  }
+  // The same exact-revision owner conclusion answers the materiality question
+  // across all interfaces. It never removes an existing Policy Event or its
+  // tasks, and it cannot dismiss lifecycle transitions such as activation.
+  const impactDecisions = new Map();
+  const answeredCandidates = new Set();
+  const questions = filteredCandidates.filter(candidate => candidate.periodImpactKey);
+  if (questions.length) {
+    const context = reviewHistoryContext(loaded.root, loaded);
+    for (const [commit, records] of historyIndex.recordsByCommit) {
+      for (const { record } of records.values()) {
+        const review = record.periodImpactReview;
+        if (review?.conclusion !== "no-material-change" || !Array.isArray(review.reviewedTransitionKeys)) continue;
+        // An opaque key is not authority to review another resource or a
+        // transition that had not occurred in this reviewed source snapshot.
+        const covered = questions.filter(candidate => candidate.subject.id === record.id
+          && candidate.committedRevision && !answeredCandidates.has(candidate.id)
+          && review.reviewedTransitionKeys.includes(candidate.periodImpactKey)
+          && isDataHistoryAncestor(loaded, candidate.committedRevision, commit));
+        if (!covered.length) continue;
+        const historical = reviewHistoricalWorkspace(context, commit);
+        const reviewed = historical?.resources.find(item => item.id === record.id);
+        if (reviewed && await periodImpactReviewCurrent(historical, reviewed)) {
+          for (const candidate of covered) answeredCandidates.add(candidate.id);
+        }
+      }
+    }
+  }
+  for (let index = filteredCandidates.length - 1; index >= 0; index--) {
+    const candidate = filteredCandidates[index];
+    if (!["system-material-change", "policy-revised"].includes(candidate.eventType)) continue;
+    if (answeredCandidates.has(candidate.id)) { filteredCandidates.splice(index, 1); continue; }
+    const record = loaded.resources.find(item => item.id === candidate.subject.id);
+    if (record?.periodImpactReview?.conclusion !== "no-material-change") continue;
+    if (!record.periodImpactReview.reviewedTransitionKeys?.includes(candidate.periodImpactKey)) continue;
+    if (!impactDecisions.has(record.id)) impactDecisions.set(record.id, await periodImpactReviewCurrent(loaded, record));
+    if (impactDecisions.get(record.id)) filteredCandidates.splice(index, 1);
   }
   const result = {
     contractVersion: 1,
@@ -1183,6 +1225,13 @@ function materialFieldsChanged(before, after, fields) {
 
 function transitionFingerprint(value) {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
+}
+
+function impactQuestionKey(loaded, eventType, baseRevision, record, path, before, after, previousMarkdown, currentMarkdown) {
+  if (!["system-material-change", "policy-revised"].includes(eventType)) return {};
+  const content = sources => Object.fromEntries(sources.map((source, index) => [String(index), source]));
+  return { periodImpactKey: transitionFingerprint({ baseHistory: periodImpactHistoryRevision(loaded, record, baseRevision).chain, eventType, subjectId: record.id, path,
+    before: periodImpactStateRevision(before, content(previousMarkdown)), after: periodImpactStateRevision(after, content(currentMarkdown)) }) };
 }
 
 function eventNeedsTimestamp(loaded, eventType) {

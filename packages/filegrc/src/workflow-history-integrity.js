@@ -20,7 +20,7 @@ const FINAL_STATUSES = new Map([
   ["reconciliation-dismissal", new Set([undefined])],
   ["nonmaterial-amendment", new Set([undefined])],
   ["collection-review", new Set(["active", "retired"])],
-  ["obligation-rule", new Set(["active", "retired"])],
+  ["obligation-rule", new Set(["active", "retired", "withdrawn"])],
   ["obligation-occurrence", new Set(["reconciled", "superseded"])],
   ["audit-population", new Set(["reconciled", "not-applicable", "superseded"])],
   ["reporting-route", new Set(["active", "retired"])],

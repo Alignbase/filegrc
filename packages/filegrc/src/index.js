@@ -1,3 +1,5 @@
+export { scaffoldPeriodImpactReview, previewPeriodImpactReview, recordPeriodImpactReview } from "./period-impact.js";
+export { scaffoldObligationRuleWithdrawal, previewObligationRuleWithdrawal, withdrawObligationRule } from "./obligation-rule-withdrawal.js";
 export { planWorkQueue } from "./work-queue.js";
 export {
   ACTIVE_MODEL_VERSION,
@@ -123,7 +125,7 @@ export { assessRequirementMappingReadiness } from "./requirement-mapping.js";
 export { assessRetentionReadiness, nearDuplicateInformationTypes, resourceReviewRevision, resourceReviewRevisions, retentionReviewResourceIds, retentionRuleIsCurrent, retentionUses } from "./retention.js";
 export { createFilegrcServer, serveWorkspace } from "./server.js";
 export { normalizeSetupPayload, planWorkspaceSetup, setupWorkspace, summarizeSetupResult } from "./setup.js";
-export { createAppState, createResourceDetail } from "./state.js";
+export { createAppState, createResourceDetail, readResourceMutation } from "./state.js";
 export { currentCalendarDate, formatCalendarDate, formatLocalDateTime } from "./time.js";
 export { assertWorkspaceEngineVersion, workspaceEngineVersion, assessWorkspaceRuntimeCompatibility, assessRuntimeCompatibility, runtimeCompatibilityLine, RUNTIME_API_CONTRACT_VERSION } from "./runtime-version.js";
 export { calculatedRevisionDiagnostic, REVISION_SCHEME_VERSION } from "./revisions.js";

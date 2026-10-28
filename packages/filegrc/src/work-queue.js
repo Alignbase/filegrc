@@ -1,3 +1,5 @@
+import { validateWorkspace } from "./validate.js";
+import { supersededOperatingProofIds } from "./historical-operating-proof.js";
 import { loadModel } from "../model/index.js";
 import { recordBelongsToProgram, resolveProgram } from "./program.js";
 import { notificationContacts } from "./notifications.js";
@@ -57,6 +59,7 @@ export function workPriority(state, dueOn, asOf) {
 
 
 function firstDate(record) {
+  if (record.type === "risk") return [record.treatmentTargetOn, record.reviewDueOn, record.response === "accept" ? record.acceptance?.expiresOn : null].filter(Boolean).sort()[0] || null;
   if (record.type === "exception" && typeof record.approval?.expiresOn === "string") return record.approval.expiresOn;
   if (typeof record.completionWindow?.dueAt === "string" && record.completionWindow.dueAt) return record.completionWindow.dueAt;
   if (typeof record.completionWindow?.dueOn === "string" && record.completionWindow.dueOn) return record.completionWindow.dueOn;
@@ -165,13 +168,23 @@ function shellArgument(value) {
 
 // Shared source deadlines preserve the workflow's lifecycle and Program scope.
 // Action Items and Obligation occurrences remain owned by the obligation planner.
+export async function sourceDeadlineValidation(loaded) {
+  const historical = supersededOperatingProofIds(loaded.resources, true);
+  const byId = new Map(loaded.resources.map(record => [record.id, record]));
+  // Most queues have no old dated proof. Do not load unrelated history merely
+  // to confirm that no source deadline can be removed.
+  if (![...historical].some(id => byId.has(id) && firstDate(byId.get(id)))) return false;
+  return (await validateWorkspace(loaded)).ok;
+}
+
 export function sourceDeadlineWorkItems(records, options) {
   const byId = new Map(records.map((record) => [record.id, record]));
   const items = [];
+  const historicalProofIds = supersededOperatingProofIds(records, options.validationOk === true);
   for (const record of records) {
     // The queue planner owns all Action Items, including filtered and terminal
     // work. Recreating them from deadlines would undo its scope and lifecycle.
-    if (["obligation", "action-item"].includes(record.type) || options.excludedSourceIds?.has(record.id)) continue;
+    if (["obligation", "action-item"].includes(record.type) || options.excludedSourceIds?.has(record.id) || historicalProofIds.has(record.id)) continue;
     if (!recordBelongsToProgram(record, options.program, byId, options.model)) continue;
     const due = firstDate(record);
     if (!due) continue;

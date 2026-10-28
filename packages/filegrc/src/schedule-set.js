@@ -1,3 +1,5 @@
+import { isDeepStrictEqual } from "node:util";
+import { parseCalendarDate } from "./recurrence.js";
 import { resourceIndex } from "./resource-index.js";
 import { calculationMemo } from "./calculation-cache.js";
 import { personWasActiveOn } from "./soc2.js";
@@ -37,6 +39,8 @@ export function scheduleSetInputs(loaded, program, options = {}) {
   }
   return loaded.resources.filter(({ id }) => ids.has(id)).map((record) => {
     const value = structuredClone(record);
+    // Owner impact reviews assess continuity; they do not change schedule design.
+    delete value.periodImpactReview;
     if (value.type === "obligation") delete value.completionResourceIds;
     // Content adoption is the cutover after this review, not a change to its approved design.
     if (["policy", "document", "training"].includes(value.type) && ["approved", "active"].includes(value.status)) {
@@ -46,6 +50,40 @@ export function scheduleSetInputs(loaded, program, options = {}) {
     }
     return { record, value, includeContent: true };
   });
+}
+
+// An explicitly excluded proposal never became part of the adopted design.
+// Preserve its exact reviewed facts when comparing an existing approval after
+// withdrawal; every other current source fact and Markdown revision still binds.
+export function scheduleSetWithoutExcludedWithdrawals(loaded, historical, review) {
+  const previousById = resourceIndex(historical.resources).byId;
+  const currentIndex = resourceIndex(loaded.resources);
+  const byId = currentIndex.byId;
+  const today = currentCalendarDate(loaded.workspace?.timezone || "UTC");
+  const decisions = Array.isArray(review.scheduleDecisions) ? review.scheduleDecisions : [];
+  const excluded = new Map(decisions.filter((decision) => decision?.disposition === "adopted")
+    .flatMap((decision) => (Array.isArray(decision.excludedRuleIds) ? decision.excludedRuleIds : []).map((id) => [id, decision.obligationId])));
+  let changed = false;
+  const resources = loaded.resources.map((record) => {
+    const previous = previousById.get(record.id);
+    if (record.type !== "obligation-rule" || record.status !== "withdrawn"
+      || excluded.get(record.id) !== record.obligationId
+      || previous?.type !== "obligation-rule" || !["proposed", "approved"].includes(previous.status)
+      || previous.effectiveAt || previous.retiredOn
+      || currentIndex.related("obligation-occurrence", "ruleId", [record.id]).length
+      || !parseCalendarDate(record.withdrawnOn) || record.withdrawnOn > today
+      || previous.approvedOn && record.withdrawnOn < previous.approvedOn
+      || !Array.isArray(record.withdrawnByIds) || !record.withdrawnByIds.length
+      || new Set(record.withdrawnByIds).size !== record.withdrawnByIds.length
+      || record.withdrawnByIds.some((id) => !personWasActiveOn(byId.get(id), record.withdrawnOn))
+      || typeof record.withdrawalReason !== "string" || !record.withdrawalReason.trim()) return record;
+    const compared = { ...record, status: previous.status };
+    for (const field of ["withdrawnByIds", "withdrawnOn", "withdrawalReason"]) delete compared[field];
+    if (!isDeepStrictEqual(compared, previous)) return record;
+    changed = true;
+    return compared;
+  });
+  return changed ? { ...loaded, resources } : loaded;
 }
 
 export function scheduleReviewerConflicts(loaded, program) {
@@ -96,7 +134,7 @@ export function scheduleSetIssues(loaded, program, review, options = {}) {
       if (options.at && obligation.endsOn && obligation.endsOn < currentCalendarDate(loaded.workspace?.timezone || "UTC", new Date(options.at))) add(obligation.id, `${obligation.title} ends before the intended cutover.`);
       const excluded = Array.isArray(decision.excludedRuleIds) ? decision.excludedRuleIds : [];
       if (decision.excludedRuleIds !== undefined && !Array.isArray(decision.excludedRuleIds)) add(obligation.id, "Excluded rule IDs must be an array.");
-      if (excluded.some((id) => !rules.some((rule) => rule.id === id && ["proposed", "approved"].includes(rule.status)))
+      if (excluded.some((id) => !rules.some((rule) => rule.id === id && ["proposed", "approved", "withdrawn"].includes(rule.status)))
         || rules.some((rule) => ["proposed", "approved"].includes(rule.status) && rule.id !== decision.ruleId && !excluded.includes(rule.id))) {
         add(obligation.id, `${obligation.title} has unresolved rule proposals. Explicitly exclude unused proposals in the schedule review.`);
       }

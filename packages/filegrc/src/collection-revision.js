@@ -1,3 +1,4 @@
+import { scheduleSetWithoutExcludedWithdrawals } from "./schedule-set.js";
 import { resourceIndex } from "./resource-index.js";
 import { calculationMemo } from "./calculation-cache.js";
 import { createHash } from "node:crypto";
@@ -76,7 +77,8 @@ export function collectionReviewDecisionMatches(loaded, resourceType, review, re
     })) return false;
     // Preserve exact historical approval binding, then compare current schedule
     // design without incidental approval-date changes on governed content.
-    return revisionsMatch("collection", collectionRevision(loaded, "obligation", options),
+    const currentDesign = scheduleSetWithoutExcludedWithdrawals(loaded, historical, review);
+    return revisionsMatch("collection", collectionRevision(currentDesign, "obligation", options),
       collectionRevision(historical, "obligation", { program, historicalCommit: review.scopeRevision }));
   }
   if (resourceType === "retention-schedule-item" && loaded.model.resources["retention-application"]) {

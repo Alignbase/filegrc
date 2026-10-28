@@ -978,6 +978,12 @@
         "independenceRationale": {
           "type": "string",
           "label": "Independence rationale"
+        },
+        "periodImpactReview": {
+          "type": "object",
+          "objectType": "period-impact-review",
+          "label": "Period impact review",
+          "description": "A dated review of this record\u2019s effect on the candidate evidence period. This review does not replace required approval or actual Policy Events."
         }
       },
       "listFields": [
@@ -1296,6 +1302,12 @@
               "retired"
             ]
           }
+        },
+        "periodImpactReview": {
+          "type": "object",
+          "objectType": "period-impact-review",
+          "label": "Period impact review",
+          "description": "A dated review of this record\u2019s effect on the candidate evidence period. This review does not replace required approval or actual Policy Events."
         }
       },
       "listFields": [
@@ -3084,6 +3096,12 @@
           "requiredWhen": {
             "status": "implemented"
           }
+        },
+        "periodImpactReview": {
+          "type": "object",
+          "objectType": "period-impact-review",
+          "label": "Period impact review",
+          "description": "A dated review of this record\u2019s effect on the candidate evidence period. This review does not replace required approval or actual Policy Events."
         }
       },
       "listFields": [
@@ -3919,6 +3937,12 @@
           "items": "object",
           "itemObjectType": "reporting-route-requirement",
           "label": "Reporting route requirements"
+        },
+        "periodImpactReview": {
+          "type": "object",
+          "objectType": "period-impact-review",
+          "label": "Period impact review",
+          "description": "A dated review of this record\u2019s effect on the candidate evidence period. This review does not replace required approval or actual Policy Events."
         }
       },
       "listFields": [
@@ -8328,6 +8352,12 @@
           "format": "id",
           "label": "Retrieval method key",
           "description": "Name the documented export or query method. Use the same method key on rehearsal Evidence; a changed extraction method needs another rehearsal."
+        },
+        "periodImpactReview": {
+          "type": "object",
+          "objectType": "period-impact-review",
+          "label": "Period impact review",
+          "description": "A dated review of this record\u2019s effect on the candidate evidence period. This review does not replace required approval or actual Policy Events."
         }
       },
       "listFields": [
@@ -8933,6 +8963,12 @@
               "retired"
             ]
           }
+        },
+        "periodImpactReview": {
+          "type": "object",
+          "objectType": "period-impact-review",
+          "label": "Period impact review",
+          "description": "A dated review of this record\u2019s effect on the candidate evidence period. This review does not replace required approval or actual Policy Events."
         }
       },
       "listFields": [
@@ -8961,7 +8997,7 @@
       "description": "One immutable reviewed revision of an Obligation schedule, population rule, and completion criteria.",
       "guidance": {
         "policyBasis": "A reusable schedule must be reviewed before it governs work. The rule records the exact management rationale or authoritative source used for that decision.",
-        "cadence": "Create a proposed revision, review it, then activate it at a real effective time. Never backdate a late decision or rewrite a prior effective rule."
+        "cadence": "Create a proposed revision, review it, then activate it at a real effective time. Never backdate a late decision or rewrite a prior effective rule. Withdraw a proposed or approved rule that never took effect with its actual decision actors, date, and reason. Preserve any approval and the withdrawn proposal; withdrawal does not approve a schedule or cancel an effective rule."
       },
       "required": [
         "status",
@@ -8976,7 +9012,8 @@
             "proposed",
             "approved",
             "active",
-            "retired"
+            "retired",
+            "withdrawn"
           ],
           "filter": true
         },
@@ -9099,6 +9136,31 @@
           ],
           "label": "Required proof coverage",
           "description": "Point-in-time work is executed within the allowed window. Whole-period work must prove the complete recurrence period, separately from its allowed execution window."
+        },
+        "withdrawnByIds": {
+          "type": "array",
+          "items": "id",
+          "relation": [
+            "person"
+          ],
+          "requiredWhen": {
+            "status": "withdrawn"
+          },
+          "description": "People who actually decided to withdraw this never-effective proposal or approved rule."
+        },
+        "withdrawnOn": {
+          "type": "date",
+          "requiredWhen": {
+            "status": "withdrawn"
+          },
+          "description": "Actual date of the decision to withdraw this never-effective rule."
+        },
+        "withdrawalReason": {
+          "type": "string",
+          "requiredWhen": {
+            "status": "withdrawn"
+          },
+          "description": "Why management declined to adopt this rule. Preserve prior approval facts when present."
         }
       },
       "listFields": [
@@ -11804,6 +11866,56 @@
         }
       },
       "additionalProperties": false
+    },
+    "period-impact-review": {
+      "additionalProperties": false,
+      "required": [
+        "reviewedByIds",
+        "reviewedOn",
+        "effectiveOn",
+        "conclusion",
+        "rationale",
+        "reviewedRevision"
+      ],
+      "properties": {
+        "reviewedByIds": {
+          "type": "array",
+          "items": "id",
+          "relation": [
+            "person"
+          ]
+        },
+        "reviewedOn": {
+          "type": "date"
+        },
+        "effectiveOn": {
+          "type": "date"
+        },
+        "conclusion": {
+          "type": "enum",
+          "values": [
+            "no-material-change",
+            "material-change-reviewed"
+          ]
+        },
+        "rationale": {
+          "type": "string"
+        },
+        "reviewedRevision": {
+          "type": "string"
+        },
+        "reviewedTransitionKeys": {
+          "type": "array",
+          "items": "string"
+        },
+        "policyEventIds": {
+          "type": "array",
+          "items": "id",
+          "relation": [
+            "obligation-event"
+          ]
+        }
+      }
     }
   },
   "obligationActivities": {

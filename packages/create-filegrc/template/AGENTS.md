@@ -184,6 +184,16 @@ Present “Continue to content activation without Autopilot” as the clear seco
 
 Program records, owners, Person email addresses, and dates remain authoritative in Git. Autopilot stores notification settings and Person-to-Slack links in its database. Manage those settings in the [Autopilot dashboard](https://app.filegrc.com). Keep credentials out of Git. Users perform control work, record events, and retain evidence locally.
 
+## Operating changes and unused proposals
+
+Keep planned inventory separate from operating work. A dormant proposal is not an activation task, but complete its normal supplier, access and evidence checks before actual use. Keep an ongoing Risk open with its actual response, owner and review/treatment checkpoints.
+
+Withdraw a never-effective schedule proposal with `npx filegrc withdraw-obligation-rule RULE_ID --scaffold --json`, then preview and apply the actual decision. Do not fabricate approval or activation dates. Preserve active rules and their normal retirement workflow.
+
+When a procedure or operating fact changes during the observation period, use `npx filegrc review-period-impact RESOURCE_ID --scaffold --json`. Record the actual effective business date, reviewers and impact/continuity conclusion, reusing review work already done. Preview with `--preview` and apply with `--yes`. This review binds substantive facts, companion procedures and their meaningful history; later substantive edits or change-and-revert cycles make it stale. Exact accepted operating reviews may already cover the change, so inspect the shared result before creating another review. It does not replace independent approval, source coverage, required Policy Events or Evidence verification. Label-only changes and added rehearsal Evidence links do not create a review merely because Git has several commits.
+
+These actions require model v13 and an explicit FileGRC 0.21.6 or newer dependency and lockfile. Upgrade hosted readers before adopting their new source fields; existing records need no migration or repeat approval. A newer hosted reader cannot authorize new shapes under an older repository pin. If an earlier manual edit used the fields too soon, repair the current dependency and preserve the disclosed historical format limitation instead of rewriting business dates or approvals.
+
 ## Work Queue and Policy Events
 
 Run `npx filegrc obligations --json` to see scheduled work, event tasks, owners, deadlines, and requested proof. Its `workQueue` includes dated source-record work such as risk reviews, treatments and Exception expirations; top-level `items` and `counts` retain the obligation-only view. In Step 4, record the work shown there. Use `npx filegrc guide obligation --json` and `data/AGENTS.md` for the completion and event-trigger commands. The resulting dated operating record or completed Action Item is the output.

@@ -886,3 +886,18 @@ test("dated review deadlines agree across workflow, CLI and lazy app/API queue s
   const current = JSON.parse(await readFile(join(root, "data", "risk-assessments", record.id + ".json"), "utf8"));
   assert.deepEqual(current, record);
 });
+
+test("historical channel warnings stay disclosed without inventing a current approval task", async context => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-historical-channel-guidance-"));
+  context.after(() => import("node:fs/promises").then(({rm}) => rm(root, {recursive:true,force:true})));
+  await makeComprehensiveWorkspace(root, "13");
+  const loaded = await loadWorkspace(root), record = loaded.resources.find(record => record.type === "policy");
+  const entry = loaded.entries.find(entry => entry.record.id === record.id);
+  const options = { programReadiness: { stages: [{id:"controls", items:[{id:"reporting-channel-cutover",status:"complete"}]}], evidenceReady:true }, auditPreparations:{}, obligations:{items:[],triggers:[],counts:{},asOf:"2026-10-01",through:"2026-10-01"}, validation:{ok:true,diagnostics:[{code:"uncovered-reporting-route-interval",severity:"warning",path:`data/${entry.relativePath}`,message:"Historical channel coverage gap."}]},reconciliation:{candidates:[]},git:{},asOf:"2026-10-01" };
+  let workflow = await assessWorkflow(loaded, options);
+  const finding = workflow.findings.find(f => f.code.includes("uncovered-reporting-route-interval"));
+  assert.equal(finding.state,"complete"); assert.equal(finding.severity,"warning"); assert.deepEqual(finding.actions,[]); assert.match(finding.message,/do not backdate/);
+  options.programReadiness.stages[0].items[0].status="action";
+  workflow = await assessWorkflow(loaded, options);
+  assert.equal(workflow.findings.find(f=>f.code.includes("uncovered-reporting-route-interval")).state,"ready");
+});

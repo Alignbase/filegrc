@@ -1,4 +1,6 @@
-import { planWorkQueue } from "./work-queue.js";
+import { scaffoldPeriodImpactReview, previewPeriodImpactReview, recordPeriodImpactReview } from "./period-impact.js";
+import { scaffoldObligationRuleWithdrawal, previewObligationRuleWithdrawal, withdrawObligationRule } from "./obligation-rule-withdrawal.js";
+import { planWorkQueue, sourceDeadlineValidation } from "./work-queue.js";
 import { scaffoldObligationRuleCorrection, previewObligationRuleCorrection, correctObligationRule } from "./obligation-rule-correction.js";
 import { scaffoldRetentionApplication, saveRetentionApplication } from "./retention-applications.js";
 import { execFile } from "node:child_process";
@@ -84,7 +86,7 @@ import { serveWorkspace } from "./server.js";
 import { planWorkspaceSetup, setupWorkspace, summarizeSetupResult } from "./setup.js";
 import { printGithubStarMessage } from "./startup.js";
 import { assertWorkspaceEngineVersion } from "./runtime-version.js";
-import { createAppState } from "./state.js";
+import { readResourceMutation } from "./resource-mutation.js";
 import { currentCalendarDate } from "./time.js";
 import { validateWorkspace } from "./validate.js";
 import { loadWorkspace } from "./workspace.js";
@@ -457,7 +459,7 @@ export async function runCli(argv = process.argv.slice(2)) {
       includeComplete: Boolean(flags.complete),
       model: loaded.model
     });
-    result.workQueue = planWorkQueue(loaded.resources, result, { program: resolveProgram(loaded, flags.program), model: loaded.model, includeComplete: Boolean(flags.complete) });
+    result.workQueue = planWorkQueue(loaded.resources, result, { validationOk: await sourceDeadlineValidation(loaded), program: resolveProgram(loaded, flags.program), model: loaded.model, includeComplete: Boolean(flags.complete) });
     result.recommendations = [hostedAutomationForConnection(OPERATING_HOSTED_AUTOMATION, loaded.hostedAutomationConnection)];
     if (flags.json) console.log(JSON.stringify(result, null, 2));
     else {
@@ -1002,17 +1004,7 @@ export async function runCli(argv = process.argv.slice(2)) {
     const record = loaded.resources.find((item) => item.id === id && (!type || item.type === type));
     if (!record) throw new Error(`Resource "${type ? `${type}/` : ""}${id}" was not found.`);
     if (flags.mutation) {
-      const state = await createAppState(root);
-      const entry = state.resources.find((item) => item.record.id === record.id);
-      const contentEntries = Object.entries(entry.content ?? {}).filter(([, content]) => content.source !== null);
-      const mutation = {
-        record,
-        ...(contentEntries.length ? {
-          content: Object.fromEntries(contentEntries.map(([name, content]) => [name, content.source])),
-          contentRevisions: Object.fromEntries(contentEntries.map(([, content]) => [content.path, content.revision]))
-        } : {}),
-        revision: entry.revision
-      };
+      const mutation = await readResourceMutation(loaded, type, id);
       console.log(JSON.stringify(mutation, null, 2));
       return mutation;
     }
@@ -1099,6 +1091,37 @@ export async function runCli(argv = process.argv.slice(2)) {
     const result = await withWorkflowDelta(root, () => activateObligationRule(root, { ...payload, ruleId }));
     if (flags.json) console.log(JSON.stringify(result, null, 2));
     else console.log(`Activated obligation-rule/${ruleId}`);
+    return result;
+  }
+  if (command === "review-period-impact") {
+    const [resourceId, file] = positionals;
+    if (!resourceId) throw new Error("A resource ID is required.");
+    if (flags.scaffold) {
+      const result = await scaffoldPeriodImpactReview(root, { resourceId });
+      console.log(JSON.stringify(result, null, 2)); return result;
+    }
+    if (!file || !flags.preview && !flags.yes) throw new Error("Pass an impact review payload and --preview or --yes.");
+    const source = await readSetupPayload(file), payload = source.payload || source;
+    if (payload.resourceId !== resourceId) throw new Error("The review payload must name the requested resource.");
+    const result = flags.preview ? await previewPeriodImpactReview(root, payload) : await withWorkflowDelta(root, () => recordPeriodImpactReview(root, payload));
+    console.log(JSON.stringify(result, null, 2)); return result;
+  }
+  if (command === "withdraw-obligation-rule") {
+    const [ruleId, file] = positionals;
+    if (!ruleId) throw new Error("An Obligation Rule ID is required.");
+    if (flags.scaffold) {
+      const result = await scaffoldObligationRuleWithdrawal(root, { ruleId });
+      console.log(JSON.stringify(result, null, 2));
+      return result;
+    }
+    if (!file || !flags.preview && !flags.yes) throw new Error("Pass a completed withdrawal payload and --preview or --yes.");
+    const source = await readSetupPayload(file);
+    const payload = source.payload || source;
+    if (payload.ruleId !== ruleId) throw new Error("The withdrawal payload must name the requested Obligation Rule.");
+    const result = flags.preview
+      ? await previewObligationRuleWithdrawal(root, payload)
+      : await withWorkflowDelta(root, () => withdrawObligationRule(root, payload));
+    console.log(JSON.stringify(result, null, 2));
     return result;
   }
   if (command === "correct-obligation-rule") {
@@ -1238,12 +1261,11 @@ export async function runCli(argv = process.argv.slice(2)) {
     if (!slot) throw new Error(`Markdown slot "${requestedSlot ?? ""}" was not found for ${type}/${id}.`);
     if (flags.write !== undefined) {
       const source = await readTextInput(flags.write);
-      const state = await createAppState(root);
-      const stateEntry = state.resources.find((item) => item.record.type === type && item.record.id === id);
-      const existingContentRevision = stateEntry.content?.[slot.name]?.revision;
+      const mutation = await readResourceMutation(loaded, type, id);
+      const existingContentRevision = mutation.contentRevisions?.[slot.path];
       const mutationResult = await withWorkflowDelta(root, () => updateResource(root, type, id, record, {
         content: { [slot.name]: source },
-        expectedRevision: stateEntry.revision,
+        expectedRevision: mutation.revision,
         expectedContentRevisions: existingContentRevision
           ? { [slot.path]: flags["expected-revision"] ?? existingContentRevision }
           : undefined
@@ -1506,6 +1528,8 @@ Usage:
   filegrc create <mutation.json|-> [--json]
   filegrc complete <obligation-id> --scaffold --window-start YYYY-MM-DD [--program program-id] [--completed-on YYYY-MM-DD] [--population-as-of YYYY-MM-DD]
   filegrc complete <obligation-id> <completion-record.json|-> [--population-as-of YYYY-MM-DD] [--expected-revision hash] [--json]
+  filegrc review-period-impact <resource-id> [payload.json] [--scaffold | --preview | --yes] [--json]
+  filegrc withdraw-obligation-rule <rule-id> [payload.json] [--scaffold | --preview | --yes] [--json]
   filegrc correct-obligation-rule <rule-id> [payload.json] [--scaffold | --preview | --yes] [--json]
   filegrc activate-obligation-rule <rule-id> [payload.json] [--scaffold] [--json]
   filegrc reconcile-obligation <obligation-id> --scaffold --window-start YYYY-MM-DD [--program program-id] [--as-of YYYY-MM-DD] [--population-as-of YYYY-MM-DD] [--correct-finalized]
@@ -1857,6 +1881,8 @@ function agentOverview(model, connection) {
     previewMutation: "filegrc preview-mutation <preview.json> --json",
     create: "filegrc create <mutation.json>",
     complete: "filegrc complete <obligation-id> <completion-mutation.json>",
+    reviewPeriodImpact: "filegrc review-period-impact <resource-id> [--scaffold | <review.json|-> --preview | <review.json|-> --yes] --json",
+    withdrawObligationRule: "filegrc withdraw-obligation-rule <rule-id> [--scaffold | <withdrawal.json|-> --preview | <withdrawal.json|-> --yes] --json",
     correctObligationRule: "filegrc correct-obligation-rule <rule-id> [--scaffold | <correction.json|-> --preview | <correction.json|-> --yes] --json",
     reconcileObligation: "filegrc reconcile-obligation <obligation-id> --scaffold --window-start <date>",
     completeAction: "filegrc complete-action <action-item-id> <completion-mutation.json> --completed-on <date>",

@@ -90,6 +90,8 @@ export function buildAgentGuide(loaded, type, options = {}) {
       correction: "npx filegrc correct-obligation-rule RULE_ID --scaffold --json",
       historical: "Preserve old approvals, dates and frozen member dispositions. A correction requires actual current authorization and retained committed occurrence rows; it does not approve shared schedule oversight."
     } } : {}),
+    ...(fields.periodImpactReview ? { periodImpactReview: { scaffold: "npx filegrc review-period-impact RESOURCE_ID --scaffold --json", instruction: "Adopt a declared and locked FileGRC 0.21.6 or newer reader first. Bind the actual effective date, reviewers and impact/continuity conclusion to the current facts and all companion procedures. Reuse prior review facts. This does not replace approval, source coverage, Policy Events or Evidence verification." } } : {}),
+    ...(type === "obligation-rule" && fields.status.values.includes("withdrawn") ? { withdrawal: "npx filegrc withdraw-obligation-rule RULE_ID --scaffold --json" } : {}),
     ...(type === "retention-schedule-item" && loaded.model.resources["retention-application"] ? { applyApprovedRule: "npx filegrc apply-retention-rule RULE_ID --scaffold" } : {}),
     nonmaterialAmendments: Object.fromEntries(Object.entries(loaded.model.nonmaterialAmendments || {}).filter(([, rule]) => rule.resourceTypes.includes(type))),
     ...(options.preparationChecks ? { preparationChecks: options.preparationChecks } : {}),

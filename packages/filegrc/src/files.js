@@ -15,6 +15,7 @@ import { currentCalendarDate, timestampFromLocalDateTime } from "./time.js";
 import { loadWorkspace } from "./workspace.js";
 import { validateWorkspace } from "./validate.js";
 import { calculateRevision, displayRevision, revisionsMatch } from "./revisions.js";
+import { assertWorkflowSourceRecordAdopted } from "./workflow-source-runtime.js";
 
 export const INTERNAL_WORKFLOW_CAPABILITIES = Object.freeze({
   auditManagementReconciliation: Symbol("audit-management-reconciliation"),
@@ -23,6 +24,7 @@ export const INTERNAL_WORKFLOW_CAPABILITIES = Object.freeze({
   obligationOccurrenceSupersession: Symbol("obligation-occurrence-supersession"),
   obligationRuleCorrection: Symbol("obligation-rule-correction"),
   obligationRuleActivation: Symbol("obligation-rule-activation"),
+  obligationRuleWithdrawal: Symbol("obligation-rule-withdrawal"),
   collectionReviewReassessment: Symbol("collection-review-reassessment"),
   reportingRouteSetProposal: Symbol("reporting-route-set-proposal"),
   reportingRouteSetApproval: Symbol("reporting-route-set-approval"),
@@ -679,6 +681,7 @@ async function updateResourceUnlocked(input, type, id, record, options) {
 }
 
 function assertImmutableWorkflowRecord(existing, next, options = {}, loaded = null) {
+  assertWorkflowSourceRecordAdopted(loaded, next);
   if (!existing) return;
   const preservesExisting = (allowed = []) => [...new Set([...Object.keys(existing), ...Object.keys(next)])].every((key) => (
     allowed.includes(key) || JSON.stringify(next[key]) === JSON.stringify(existing[key])
@@ -771,6 +774,17 @@ function assertImmutableWorkflowRecord(existing, next, options = {}, loaded = nu
       + "Create a corrected completion and superseding occurrence instead."
     );
   }
+  if (existing.type === "obligation-rule" && existing.status === "withdrawn" && !preservesExisting()) {
+    throw new Error(`Withdrawn Obligation rule "${existing.id}" is immutable. Preserve the decision and create a new proposal instead.`);
+  }
+  if (existing.type === "obligation-rule" && existing.status !== "withdrawn" && next.status === "withdrawn") {
+    if (capability !== INTERNAL_WORKFLOW_CAPABILITIES.obligationRuleWithdrawal
+      || !["proposed", "approved"].includes(existing.status)
+      || existing.effectiveAt || existing.retiredOn
+      || !preservesExisting(["status", "withdrawnByIds", "withdrawnOn", "withdrawalReason"])) {
+      throw new Error(`Obligation rule "${existing.id}" withdrawal is workflow-managed. Withdraw a never-effective proposal or approved rule through its withdrawal action.`);
+    }
+  }
   if (existing.type === "obligation-rule" && ["active", "retired"].includes(existing.status)) {
     const retirement = [INTERNAL_WORKFLOW_CAPABILITIES.obligationRuleActivation, INTERNAL_WORKFLOW_CAPABILITIES.obligationRuleCorrection].includes(capability)
       && existing.status === "active"
@@ -860,9 +874,10 @@ function assertFinalizedOccurrenceProofMutable(loaded, record) {
 }
 
 function assertWorkflowContentMutable(loaded, record) {
+  assertWorkflowSourceRecordAdopted(loaded, record);
   assertFinalizedOccurrenceProofMutable(loaded, record);
   if (
-    (record.type === "obligation-rule" && ["active", "retired"].includes(record.status))
+    (record.type === "obligation-rule" && ["active", "retired", "withdrawn"].includes(record.status))
     || (record.type === "obligation-occurrence" && ["reconciled", "superseded"].includes(record.status))
     || (record.type === "audit-population" && ["reconciled", "not-applicable", "superseded"].includes(record.status))
     || (record.type === "obligation-event" && ["complete", "canceled"].includes(record.status))
@@ -891,6 +906,7 @@ function finalizedOccurrenceUsingProof(loaded, targetId) {
 }
 
 function assertSpecializedWorkflowCreate(record, options = {}, loaded = null) {
+  assertWorkflowSourceRecordAdopted(loaded, record);
   if (record?.type === "nonmaterial-amendment" && options.workflowCapability !== INTERNAL_WORKFLOW_CAPABILITIES.nonmaterialAmendment) {
     throw new Error("Use the nonmaterial amendment scaffold, preview and save workflow.");
   }
@@ -992,7 +1008,7 @@ async function deleteResourceUnlocked(input, type, id, options) {
     || (record.type === "obligation-event" && ["complete", "canceled"].includes(record.status))
     || (record.type === "action-item" && record.obligationId && ["done", "canceled"].includes(record.status))
     || (record.type === "collection-review" && ["active", "retired"].includes(record.status))
-    || (record.type === "obligation-rule" && ["active", "retired"].includes(record.status))
+    || (record.type === "obligation-rule" && ["active", "retired", "withdrawn"].includes(record.status))
     || (record.type === "reporting-route" && ["active", "retired"].includes(record.status))
     || (record.type === "reporting-route-set" && ["proposed", "approved", "canceled", "historical", "withdrawn"].includes(record.status))
     || (record.type === "attestation" && record.status === "completed")
