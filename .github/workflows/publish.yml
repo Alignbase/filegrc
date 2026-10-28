@@ -8,6 +8,7 @@ on:
         type: string
 permissions:
   contents: read
+  id-token: write
 jobs:
   diagnose:
     runs-on: ubuntu-latest
@@ -57,6 +58,5 @@ jobs:
           const path = 'scripts/test-shard-worker.mjs';
           const source = await readFile(path, 'utf8');
           await writeFile(path, source.replace('stream.on("test:fail", (data) => record(data, false));', 'stream.on("test:fail", (data) => { record(data, false); console.error(data.details?.error); });'));
-          const cwd = resolve('packages/filegrc');
-          await runTestSuite({ name: 'release-git-diagnostic', cwd, files: [resolve('packages/filegrc/test/git.test.js')], inputPaths: [], toolchainCommands: ['git'], cache: false });
           JS
+          npm run validate
