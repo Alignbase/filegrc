@@ -16,6 +16,7 @@ import { serializeWorkspaceMutation } from "./mutation.js";
 import { fingerprintWorkspace, validateWorkspace } from "./validate.js";
 import { assessWorkflow } from "./workflow.js";
 import { measureTiming } from "./timing.js";
+import { withAssessmentCache } from "./calculation-cache.js";
 import { soc2RequirementApplicabilityConstraint } from "./soc2.js";
 import { modelSupports } from "../model/index.js";
 import { calculateRevision } from "./revisions.js";
@@ -39,7 +40,7 @@ export async function createAppState(input = process.cwd(), options = {}) {
     options.programId ?? null
   ]);
   if (!options.validationProof && appStatePromises.has(key)) return appStatePromises.get(key);
-  const promise = serializeWorkspaceMutation(input, (root) => createAppStateUnlocked(root, options), { allowModelDiagnostics: true }).finally(() => {
+  const promise = serializeWorkspaceMutation(input, (root) => withAssessmentCache(() => createAppStateUnlocked(root, options)), { allowModelDiagnostics: true }).finally(() => {
     if (appStatePromises.get(key) === promise) appStatePromises.delete(key);
   });
   if (!options.validationProof) appStatePromises.set(key, promise);
@@ -117,6 +118,10 @@ export async function createAppBootstrap(input = process.cwd(), options = {}) {
 }
 
 export async function createAppStateSection(input, section, options = {}) {
+  return withAssessmentCache(() => createAppStateSectionUnlocked(input, section, options));
+}
+
+async function createAppStateSectionUnlocked(input, section, options) {
   const loaded = input?.entries && input?.root ? input : await loadWorkspace(input);
   const workspace = loaded.workspace;
   const asOf = options.asOf ?? currentCalendarDate(workspace?.timezone || "UTC");

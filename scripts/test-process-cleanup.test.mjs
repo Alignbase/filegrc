@@ -60,7 +60,14 @@ test("surviving detached descendants are cleaned after their leader exits", { sk
   assert.equal((await ownedProcessIds(groups)).size, 0);
 });
 
-async function schedulerFixture(t, body, timeoutMs = 5_000, nested = false) {
+function standaloneEnvironment(overrides = {}) {
+  const environment = { ...process.env, ...overrides };
+  // These fixtures start the standalone CLI/worker, outside this node:test run.
+  delete environment.NODE_TEST_CONTEXT;
+  return environment;
+}
+
+async function schedulerFixture(t, body, timeoutMs = 5_000, nested = false, customEnv = false) {
   const directory = await mkdtemp(join(tmpdir(), "filegrc-scheduler-cleanup-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const pidPath = join(directory, "survivor.pid");
@@ -68,10 +75,10 @@ async function schedulerFixture(t, body, timeoutMs = 5_000, nested = false) {
   const survivorCode = `require('node:fs').writeFileSync(${JSON.stringify(pidPath)},String(process.pid));setInterval(()=>{},1000)`;
   const childCode = nested ? `const c=require('node:child_process').spawn(process.execPath,['-e',${JSON.stringify(survivorCode)}],{detached:true,stdio:'ignore'});c.unref();` : survivorCode;
   await writeFile(testPath, `import {test} from 'node:test';import {spawn} from 'node:child_process';import {existsSync} from 'node:fs';
-    test('fixture', async()=>{const c=spawn(process.execPath,['-e',${JSON.stringify(childCode)}],{detached:true,stdio:'ignore',env:{PATH:process.env.PATH}});c.unref();while(!existsSync(${JSON.stringify(pidPath)}))await new Promise(r=>setTimeout(r,10));${body}});`);
+    test('fixture', async()=>{const c=spawn(process.execPath,['-e',${JSON.stringify(childCode)}],{detached:true,stdio:'ignore',env:${customEnv ? '{PATH:process.env.PATH}' : 'process.env'}});c.unref();while(!existsSync(${JSON.stringify(pidPath)}))await new Promise(r=>setTimeout(r,10));${body}});`);
   const schedulerUrl = new URL("./test-scheduler.mjs", import.meta.url).href;
   const source = `import {runTestSuite} from ${JSON.stringify(schedulerUrl)};await runTestSuite({name:'cleanup-regression',cwd:${JSON.stringify(directory)},files:[${JSON.stringify(testPath)}],inputPaths:[${JSON.stringify(testPath)}],cache:false});`;
-  const child = spawn(process.execPath, ["--input-type=module", "-e", source], { env: { ...process.env, FILEGRC_TEST_CONCURRENCY: "1", FILEGRC_TEST_FILE_TIMEOUT_MS: String(timeoutMs) }, stdio: ["ignore", "pipe", "pipe"] });
+  const child = spawn(process.execPath, ["--input-type=module", "-e", source], { env: standaloneEnvironment({ FILEGRC_TEST_CONCURRENCY: "1", FILEGRC_TEST_FILE_TIMEOUT_MS: String(timeoutMs) }), stdio: ["ignore", "pipe", "pipe"] });
   let output = "";
   child.stdout.on("data", (chunk) => output += chunk);
   child.stderr.on("data", (chunk) => output += chunk);
@@ -91,7 +98,7 @@ test("scheduler cleans detached children while retaining passing and failing tes
 });
 
 test("scheduler timeout cleans live detached children and remains a failure", { skip: process.platform === "win32" }, async (t) => {
-  const result = await schedulerFixture(t, "await new Promise(()=>{});", 1_000);
+  const result = await schedulerFixture(t, "setInterval(()=>{},1000);await new Promise(()=>{});", 1_000);
   assert.equal(result.code, 1, result.output);
   assert.match(result.output, /test-file timeout/);
 });
@@ -102,7 +109,7 @@ test("worker disconnect cleans nested detached grandchildren across groups", { s
   const pidPath = join(directory, "child.pid");
   const testPath = join(directory, "fixture.test.mjs");
   await writeFile(testPath, `import {test} from 'node:test';import {spawn} from 'node:child_process';import {existsSync} from 'node:fs';test('fixture',async()=>{const c=spawn(process.execPath,['-e',${JSON.stringify(`const c=require('node:child_process').spawn(process.execPath,['-e',${JSON.stringify(`require('node:fs').writeFileSync(${JSON.stringify(pidPath)},String(process.pid));setInterval(()=>{},1000)`)}],{detached:true,stdio:'ignore'});c.unref();`)}],{detached:true,stdio:'ignore'});c.unref();while(!existsSync(${JSON.stringify(pidPath)}))await new Promise(r=>setTimeout(r,10));});`);
-  const child = fork(new URL("./test-shard-worker.mjs", import.meta.url), [], { detached: true, env: { ...process.env, [processOwnerVariable]: randomUUID() }, stdio: ["ignore", "ignore", "ignore", "ipc"] });
+  const child = fork(new URL("./test-shard-worker.mjs", import.meta.url), [], { detached: true, env: standaloneEnvironment({ [processOwnerVariable]: randomUUID() }), stdio: ["ignore", "ignore", "ignore", "ipc"] });
   t.after(() => { try { child.kill("SIGKILL"); } catch {} });
   const result = new Promise((resolve) => child.on("message", (message) => { if (message.type === "filegrc-test-result") resolve(message); }));
   child.send({ type: "run", token: randomUUID(), file: testPath, cwd: directory });
@@ -119,7 +126,7 @@ test("worker disconnect cleans nested detached grandchildren across groups", { s
 test("scheduler cleans nested detached grandchildren after success and timeout", { skip: process.platform === "win32" }, async (t) => {
   const passing = await schedulerFixture(t, "", 5_000, true);
   assert.equal(passing.code, 0, passing.output);
-  const timedOut = await schedulerFixture(t, "await new Promise(()=>{});", 1_000, true);
+  const timedOut = await schedulerFixture(t, "setInterval(()=>{},1000);await new Promise(()=>{});", 1_000, true);
   assert.equal(timedOut.code, 1, timedOut.output);
   assert.match(timedOut.output, /test-file timeout/);
 });
@@ -168,4 +175,13 @@ test("unknown inaccessible members of a reused group are never probed as owned",
     owns: async () => { throw Object.assign(new Error("must not inspect unknown environment"), { code: "EACCES" }); },
     kill: () => assert.fail("unrelated process signalled"),
   }), false);
+});
+
+
+test("shared-isolation worker injects ownership into an explicit detached child environment", {
+  skip: process.platform === "win32" || Number(process.versions.node.split(".")[0]) < 22,
+}, async (t) => {
+  // Node 20 uses a separate test process and cannot run the worker's wrappers.
+  const result = await schedulerFixture(t, "", 5_000, false, true);
+  assert.equal(result.code, 0, result.output);
 });
