@@ -14,10 +14,10 @@ export async function processTable() {
     .map(([pid, parentPid, groupId, uid, , ...started]) => ({ pid: Number(pid), parentPid: Number(parentPid), groupId: Number(groupId), uid: Number(uid), started: started.join(" ") }));
 }
 
-async function hasOwner(pid, owner) {
+export async function hasOwner(pid, owner, { platform = process.platform, readEnvironment = (pid) => readFile(`/proc/${pid}/environ`, "utf8"), liveProcesses = processTable } = {}) {
   try {
-    if (process.platform === "linux") {
-      const environment = await readFile(`/proc/${pid}/environ`, "utf8");
+    if (platform === "linux") {
+      const environment = await readEnvironment(pid);
       return environment.split("\0").includes(`${processOwnerVariable}=${owner}`);
     }
     // Never expose process environments in logs or return values.
@@ -26,6 +26,12 @@ async function hasOwner(pid, owner) {
   } catch (error) {
     // ps exits 1 when the process has already gone away.
     if (["ENOENT", "ESRCH"].includes(error.code) || (error.code === 1 && !error.stdout?.trim() && !error.stderr?.trim())) return false;
+    if (platform === "linux" && ["EACCES", "EPERM"].includes(error.code)) {
+      // Linux may deny environ while an exiting process becomes a zombie.
+      // Recheck the live table, which excludes zombies, before treating this as
+      // a permission failure. A still-live selected process must fail closed.
+      if (!(await liveProcesses()).some((entry) => entry.pid === pid)) return false;
+    }
     throw new Error("Could not inspect test child process ownership.", { cause: { code: error.code } });
   }
 }

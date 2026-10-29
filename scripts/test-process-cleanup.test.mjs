@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { once } from "node:events";
 import { test } from "node:test";
-import { cleanupOwnedProcesses, discoverLinuxOwners, ownedProcessIds, processOwnerVariable } from "./test-process-cleanup.mjs";
+import { cleanupOwnedProcesses, discoverLinuxOwners, hasOwner, ownedProcessIds, processOwnerVariable } from "./test-process-cleanup.mjs";
 
 const owner = randomUUID();
 test("cleanup skips absent, reused and invalid groups without probing or signalling them", async () => {
@@ -184,4 +184,35 @@ test("shared-isolation worker injects ownership into an explicit detached child 
   // Node 20 uses a separate test process and cannot run the worker's wrappers.
   const result = await schedulerFixture(t, "", 5_000, false, true);
   assert.equal(result.code, 0, result.output);
+});
+
+
+test("Linux selected process dying before its environment read is not a permission failure", async () => {
+  let live = [{ pid: 300, groupId: 300, uid: 1000, started: "original" }];
+  let permissionReads = 0;
+  const owns = (pid, owner) => hasOwner(pid, owner, {
+    platform: "linux",
+    readEnvironment: async () => {
+      permissionReads++;
+      live = []; // The selected process exits or becomes an excluded zombie.
+      throw Object.assign(new Error("private environment must never appear"), { code: "EACCES" });
+    },
+    liveProcesses: async () => live,
+  });
+  assert.equal(await cleanupOwnedProcesses(new Map([[300, owner]]), {
+    table: async () => live,
+    discover: async () => new Map([[300, owner]]), owns,
+    kill: () => assert.fail("an exited process must not be signalled"),
+  }), false);
+  assert.ok(permissionReads > 0, "the process must die between selection and its environment read");
+});
+
+test("Linux selected live process permission failures remain fatal and sanitized", async () => {
+  for (const code of ["EACCES", "EPERM"]) {
+    await assert.rejects(hasOwner(300, owner, {
+      platform: "linux",
+      readEnvironment: async () => { throw Object.assign(new Error("private environment must never appear"), { code }); },
+      liveProcesses: async () => [{ pid: 300, groupId: 300, uid: 1000, started: "original" }],
+    }), (error) => error.cause?.code === code && !String(error).includes("private environment") && !JSON.stringify(error).includes("private environment"));
+  }
 });
