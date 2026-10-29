@@ -270,7 +270,7 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
       }
       if (request.method === "GET" && url.pathname === "/api/obligations") {
         const loaded = await loadWorkspace(input);
-        const obligations = planObligations(loaded.resources, { root: loaded.root,
+        const obligations = planObligations(loaded.resources, { root: loaded.root, loaded,
           programId: url.searchParams.get("programId") || undefined,
           asOf: url.searchParams.get("asOf") || undefined,
           from: url.searchParams.get("from") || undefined,

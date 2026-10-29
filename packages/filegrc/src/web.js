@@ -3849,7 +3849,7 @@ function renderDetail(main, type, id, params = new URLSearchParams()) {
     try {
       const scaffold = await fetchJson("/api/retention-applications/scaffold", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ruleId: entry.record.id }) });
       scaffold.record.reviewedScopeRevisions = Object.fromEntries(scaffold.scopeCandidates.map(({ id, revision }) => [id, revision]));
-      openEditor("retention-application", null, { seed: scaffold.record, retentionApplication: true, saveLabel: "Apply approved rule", description: "Apply the complete approved rule “" + entry.record.title + "”. Its independent approval stays unchanged. Select the actual service or Source Coverage population, then confirm purpose, cutoff, disposition, holds and conflicting duties. A retained proof population does not extend the retention of raw logs or deleted content. If any condition does not fit, cancel and request a material rule review." });
+      openEditor("retention-application", null, { seed: scaffold.record, retentionApplication: true, approvedRule: scaffold.approvedRule, saveLabel: "Apply approved rule", description: "Apply the complete approved rule “" + (scaffold.approvedRule?.title || entry.record.title) + "”. Its independent approval stays unchanged. Select the actual service or Source Coverage population, then confirm purpose, cutoff, disposition, holds and conflicting duties. A retained proof population does not extend the retention of raw logs or deleted content. If any condition does not fit, cancel and request a material rule review." });
     } catch (error) { showError(error.message); }
   });
   main.querySelector("[data-amend-nonmaterial]")?.addEventListener("click", () => openNonmaterialAmendmentDialog(amendmentTarget, amendmentTarget !== entry ? entry : null));
@@ -5375,6 +5375,13 @@ function programGoalFromKind(kind) {
   return "none";
 }
 
+function approvedRetentionRulePanel(rule) {
+  if (!rule) return "";
+  const hidden = new Set(["id", "type", "title", "tags", "reviewedSourceRevisions", "approvedByIds", "approvedOn", "statusTransition", "supersedesId"]);
+  const values = Object.entries(rule).filter(([name, value]) => !hidden.has(name) && value !== undefined && value !== null && value !== "" && (!Array.isArray(value) || value.length));
+  return '<details class="approved-retention-rule" open><summary>Approved rule being applied</summary><p>These are the approved values. Pending schedule edits do not change the rule applied here.</p><dl class="metadata">' + values.map(([name, value]) => '<div><dt>' + esc(fieldLabel("retention-schedule-item", name)) + '</dt><dd>' + (name === "retentionPeriod" ? esc(retentionPeriodLabel(value)) : name === "cutoff" ? esc(retentionCutoffLabel(value)) : formatValue(value, name, "retention-schedule-item", false, rule)) + '</dd></div>').join("") + '</dl></details>';
+}
+
 function openEditor(type, entry = null, options = {}) {
   const definition = state.model.resources[type];
   const fields = { ...state.model.commonFields, ...definition.fields };
@@ -5424,7 +5431,7 @@ function openEditor(type, entry = null, options = {}) {
     || implementationEditorDescription(type)
     || conciseResourceDescription(definition)
     || "Fill the core fields below. Git will record the author, time, reason, and diff when you commit this file.";
-  dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">' + (entry ? "Edit record" : options.actionCompletion ? "Complete assigned work" : options.obligationCompletion ? "Record obligation work" : "Create record") + '</p><h2 id="resource-editor-title">' + esc(titleCase(entry?.record.title || record.title || definition.title)) + '</h2></div><button type="button" class="icon-button" data-editor-dismiss aria-label="Close">×</button></div><p>' + esc(editorDescription) + '</p>' + resourceReviewCriteria(type, true) + (options.occurrenceReview ? occurrenceMemberReview(record, options.membershipFinal, options.periodFinal) : "") + '<div class="form-grid">' + names.map((name) => editorField(type, name, fields[name], record[name], required.has(name) || conditionMatches(record, fields[name].requiredWhen), Boolean(entry), oneOf.has(name), activeOneOf.has(name), record.id)).join("") + '</div>' +
+  dialog.innerHTML = '<form><div class="dialog-head"><div><p class="kicker">' + (entry ? "Edit record" : options.actionCompletion ? "Complete assigned work" : options.obligationCompletion ? "Record obligation work" : "Create record") + '</p><h2 id="resource-editor-title">' + esc(titleCase(entry?.record.title || record.title || definition.title)) + '</h2></div><button type="button" class="icon-button" data-editor-dismiss aria-label="Close">×</button></div><p>' + esc(editorDescription) + '</p>' + approvedRetentionRulePanel(options.approvedRule) + resourceReviewCriteria(type, true) + (options.occurrenceReview ? occurrenceMemberReview(record, options.membershipFinal, options.periodFinal) : "") + '<div class="form-grid">' + names.map((name) => editorField(type, name, fields[name], record[name], required.has(name) || conditionMatches(record, fields[name].requiredWhen), Boolean(entry), oneOf.has(name), activeOneOf.has(name), record.id)).join("") + '</div>' +
     activeMarkdown.map((markdown) => {
       const generated = !entry?.content?.[markdown.name];
       const source = entry?.content?.[markdown.name]?.source

@@ -1,5 +1,5 @@
 import { recordBelongsToProgram, recordProgramRelationships } from "./program.js";
-import { calculationMemo } from "./calculation-cache.js";
+import { calculationMemo, withAssessmentCache } from "./calculation-cache.js";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
@@ -9,7 +9,7 @@ import { previewWorkflowMutation } from "./workflow.js";
 import { loadWorkspace } from "./workspace.js";
 import { collectionRevisionMatches } from "./collection-revision.js";
 import { reviewHistoricalWorkspace, reviewHistoryContext } from "./historical-workspace.js";
-import { resourceReviewRevisionsSync, retentionReviewResourceIds, retentionRuleIsCurrent, retentionSystemUses, retentionUses } from "./retention.js";
+import { operatingRetentionReadWorkspace, resourceReviewRevisionsSync, retentionReviewResourceIds, retentionRuleIsCurrent, retentionSystemUses, retentionUses } from "./retention.js";
 import { appointmentWasAuthorizedOn, personWasActiveOn } from "./soc2.js";
 import { currentPartyPeople } from "./parties.js";
 import { createResource } from "./files.js";
@@ -45,7 +45,11 @@ export function retentionApplicationRuntimeSupported(loaded, commit = null, targ
 }
 function ruleMarkdown(loaded, rule) {
   return markdownEntries(loaded.model, rule).map(({ path }) => {
-    try { return { path, source: loaded.historicalFiles ? loaded.historicalFiles.get(`data/${path}`) || null
+    try {
+      const entry = loaded.entries?.find((item) => item.record === rule);
+      if (entry?.reviewFiles instanceof Map) return { path, source: entry.reviewFiles.get(`data/${path}`) ?? null };
+      if (entry?.reviewCommit) return { path, source: getFileAtRevision(loaded.root, entry.reviewCommit, `data/${path}`) };
+      return { path, source: loaded.historicalFiles ? loaded.historicalFiles.get(`data/${path}`) || null
       : loaded.historicalCommit ? getFileAtRevision(loaded.root, loaded.historicalCommit, `data/${path}`) : readFileSync(resolveDataPath(loaded.root, path), "utf8") }; }
     catch (error) { if (error.code === "ENOENT") return { path, source: null }; throw error; }
   });
@@ -91,7 +95,16 @@ export function retentionApplicationScopeRevision(record, loaded = null) {
     // These fields can change the service's legal or operational fit.
     agreementDocumentId: record.agreementDocumentId || null, standardAgreement: record.standardAgreement || null });
 }
-export function retentionApplicationIssues(loaded, record, { includeStale = true } = {}) {
+function retentionAssessmentCommit(loaded) {
+  return calculationMemo(loaded.resources, "retention-assessment-commit", [loaded.root, loaded.historicalCommit || null], () =>
+    loaded.historicalCommit || runGitCommandSync(loaded.root, ["rev-parse", "HEAD"], { timeout: 5000, maxBuffer: 1024 }).trim());
+}
+
+export function retentionApplicationIssues(loaded, record, options = {}) {
+  return withAssessmentCache(() => retentionApplicationIssuesUncached(loaded, record, options));
+}
+
+function retentionApplicationIssuesUncached(loaded, record, { includeStale = true } = {}) {
   const issues = [];
   const fail = (message) => issues.push({ severity: "error", code: "invalid-retention-application", resourceId: record.id, message });
   if (!retentionApplicationRuntimeSupported(loaded, null, record)) {
@@ -124,7 +137,7 @@ export function retentionApplicationIssues(loaded, record, { includeStale = true
     if (retiredRecord && JSON.stringify(retiredRecord.statusTransition) !== JSON.stringify(record.statusTransition)) fail("Preserve the committed retirement decision.");
   }
   const rule = byId.get(record.ruleId);
-  const approvalSnapshot = loaded.root && /^[a-f0-9]{40}$/.test(record.approvalCommit || "") && isDataHistoryAncestor(loaded, record.approvalCommit, getGitSummary(loaded.root).commit)
+  const approvalSnapshot = loaded.root && /^[a-f0-9]{40}$/.test(record.approvalCommit || "") && isDataHistoryAncestor(loaded, record.approvalCommit, retentionAssessmentCommit(loaded))
     ? reviewHistoricalWorkspace(reviewHistoryContext(loaded.root, loaded), record.approvalCommit) : null;
   const review = approvalSnapshot?.resources.find(({ id }) => id === record.approvalId);
   const historical = loaded.root && /^[a-f0-9]{40}$/.test(review?.scopeRevision || "")
@@ -181,8 +194,11 @@ export function retentionApplicationIssues(loaded, record, { includeStale = true
   if (CONFIRMATIONS.some((key) => record.confirmations?.[key] !== true)
     || ["purpose", "rationale", "disposalImplementation"].some((key) => !String(record[key] || "").trim())) fail("Review purpose, cutoff, complete disposition, holds and conflicting duties, and explain actual disposal before applying an approved rule. Use normal independent review when any condition does not fit.");
   if (!firstCommit || includeStale && record.status !== "retired") {
-    const revisions = resourceReviewRevisionsSync(loaded, retentionReviewResourceIds(rule, loaded));
-    if (rule.status !== "active" || retentionRuleRevision(rule, loaded) !== record.ruleRevision || !retentionRuleIsCurrent(rule, revisions, byId, loaded)) fail("The approved rule or a governing source changed. Review the material change independently before relying on this application.");
+    const operating = operatingRetentionReadWorkspace(loaded);
+    const operatingById = new Map(operating.resources.map((item) => [item.id, item]));
+    const operatingRule = operatingById.get(record.ruleId);
+    const revisions = operatingRule ? resourceReviewRevisionsSync(operating, retentionReviewResourceIds(operatingRule, operating)) : new Map();
+    if (!operatingRule || operatingRule.status !== "active" || retentionRuleRevision(operatingRule, operating) !== record.ruleRevision || !retentionRuleIsCurrent(operatingRule, revisions, operatingById, operating)) fail("The approved rule or a governing source changed. Review the material change independently before relying on this application.");
     if (Object.keys(record.reviewedScopeRevisions || {}).sort().join() !== [...(record.scopeResourceIds || [])].sort().join()
       || record.scopeResourceIds.some((id) => retentionApplicationScopeRevision(byId.get(id), loaded) !== record.reviewedScopeRevisions?.[id])) fail("Service data use, agreement or classification changed after the owner review. Retire and replace this applicability decision or request material rule review.");
   }
@@ -206,31 +222,43 @@ export function applicationCoversUse(loaded, use, programId, ruleId = null) {
   return currentRetentionApplications(loaded).some((record) => record.programId === programId && (!ruleId || record.ruleId === ruleId)
     && record.scopeResourceIds.includes(use.resource.id) && record.informationTypeIds.includes(use.informationTypeId));
 }
-export async function scaffoldRetentionApplication(input, ruleId) {
+export function scaffoldRetentionApplication(input, ruleId) {
+  return withAssessmentCache(() => scaffoldRetentionApplicationUncached(input, ruleId));
+}
+
+async function scaffoldRetentionApplicationUncached(input, ruleId) {
   const loaded = await loadWorkspace(input);
   if (!loaded.model.resources["retention-application"]) throw applicationError("Apply approved rules requires model v13. Preview and complete the supported model migration first.");
   if (!retentionApplicationRuntimeSupported(loaded)) throw applicationError("Upgrade the repository dependency and lockfile to FileGRC 0.19.2 before applying an approved rule.");
-  const rule = loaded.resources.find(({ id }) => id === ruleId);
+  const operating = operatingRetentionReadWorkspace(loaded);
+  const rule = operating.resources.find(({ id }) => id === ruleId);
   if (rule?.type !== "retention-schedule-item" || rule.status !== "active") throw applicationError("Choose an active independently approved retention rule.");
-  const review = loaded.resources.find((item) => item.type === "collection-review" && item.resourceType === "retention-schedule-item" && item.status === "active" && item.populationResourceIds?.includes(rule.id));
+  const review = operating.resources.find((item) => item.type === "collection-review" && item.resourceType === "retention-schedule-item" && item.status === "active" && item.populationResourceIds?.includes(rule.id));
   if (!review) throw applicationError("Approve this rule independently before applying it to another service.");
   const head = getGitSummary(loaded.root).commit;
-  const committed = head ? reviewHistoricalWorkspace(reviewHistoryContext(loaded.root, loaded), head) : null;
+  const reviewEntry = operating.entries.find((item) => item.record === review);
+  const approvalCommit = reviewEntry?.reviewCommit || head;
+  const committed = approvalCommit ? reviewHistoricalWorkspace(reviewHistoryContext(loaded.root, loaded), approvalCommit) : null;
   const committedReview = committed?.resources.find(({ id }) => id === review.id);
   const originalWorkspace = review.scopeRevision ? reviewHistoricalWorkspace(reviewHistoryContext(loaded.root, loaded), review.scopeRevision) : null;
   const original = originalWorkspace?.resources.find(({ id }) => id === rule.id);
-  if (!original || retentionRuleRevision(original, originalWorkspace) !== retentionRuleRevision(rule, loaded)
+  if (!original || retentionRuleRevision(original, originalWorkspace) !== retentionRuleRevision(rule, operating)
     || JSON.stringify(committedReview) !== JSON.stringify(review)) throw applicationError("Commit the exact independent schedule approval before applying its unchanged rule. Material rule changes need independent review.");
   return { record: { type: "retention-application", id: "retention-application-" + rule.id.replace(/^retention-schedule-item-/, "") + "-service", title: "Apply " + rule.title,
-    status: "active", ruleId, ruleRevision: retentionRuleRevision(rule, loaded), approvalId: review.id, approvalRevision: review.collectionRevision, approvalCommit: getGitSummary(loaded.root).commit,
+    status: "active", ruleId, ruleRevision: retentionRuleRevision(rule, operating), approvalId: review.id, approvalRevision: review.collectionRevision, approvalCommit,
     programId: review.scopeResourceIds?.length === 1 ? review.scopeResourceIds[0] : null,
     scopeResourceIds: [], informationTypeIds: [], reviewedScopeRevisions: {}, reviewedById: null, authorityAppointmentId: null,
     reviewedOn: currentCalendarDate(loaded.workspace.timezone || "UTC"), purpose: null, rationale: null, disposalImplementation: null,
     confirmations: Object.fromEntries(CONFIRMATIONS.map((key) => [key, false])) },
+    approvedRule: structuredClone(rule),
     scopeCandidates: loaded.resources.filter((item) => ["system", "component", "vendor", "source-coverage"].includes(item.type) && !["retired", "terminated"].includes(item.status)).map((item) => ({ id: item.id, title: item.title, revision: retentionApplicationScopeRevision(item, loaded) })),
     guidance: "Choose actual service scope and existing rule Information Types. Complete every fit confirmation. Keep any proposed new semantic rule in independent review. apply-retention-rule preview computes exact service bindings; it never changes the original approval." };
 }
-export async function saveRetentionApplication(input, payload, { preview = false } = {}) {
+export function saveRetentionApplication(input, payload, options = {}) {
+  return withAssessmentCache(() => saveRetentionApplicationUncached(input, payload, options));
+}
+
+async function saveRetentionApplicationUncached(input, payload, { preview = false } = {}) {
   const loaded = await loadWorkspace(input);
   if (!payload?.record || typeof payload.record !== "object" || Array.isArray(payload.record)
     || payload.record.type !== "retention-application" || !Array.isArray(payload.record.scopeResourceIds)) throw applicationError("A retention application record and service scope array are required.");
@@ -249,7 +277,8 @@ export async function saveRetentionApplication(input, payload, { preview = false
   if (issues.length) throw applicationError(issues.map(({ message }) => message).join("\n"));
   if (preview) {
     const projected = await previewWorkflowMutation(input, { operation: "create", record, content: payload.content });
-    return { operation: "apply-retention-rule", record, issues, preservesIndependentApproval: true, workflowDelta: projected.workflowDelta };
+    const operating = operatingRetentionReadWorkspace(loaded);
+    return { operation: "apply-retention-rule", record, approvedRule: structuredClone(operating.resources.find((item) => item.id === record.ruleId)), issues, preservesIndependentApproval: true, workflowDelta: projected.workflowDelta };
   }
   return createResource(input, record, { content: payload.content });
 }

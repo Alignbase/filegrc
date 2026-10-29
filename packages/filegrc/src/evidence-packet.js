@@ -1,4 +1,4 @@
-import { governedContentCoversPeriod } from "./governed-content-baseline.js";
+import { governedContentBaseline, governedContentSource, governedMarkdownSource, registerGovernedLookup, governedContentCoversPeriod } from "./governed-content-baseline.js";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { copyFile, mkdir, readFile, readdir, readlink, rm, writeFile } from "node:fs/promises";
@@ -69,7 +69,7 @@ export async function prepareEvidencePacket(input, options = {}) {
   if (!validation.ok) throw new Error(`The workspace has ${validation.counts.errors} validation ${validation.counts.errors === 1 ? "error" : "errors"}. Fix them before generating evidence.`);
   const { loaded } = validation;
   const records = loaded.resources;
-  const byId = new Map(records.map((record) => [record.id, record]));
+  const byId = registerGovernedLookup(new Map(records.map((record) => [record.id, record])), loaded);
   const entriesById = new Map(loaded.entries.map((entry) => [entry.record.id, entry]));
   const audit = options.auditId ? byId.get(options.auditId) : null;
   if (options.auditId && audit?.type !== "audit") throw new Error(`Audit "${options.auditId}" was not found.`);
@@ -100,7 +100,7 @@ export async function prepareEvidencePacket(input, options = {}) {
       byId.get(id)?.type === "evidence" ? byId.get(id).sourceResourceIds || [] : []
     ))
   );
-  const plan = planObligations(records, { root: loaded.root,
+  const plan = planObligations(records, { root: loaded.root, loaded,
     programId: program?.id || options.programId || audit?.programId,
     asOf: end,
     from: start,
@@ -344,6 +344,32 @@ export async function prepareEvidencePacket(input, options = {}) {
       };
     })
     .sort((a, b) => a.type.localeCompare(b.type) || a.title.localeCompare(b.title));
+  // Keep editable proposals in the source export and identify the exact
+  // committed edition still operating at the selected coverage end.
+  const operatingBaselines = [...selectedIds].flatMap((id) => {
+    const current = byId.get(id);
+    const baseline = governedContentBaseline(current, byId, end, loaded.model);
+    if (!baseline || baseline === current) return [];
+    const source = governedContentSource(loaded, baseline);
+    if (!source.commit || !source.entry) return [];
+    return [{ resourceId: id, baselineId: baseline.id, type: baseline.type,
+      commit: source.commit, approvedOn: baseline.approvedOn, effectiveOn: baseline.effectiveOn,
+      ...(baseline.activatedOn ? { activatedOn: baseline.activatedOn } : {}),
+      recordPath: `operating-baselines/${id}/${source.commit}/record.json`,
+      relatedRecords: baseline.type === "document" && baseline.documentKind === "schedule"
+        ? source.loaded.resources.filter((record) => record.type === "retention-schedule-item" && record.scheduleDocumentId === baseline.id
+          || record.type === "collection-review" && record.resourceType === "retention-schedule-item"
+            && (record.populationResourceIds || []).some((rowId) => source.loaded.resources.some((row) => row.id === rowId && row.scheduleDocumentId === baseline.id)))
+          .map((record) => ({ id: record.id, type: record.type,
+            recordPath: `operating-baselines/${id}/${source.commit}/records/${record.type}/${record.id}.json`,
+            contentPaths: markdownEntries(source.loaded.model, record)
+              .filter(({ path, required }) => required || governedMarkdownSource(source.loaded, record, path) !== null)
+              .map(({ path }) => ({ sourcePath: path,
+              exportedPath: `operating-baselines/${id}/${source.commit}/content/${path}` })) })) : [],
+      contentPaths: markdownEntries(source.loaded.model, baseline).map(({ path }) => ({
+        sourcePath: path, exportedPath: `operating-baselines/${id}/${source.commit}/content/${path}`
+      })) }];
+  });
   await assertLoadedEntriesCurrent(loaded);
   const dataDigest = await dataTreeDigest(loaded.root);
   await assertLoadedEntriesCurrent(loaded);
@@ -526,7 +552,8 @@ export async function prepareEvidencePacket(input, options = {}) {
     managementPreparation,
     controlCoverage,
     gaps,
-    records: packetRecords
+    records: packetRecords,
+    operatingBaselines
   };
   preparedPacketValidations.set(packet, {
     validation,
@@ -767,7 +794,7 @@ export async function writeEvidencePacket(input, packet, options = {}) {
   if (!validation.ok) throw new Error(`The workspace has ${validation.counts.errors} validation ${validation.counts.errors === 1 ? "error" : "errors"}. Fix them before writing evidence.`);
   await assertPacketSourceState(packet, validation.loaded);
   const entriesById = new Map(validation.loaded.entries.map((entry) => [entry.record.id, entry]));
-  const byId = new Map(validation.loaded.resources.map((record) => [record.id, record]));
+  const byId = registerGovernedLookup(new Map(validation.loaded.resources.map((record) => [record.id, record])), validation.loaded);
   const files = [];
   let outputCreated = false;
   try {
@@ -816,6 +843,27 @@ export async function writeEvidencePacket(input, packet, options = {}) {
         } catch (error) {
           if (error.code !== "ENOENT") throw error;
         }
+      }
+    }
+    for (const item of packet.operatingBaselines || []) {
+      const baseline = governedContentBaseline(byId.get(item.resourceId), byId, packet.period.end, validation.loaded.model);
+      const source = governedContentSource(validation.loaded, baseline);
+      if (!baseline || source.commit !== item.commit || !source.entry) throw new Error(`Operating baseline for ${item.resourceId} changed after packet preparation.`);
+      await writePacketFile(output, item.recordPath, source.entry.source || `${JSON.stringify(baseline, null, 2)}\n`, files);
+      for (const related of item.relatedRecords || []) {
+        const entry = source.loaded.entries.find(({ record }) => record.id === related.id && record.type === related.type);
+        if (!entry) throw new Error(`Operating schedule record ${related.id} is unavailable.`);
+        await writePacketFile(output, related.recordPath, entry.source || `${JSON.stringify(entry.record, null, 2)}\n`, files);
+        for (const content of related.contentPaths) {
+          const text = governedMarkdownSource(source.loaded, entry.record, content.sourcePath);
+          if (text === null) throw new Error(`Operating schedule content for ${related.id} is unavailable.`);
+          await writePacketFile(output, content.exportedPath, text, files);
+        }
+      }
+      for (const content of item.contentPaths) {
+        const text = governedMarkdownSource(validation.loaded, baseline, content.sourcePath);
+        if (text === null) throw new Error(`Operating content for ${item.resourceId} is unavailable.`);
+        await writePacketFile(output, content.exportedPath, text, files);
       }
     }
     for (const item of packet.evidence) {
@@ -972,6 +1020,7 @@ function packetHandlingMarkdown(packet) {
     "",
     "Transfer this directory through the auditor's approved encrypted channel. Do not email an unencrypted packet. Give access only to the engagement team and retain or remove exported copies under the organization's evidence-retention rules.",
     "",
+    ...((packet.operatingBaselines || []).length ? ["Current source records can include pending proposals. `manifest.json` identifies the exact committed editions still operating at period end in `operatingBaselines`; their JSON and Markdown are in `operating-baselines/`. Use those editions with the full history when assessing operation.", ""] : []),
     "After transfer, enter the packet directory and run `shasum -a 256 -c SHA256SUMS` or `sha256sum -c SHA256SUMS`. filegrc does not sign or encrypt the packet because those operations require organization-controlled keys and transfer-system choices.",
     ""
   ].join("\n");
@@ -2221,6 +2270,7 @@ function packetMarkdown(packet) {
       ? `Open \`index.html\` for the auditor-oriented index. \`control-matrix.csv\` cross-references criteria, Controls, filegrc Evidence, Evidence Artifacts, and tests.${modelSupports(packet.dataModelVersion, "governed-document-activation") ? " `document-lifecycle-index.csv` lists each engagement Document's approval and activation facts and exact Markdown revisions." : ""} \`source-component-index.csv\` identifies the Components used to produce Evidence. \`evidence-artifact-index.csv\` lists material that must be delivered or accessed outside this packet. For Type 2, \`population-index.csv\` records management's population reconciliation and fixed source exports. FileGRC records, governed Markdown, fixed attachments, and committed historical versions are included in their respective directories.`
       : "Open `index.html` for the auditor-oriented index. `control-matrix.csv` cross-references criteria, controls, filegrc Evidence, External Evidence, and tests. `source-system-index.csv` identifies the systems of record used to produce External Evidence. `external-evidence-index.csv` lists material that must be delivered or accessed outside this packet. For Type 2, `population-index.csv` records management's population reconciliation and fixed source exports. filegrc records, governed Markdown, fixed attachments, and committed historical versions are included in their respective directories.",
     "",
+    ...((packet.operatingBaselines || []).length ? ["Current source records can include pending proposals. `manifest.json` identifies the exact committed editions still operating at period end in `operatingBaselines`; their JSON and Markdown are in `operating-baselines/`. Use those editions with the full history when assessing operation.", ""] : []),
     "After transfer, enter the packet directory and run `shasum -a 256 -c SHA256SUMS` or `sha256sum -c SHA256SUMS`. The checksum file covers every other packet file.",
     ""
   ];

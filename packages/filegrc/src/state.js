@@ -173,7 +173,7 @@ export async function createAppStateSection(input, section, options = {}) {
   }
   if (section === "obligations") {
     const activeProgram = resolveProgram(loaded, options.programId);
-    const obligations = planObligations(loaded.resources, { root: loaded.root,
+    const obligations = planObligations(loaded.resources, { root: loaded.root, loaded,
       programId: activeProgram.id, asOf, now: options.now ?? generatedAt, model: loaded.model });
     return { generatedAt, asOf, obligations,
       workQueue: planWorkQueue(loaded.resources, obligations, { validationOk: options.validation?.ok ?? await sourceDeadlineValidation(loaded), program: activeProgram, model: loaded.model }) };
@@ -291,7 +291,7 @@ async function createAppStateUnlocked(input, options) {
       return [audit?.id || "none", preparation];
     })
   )));
-  const obligations = planObligations(entries, { root: loaded.root,
+  const obligations = planObligations(entries, { root: loaded.root, loaded,
     programId: activeProgram.id,
     asOf,
     now: options.now ?? generatedAt,

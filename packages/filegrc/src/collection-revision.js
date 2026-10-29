@@ -1,8 +1,8 @@
+import { governedMarkdownSource } from "./governed-content-baseline.js";
 import { scheduleSetWithoutExcludedWithdrawals } from "./schedule-set.js";
 import { resourceIndex } from "./resource-index.js";
 import { calculationMemo } from "./calculation-cache.js";
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
 import { modelSupports } from "../model/index.js";
 import {
   authoritativeSourceRevisionValue,
@@ -10,7 +10,6 @@ import {
   collectionScopeRevisionFacts,
   scopedCollectionRecords
 } from "./collection-scope.js";
-import { resolveDataPath } from "./paths.js";
 import { getFileAtRevision } from "./git.js";
 import { reviewHistoricalWorkspace, reviewHistoryCommits, reviewHistoryContext } from "./historical-workspace.js";
 import { resolveProgram } from "./program.js";
@@ -267,7 +266,12 @@ function calculateCollectionRevisionUncached(loaded, resourceType, options, lega
             ? loaded.historicalFiles
               ? loaded.historicalFiles.get(`data/${path}`) ?? null
               : getFileAtRevision(loaded.root, options.historicalCommit, `data/${path}`)
-            : loaded.historicalFiles ? loaded.historicalFiles.get(`data/${path}`) ?? null : loaded.historicalCommit ? getFileAtRevision(loaded.root, loaded.historicalCommit, `data/${path}`) : readFileSync(resolveDataPath(loaded.root, path), "utf8");
+            : (() => {
+              const entry = loaded.entries?.find((item) => item.record === record);
+              if (entry?.reviewFiles instanceof Map) return entry.reviewFiles.get(`data/${path}`) ?? null;
+              if (entry?.reviewCommit) return getFileAtRevision(loaded.root, entry.reviewCommit, `data/${path}`);
+              return governedMarkdownSource(loaded, record, path);
+            })();
           if (content === null) return [];
           return [{ path, revision: createHash("sha256").update(content).digest("hex") }];
         } catch (error) {

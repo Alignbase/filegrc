@@ -1,7 +1,8 @@
-import { governedContentBaseline, governedApprovalContentMatches } from "./governed-content-baseline.js";
+import { operatingRetentionScheduleWorkspace } from "./retention-schedule-approval.js";
+import { governedContentBaseline, governedContentSource, registerGovernedLookup } from "./governed-content-baseline.js";
 import { currentCalendarDate } from "./time.js";
 import { applicationCoversUse, retentionApplicationIssues, retentionUseWasIndependentlyReviewed } from "./retention-applications.js";
-import { calculationMemo, hasCalculationCache } from "./calculation-cache.js";
+import { calculationMemo, hasCalculationCache, withAssessmentCache } from "./calculation-cache.js";
 import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { contentRevision } from "./files.js";
@@ -13,7 +14,15 @@ import { canonicalCalculatedRevisionJson, revisionDigest, revisionsMatch } from 
 import { getFileAtRevision } from "./git.js";
 import { reviewHistoricalWorkspace, reviewHistoryCommits, reviewHistoryContext } from "./historical-workspace.js";
 
-export async function assessRetentionReadiness(loaded, program, options = {}) {
+export function operatingRetentionReadWorkspace(loaded) {
+  return calculationMemo(loaded, "operating-retention-read-workspace", [], () => operatingRetentionScheduleWorkspace(loaded));
+}
+
+export function assessRetentionReadiness(loaded, program, options = {}) {
+  return withAssessmentCache(() => assessRetentionReadinessUncached(loaded, program, options));
+}
+
+async function assessRetentionReadinessUncached(loaded, program, options = {}) {
   if (!loaded.model.resources["retention-schedule-item"]) return [];
   const byId = new Map(loaded.resources.map((record) => [record.id, record]));
   const rules = loaded.resources.filter((record) => (
@@ -24,6 +33,11 @@ export async function assessRetentionReadiness(loaded, program, options = {}) {
   const revisions = await resourceReviewRevisions(loaded, activeRules.flatMap((rule) => retentionReviewResourceIds(rule, loaded)));
   const usableRules = activeRules.filter((rule) => retentionRuleIsCurrent(rule, revisions, byId, loaded));
   const proposedRules = rules.filter(retentionRuleHasCoverageProposal);
+  const operating = operatingRetentionReadWorkspace(loaded);
+  const operatingById = new Map(operating.resources.map((record) => [record.id, record]));
+  const operatingRules = operating.resources.filter((record) => record.type === "retention-schedule-item" && record.status === "active");
+  const operatingRevisions = await resourceReviewRevisions(operating, operatingRules.flatMap((rule) => retentionReviewResourceIds(rule, operating)));
+  const operatingUsableRules = operatingRules.filter((rule) => retentionRuleIsCurrent(rule, operatingRevisions, operatingById, operating));
   const uses = retentionUses(loaded, program);
   const priorApproval = loaded.model.resources["retention-application"] && loaded.resources.some((item) => item.type === "collection-review" && item.resourceType === "retention-schedule-item" && item.status === "active");
   const items = rules.map((rule) => readinessItem(
@@ -56,13 +70,13 @@ export async function assessRetentionReadiness(loaded, program, options = {}) {
   }
   items.push(...[...usesByInformationType].map(([informationTypeId, informationTypeUses]) => {
     const absentUses = informationTypeUses.filter((use) => (
-      (!proposedRules.some((rule) => ruleCoversUse(rule, use, program)) || priorApproval && !retentionUseWasIndependentlyReviewed(loaded, use, program.id)) && !applicationCoversUse(loaded, use, program.id)
+      (!proposedRules.some((rule) => ruleCoversUse(rule, use, program)) || priorApproval && !retentionUseWasIndependentlyReviewed(operating, use, program.id)) && !applicationCoversUse(loaded, use, program.id)
     ));
     const pendingUses = informationTypeUses.filter((use) => (
-      !usableRules.some((rule) => ruleCoversUse(rule, use, program)) && !applicationCoversUse(loaded, use, program.id)
+      !operatingUsableRules.some((rule) => ruleCoversUse(rule, use, program)) && !applicationCoversUse(loaded, use, program.id)
     ));
     const approvalPending = !options.scheduleApproved;
-    const matches = usableRules.filter((rule) => (
+    const matches = operatingUsableRules.filter((rule) => (
       informationTypeUses.some((use) => ruleCoversUse(rule, use, program))
     ));
     const informationTypeTitle = byId.get(informationTypeId)?.title || informationTypeId;
@@ -158,16 +172,23 @@ export async function assessRetentionReadiness(loaded, program, options = {}) {
 // Both source assessments and schedule readiness share this exact decision.
 // An application extends an unchanged approved rule to one explicit population;
 // it never supplies a new category or changes the rule's preservation semantics.
-export async function resolveSourceCoverageRetention(loaded, coverage, program) {
+export function resolveSourceCoverageRetention(loaded, coverage, program) {
+  return withAssessmentCache(() => resolveSourceCoverageRetentionUncached(loaded, coverage, program));
+}
+
+async function resolveSourceCoverageRetentionUncached(loaded, coverage, program) {
   const byId = new Map(loaded.resources.map((record) => [record.id, record]));
   if (!coverage || !program || !recordBelongsToProgram(coverage, program, byId, loaded.model)) return { rules: [], proposedRules: [] };
-  const linked = (coverage.retentionScheduleItemIds || []).map((id) => byId.get(id)).filter((rule) => rule?.type === "retention-schedule-item");
-  const revisions = await resourceReviewRevisions(loaded, linked.flatMap((rule) => retentionReviewResourceIds(rule, loaded)));
+  const operating = operatingRetentionReadWorkspace(loaded);
+  const operatingById = new Map(operating.resources.map((record) => [record.id, record]));
+  const linked = (coverage.retentionScheduleItemIds || []).map((id) => operatingById.get(id)).filter((rule) => rule?.type === "retention-schedule-item");
+  const proposed = (coverage.retentionScheduleItemIds || []).map((id) => byId.get(id)).filter((rule) => rule?.type === "retention-schedule-item");
+  const revisions = await resourceReviewRevisions(operating, linked.flatMap((rule) => retentionReviewResourceIds(rule, operating)));
   const direct = (rule) => (rule.scopeResourceIds || []).includes(coverage.id);
   const applied = (rule) => (rule.informationTypeIds || []).some((informationTypeId) => applicationCoversUse(loaded, { resource: coverage, informationTypeId }, program.id, rule.id));
   return {
-    proposedRules: linked.filter((rule) => retentionRuleHasCoverageProposal(rule) && direct(rule)),
-    rules: linked.filter((rule) => rule.status === "active" && retentionRuleIsCurrent(rule, revisions, byId, loaded) && (direct(rule) || applied(rule)))
+    proposedRules: proposed.filter((rule) => retentionRuleHasCoverageProposal(rule) && direct(rule)),
+    rules: linked.filter((rule) => rule.status === "active" && retentionRuleIsCurrent(rule, revisions, operatingById, operating) && (direct(rule) || applied(rule)))
   };
 }
 
@@ -194,9 +215,8 @@ export async function resourceReviewRevisions(loaded, ids, scopeHashInput = "leg
     let matchedSection = !decisionHeading;
     for (const markdown of reviewMarkdownEntries(loaded, entry, false, reviewer)) {
       try {
-        const source = entry.reviewCommit
-          ? entry.reviewFiles?.get(`data/${markdown.path}`)
-            ?? getFileAtRevision(loaded.root, entry.reviewCommit, `data/${markdown.path}`)
+        const source = entry.reviewCommit || loaded.historicalCommit || loaded.historicalFiles
+          ? reviewMarkdownSource(loaded, markdown.path, entry.reviewCommit || (loaded.historicalFiles ? historicalMarkdownSnapshot : loaded.historicalCommit), entry.reviewFiles)
           : await readFile(resolveDataPath(loaded.root, markdown.path), "utf8");
         if (source !== null) {
           const section = reviewedMarkdownSection(source, decisionHeading);
@@ -237,8 +257,9 @@ const historicalMarkdownSnapshot = Symbol("historical Markdown snapshot");
 function reviewMarkdownSource(loaded, path, commit = null, files = null) {
   return calculationMemo(loaded, "review-markdown-source", [path, commit], () => {
     if (commit === historicalMarkdownSnapshot) return loaded.historicalFiles?.get(`data/${path}`) ?? null;
-    if (commit) return loaded.historicalFiles?.get(`data/${path}`)
-      ?? files?.get(`data/${path}`) ?? getFileAtRevision(loaded.root, commit, `data/${path}`);
+    if (commit) return files?.get(`data/${path}`)
+      ?? (commit === loaded.historicalCommit ? loaded.historicalFiles?.get(`data/${path}`) : null)
+      ?? getFileAtRevision(loaded.root, commit, `data/${path}`);
     try { return readFileSync(resolveDataPath(loaded.root, path), "utf8"); }
     catch (error) { if (error.code === "ENOENT") return null; throw error; }
   });
@@ -434,9 +455,22 @@ const approvedReviewEntries = new WeakMap();
 
 function effectiveReviewEntry(loaded, entry) {
   if (!entry || !loaded.root || !["policy", "document", "training"].includes(entry.record.type)) return entry;
+  if (!modelSupports(loaded.model, "operating-preparation")) return legacyEffectiveReviewEntry(loaded, entry);
+  const byId = calculationMemo(loaded, "governed-review-lookup", [], () =>
+    registerGovernedLookup(new Map(loaded.resources.map((record) => [record.id, record])), loaded));
+  const baseline = governedContentBaseline(entry.record, byId,
+    currentCalendarDate(loaded.workspace?.timezone || "UTC"), loaded.model);
+  if (!baseline) return entry;
+  const source = governedContentSource(loaded, baseline);
+  if (!source.commit) return source.entry || entry;
+  return { ...(source.entry || entry), record: baseline, source: JSON.stringify(baseline),
+    reviewCommit: source.commit, reviewFiles: source.loaded.historicalFiles };
+}
+
+function legacyEffectiveReviewEntry(loaded, entry) {
+  if (!entry || !loaded.root || !["policy", "document", "training"].includes(entry.record.type)) return entry;
   if (!["draft", "in-review", "approved", "active"].includes(entry.record.status)) return entry;
-  const approvedAwaitingCutover = modelSupports(loaded.model, "operating-preparation") && entry.record.status === "approved";
-  if (approvedReviewContentMatches(loaded, entry) && !approvedAwaitingCutover) return entry;
+  if (approvedReviewContentMatches(loaded, entry)) return entry;
   if (entry.record.status === "active") return entry;
   let cache = approvedReviewEntries.get(loaded.resources);
   if (!cache) {
@@ -448,20 +482,7 @@ function effectiveReviewEntry(loaded, entry) {
   for (const commit of [...reviewHistoryCommits(context)].reverse()) {
     const snapshot = reviewHistoricalWorkspace(context, commit);
     const historical = snapshot?.entries.find(({ record }) => record.id === entry.record.id);
-    const asOf = currentCalendarDate(loaded.workspace?.timezone || "UTC");
-    if (approvedAwaitingCutover && historical && ["retired", "superseded"].includes(historical.record.status)
-      && (!historical.record.statusTransition?.changedOn || historical.record.statusTransition.changedOn <= asOf)) break;
-    if (!historical || !approvedReviewContentMatches(snapshot, historical, commit)) {
-      if (approvedAwaitingCutover && historical?.record.status === "active" && historical.record.effectiveOn <= asOf) break;
-      continue;
-    }
-    if (approvedAwaitingCutover) {
-      if (historical.record.status !== "active" || historical.record.effectiveOn > asOf) continue;
-      const byId = new Map(snapshot.resources.map((record) => [record.id, record]));
-      const baseline = governedContentBaseline(historical.record, byId, asOf, loaded.model,
-        { contentMatches: (record) => governedApprovalContentMatches(snapshot, record) });
-      if (!baseline || baseline.id !== entry.record.id || baseline.status !== "active") break;
-    }
+    if (!historical || !approvedReviewContentMatches(snapshot, historical, commit)) continue;
     const approved = { ...historical, reviewCommit: commit, reviewFiles: snapshot.historicalFiles };
     cache.set(entry.record.id, approved);
     return approved;
