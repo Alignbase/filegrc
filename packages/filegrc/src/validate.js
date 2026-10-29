@@ -1,3 +1,5 @@
+import { registerGovernedLookup } from "./governed-content-baseline.js";
+import { reviewHistoricalWorkspace, reviewHistoryContext } from "./historical-workspace.js";
 import { reclassifyTemporalValidation } from "./temporal-diagnostics.js";
 import { workspaceEngineVersion, runtimeCompatibilityLine } from "./runtime-version.js";
 import { workflowSourceRuntimeIssues } from "./workflow-source-runtime.js";
@@ -116,6 +118,7 @@ async function validateWorkspaceUnmeasured(input, options) {
   }
   let reconciliation = null;
   const { byId } = indexResources(loaded.resources);
+  registerGovernedLookup(byId, loaded);
   const seen = new Map();
   const pathById = new Map(loaded.entries.map((entry) => [
     entry.record?.id,
@@ -200,7 +203,7 @@ async function validateWorkspaceUnmeasured(input, options) {
     if (record.type === "obligation") validateObligation(record, loaded.model, byId, displayPath, diagnostics);
     if (record.type === "obligation-rule") validateObligationRule(record, loaded.model, byId, displayPath, diagnostics);
     if (record.type === "obligation-occurrence") {
-      validateObligationOccurrence(record, loaded.model, loaded.resources, loaded.entries, loaded.root, loaded.workspace.timezone, byId, asOf, displayPath, diagnostics);
+      validateObligationOccurrence(record, loaded.model, loaded.resources, loaded.entries, loaded.root, loaded.workspace.timezone, byId, asOf, displayPath, diagnostics, loaded);
     }
     if (record.type === "retention-schedule-item") validateRetentionScheduleItem(record, loaded, byId, currentReviewRevisions, displayPath, diagnostics);
     if (record.type === "requirement-mapping") validateRequirementMapping(record, loaded, currentReviewRevisions, displayPath, diagnostics);
@@ -634,7 +637,7 @@ function validateObligationRule(record, model, byId, path, diagnostics) {
   }
 }
 
-function validateObligationOccurrence(record, model, resources, entries, root, workspaceTimezone, byId, asOf, path, diagnostics) {
+function validateObligationOccurrence(record, model, resources, entries, root, workspaceTimezone, byId, asOf, path, diagnostics, sourceContext) {
   const members = record.members || [];
   const memberIds = members.map(({ resourceId }) => resourceId);
   if (new Set(memberIds).size !== memberIds.length) {
@@ -760,7 +763,7 @@ function validateObligationOccurrence(record, model, resources, entries, root, w
   if (rule?.type === "obligation-rule" && rule.obligationId !== record.obligationId) {
     diagnostics.push(error("wrong-obligation-rule", path, "The occurrence rule must belong to the same Obligation."));
   }
-  validateOccurrenceScheduleBinding(record, obligation, rule, resources, model, root, path, diagnostics);
+  validateOccurrenceScheduleBinding(record, obligation, rule, resources, model, root, path, diagnostics, true, sourceContext);
   for (const member of members) {
     if (!byId.has(member.resourceId)) continue;
     const validCompletions = [];
@@ -873,10 +876,11 @@ function validateObligationOccurrence(record, model, resources, entries, root, w
   }
 }
 
-function validateOccurrenceScheduleBinding(record, obligation, rule, resources, model, root, path, diagnostics, allowHistorical = true) {
+function validateOccurrenceScheduleBinding(record, obligation, rule, resources, model, root, path, diagnostics, allowHistorical = true, sourceContext = null) {
   if (obligation?.type !== "obligation" || rule?.type !== "obligation-rule") return;
   const start = record.coverage?.kind === "range" ? record.coverage.startsOn : null;
-  const byId = new Map(resources.map((candidate) => [candidate.id, candidate]));
+  const byId = registerGovernedLookup(new Map(resources.map((candidate) => [candidate.id, candidate])), sourceContext
+    || { root, resources, model, workspace: resources.find(({ type }) => type === "workspace") });
   const timezone = resources.find(({ type }) => type === "workspace")?.timezone || "UTC";
   const { recurrence, activationDate: cutover } = obligationScheduleRecurrence(obligation, rule, byId, model, timezone);
   if (!start || !validCalendarRecurrence(recurrence)) return;
@@ -900,7 +904,9 @@ function validateOccurrenceScheduleBinding(record, obligation, rule, resources, 
     const priorObligation = correction.resources.find(({ id }) => id === prior.obligationId);
     const priorRule = correction.resources.find(({ id }) => id === prior.ruleId);
     const issues = [];
-    validateOccurrenceScheduleBinding(prior, priorObligation, priorRule, correction.resources, model, root, path, issues);
+    const correctionContext = { root, resources: correction.resources, model,
+      workspace: correction.resources.find(({ type }) => type === "workspace"), historicalCommit: record.populationSourceRevision };
+    validateOccurrenceScheduleBinding(prior, priorObligation, priorRule, correction.resources, model, root, path, issues, true, correctionContext);
     if (issues.length) diagnostics.push(...issues);
     if (!parseCalendarDate(record.membershipCutoffAt) || record.membershipCutoffAt < start
       || record.membershipCutoffAt > record.coverage.endsOn || record.membershipCutoffAt > currentCalendarDate(timezone)) {
@@ -938,7 +944,8 @@ function validateOccurrenceScheduleBinding(record, obligation, rule, resources, 
       // governing context. Merely committing arbitrary dates grants no authority.
       const original = history?.at(-1);
       if (original) {
-        const snapshot = recordsAtRevision({ root }, original.commit);
+        const historicalContext = reviewHistoricalWorkspace(reviewHistoryContext(root, resources), original.commit);
+        const snapshot = historicalContext?.resources || [];
         const historical = snapshot.find(({ id }) => id === basis.id);
         if (historical && ["programId", "obligationId", "ruleId", "occurrenceKey", "membershipCutoffAt"]
           .every((key) => historical[key] === record[key])
@@ -947,10 +954,10 @@ function validateOccurrenceScheduleBinding(record, obligation, rule, resources, 
           const originalRule = snapshot.find(({ id }) => id === record.ruleId);
           if (originalObligation?.type === "obligation" && originalRule?.type === "obligation-rule"
             && validCalendarRecurrence(obligationScheduleRecurrence(originalObligation, originalRule,
-              new Map(snapshot.map((candidate) => [candidate.id, candidate])), model, timezone).recurrence)) {
+              registerGovernedLookup(new Map(snapshot.map((candidate) => [candidate.id, candidate])), historicalContext), model, timezone).recurrence)) {
             const issues = [];
             validateOccurrenceScheduleBinding(record, originalObligation,
-              originalRule, snapshot, model, root, path, issues, false);
+              originalRule, snapshot, model, root, path, issues, false, historicalContext);
             if (issues.length === 0) return;
           }
         }

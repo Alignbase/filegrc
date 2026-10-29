@@ -1,5 +1,5 @@
 import { reclassifyTemporalValidation } from "./temporal-diagnostics.js";
-import { governedContentCoversPeriod, governedApprovalContentMatches } from "./governed-content-baseline.js";
+import { governedContentBaseline, governedContentSource, registerGovernedLookup, governedContentCoversPeriod, governedApprovalContentMatches } from "./governed-content-baseline.js";
 import { assessReportingRoutePeriod } from "./reporting-route-sets.js";
 import { assessPeriodImpact } from "./period-impact.js";
 import { markdownEntries } from "./resource-markdown.js";
@@ -26,7 +26,7 @@ import {
   deleteResource,
   updateResource
 } from "./files.js";
-import { getGitSummary, getWorkspaceHistories, runGitCommandSync } from "./git.js";
+import { isGitAncestor, getGitSummary, getWorkspaceHistories, runGitCommandSync } from "./git.js";
 import {
   completeObligationAction,
   completeObligationEvent,
@@ -97,7 +97,7 @@ async function assessWorkflowUnmeasured(input, options = {}) {
   const auditPreparations = Object.fromEntries(
     Object.entries(suppliedAuditPreparations).filter(([id]) => auditIds.has(id))
   );
-  const obligationPlan = options.obligations || planObligations(loaded.resources, { root: loaded.root,
+  const obligationPlan = options.obligations || planObligations(loaded.resources, { root: loaded.root, loaded,
     programId: programRecord.id,
     asOf,
     through: options.through || asOf,
@@ -804,7 +804,7 @@ async function assessPeriodHealth(loaded, options) {
   }
 
   const findings = [];
-  const recordById = resourceIndex(loaded.resources).byId;
+  const recordById = registerGovernedLookup(resourceIndex(loaded.resources).byId, loaded);
   const relevantEntries = loaded.entries.filter(({ record }) => [
     "appointment",
     "control",
@@ -922,7 +922,7 @@ async function assessPeriodHealth(loaded, options) {
     || !(record.controlIds || []).length
     || record.controlIds.some((id) => selectedControlIds.has(id))
   ));
-  const occurrences = planObligations(periodResources, { root: loaded.root,
+  const occurrences = planObligations(periodResources, { root: loaded.root, loaded,
     programId: options.programId,
     from: coverage.start,
     asOf: periodThrough,
@@ -966,7 +966,11 @@ async function assessPeriodHealth(loaded, options) {
   for (const entry of relevantEntries) {
     const record = entry.record;
     const history = histories.get(`data/${entry.relativePath}`) || [];
-    const impact = await assessPeriodImpact(loaded, record, histories, coverage, options.asOf);
+    const baseline = governedContentBaseline(record, recordById, options.asOf, loaded.model);
+    const source = baseline && baseline !== record ? governedContentSource(loaded, baseline) : null;
+    const operatingHistories = source?.commit ? new Map([...histories].map(([path, changes]) => [path,
+      changes.filter(({ commit }) => isGitAncestor(loaded.root, commit, source.commit))])) : histories;
+    const impact = await assessPeriodImpact(source?.loaded || loaded, baseline || record, operatingHistories, coverage, options.asOf);
     if (impact) {
       findings.push(periodFinding(
         `period.change.${record.type}.${record.id}`,

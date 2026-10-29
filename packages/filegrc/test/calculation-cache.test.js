@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import test from "node:test";
 import { loadModel } from "../model/index.js";
 import { applicabilityScopeRevision } from "../src/applicability-scope.js";
@@ -11,7 +11,7 @@ import { assessCollectionReview } from "../src/collection-review.js";
 import { getRepositoryStateSignature, setGitCommandInterceptorForTests } from "../src/git.js";
 import { resourceReviewRevisions, resourceReviewRevisionsSync } from "../src/retention.js";
 import { createStateCalculator } from "../src/state-calculator.js";
-import { createAppStateSection } from "../src/state.js";
+import { createAppState, createAppStateSection } from "../src/state.js";
 import { loadWorkspace } from "../src/workspace.js";
 import { makeComprehensiveWorkspace } from "./fixtures.js";
 
@@ -264,4 +264,80 @@ test("public workflow bounds review Markdown reads and observes edits on its nex
     await assessWorkflow(loaded, options);
     assert.equal(reads, firstReads*2, "the next assessment must re-read mutable source content");
   } finally { fs.readFileSync=originalRead;syncBuiltinESMExports(); }
+});
+
+
+test("public app-state calculations bound shared source reads and refresh after each invocation", async (context) => {
+  const { createRequire, syncBuiltinESMExports } = await import("node:module");
+  const { hasCalculationCache } = await import("../src/calculation-cache.js");
+  const root = await workspace(context);
+  const initial = await loadWorkspace(root);
+  const policy = initial.entries.find(({ record }) => record.type === "policy");
+  const rule = initial.entries.find(({ record }) => record.type === "retention-schedule-item");
+  for (let index = 0; index < 20; index++) {
+    const record = { ...rule.record, id: `shared-source-row-${index}`, status: "active",
+      sourceResourceIds: [policy.record.id], reviewedSourceRevisions: { [policy.record.id]: "stale" } };
+    await writeFile(join(root, "data", dirname(rule.relativePath), `${record.id}.json`), JSON.stringify(record));
+  }
+  const markdownPath = join(initial.root, "data", policy.relativePath.replace(/\.json$/, ".md"));
+  const fs = createRequire(import.meta.url)("node:fs"), originalRead = fs.readFileSync;
+  let reads = 0;
+  fs.readFileSync = function (path, ...args) {
+    if (String(path) === markdownPath) {
+      reads++;
+      assert.equal(hasCalculationCache(), true, "source graph calculation must belong to this public state invocation");
+    }
+    return originalRead.call(this, path, ...args);
+  };
+  syncBuiltinESMExports();
+  try {
+    const options = { readOnly: true, includeDetails: false, asOf: "2026-10-14", now: "2026-10-14T20:00:00.000Z" };
+    const first = await createAppState(root, options);
+    const firstReads = reads;
+    assert.ok(firstReads > 0 && firstReads <= 2, `full state shared source reads: ${firstReads}`);
+    assert.equal(hasCalculationCache(), false);
+    const original = originalRead(markdownPath, "utf8");
+    await writeFile(markdownPath, `${original}\nChanged source for the next state request.\n`);
+    const next = await createAppState(root, options);
+    assert.equal(reads, firstReads * 2, "a new full state invocation must reread source content");
+    const content = next.resources.find(({ record }) => record.id === policy.record.id).content;
+    assert.ok(Object.values(content).some(({ source }) => source.includes("Changed source for the next state request.")));
+    assert.notDeepEqual(content, first.resources.find(({ record }) => record.id === policy.record.id).content);
+    for (const section of ["program", "obligations"]) {
+      const loaded = await loadWorkspace(root);
+      const before = reads;
+      await createAppStateSection(loaded, section, options);
+      assert.ok(reads - before <= 2, `${section} source reads stay bounded`);
+      assert.equal(hasCalculationCache(), false);
+    }
+    await assert.rejects(createAppStateSection(await loadWorkspace(root), "missing", options), /Unknown app-state section/);
+    assert.equal(hasCalculationCache(), false, "a failed state request must not leak its read snapshot");
+    await assert.rejects(createAppState(root, { ...options, programId: "missing-program" }), /Program/);
+    assert.equal(hasCalculationCache(), false, "a failed serialized state request must release its read snapshot");
+  } finally {
+    fs.readFileSync = originalRead;
+    syncBuiltinESMExports();
+  }
+});
+
+
+test("a completed app-state read cannot authorize a stale Markdown mutation", async (context) => {
+  const { readFile } = await import("node:fs/promises");
+  const { updateResource } = await import("../src/files.js");
+  const { readResourceMutation } = await import("../src/state.js");
+  const { hasCalculationCache } = await import("../src/calculation-cache.js");
+  const root = await workspace(context);
+  const loaded = await loadWorkspace(root);
+  const entry = loaded.entries.find(({ record }) => record.type === "policy");
+  const mutation = await readResourceMutation(root, entry.record.type, entry.record.id);
+  await createAppState(root, { readOnly: true, includeDetails: false });
+  assert.equal(hasCalculationCache(), false);
+  const path = join(loaded.root, "data", entry.relativePath.replace(/\.json$/, ".md"));
+  const changed = `${await readFile(path, "utf8")}\nActual later source edit.\n`;
+  await writeFile(path, changed);
+  await assert.rejects(updateResource(root, mutation.record.type, mutation.record.id, mutation.record, {
+    content: mutation.content, expectedRevision: mutation.revision,
+    expectedContentRevisions: mutation.contentRevisions, requireExpectedContentRevisions: true
+  }), /Content at data\/.* changed after you opened it/);
+  assert.equal(await readFile(path, "utf8"), changed);
 });

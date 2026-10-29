@@ -1,8 +1,6 @@
-import { governedContentBaseline, governedApprovalContentMatches } from "./governed-content-baseline.js";
+import { governedMarkdownSource, registerGovernedLookup, governedContentBaseline, governedApprovalContentMatches } from "./governed-content-baseline.js";
 import { assessProgramAccessReview, providerAccessPopulation, providerAccessControls } from "./provider-access-completion.js";
-import { readFile } from "node:fs/promises";
 import { markdownEntries, resourceDataPath } from "./resource-markdown.js";
-import { resolveDataPath } from "./paths.js";
 import { contentRevision } from "./files.js";
 import { revisionsMatch } from "./revisions.js";
 import { substantiveMarkdown, openPlaceholderCount } from "./content-readiness.js";
@@ -23,7 +21,7 @@ export async function currentProcedureContent(loaded, record, revisions = null) 
   const entries = markdownEntries(loaded.model, record);
   const matches = await Promise.all(entries.map(async ({ path }) => {
     try {
-      const text = await readFile(resolveDataPath(loaded.root, path), "utf8");
+      const text = governedMarkdownSource(loaded, record, path) || "";
       return substantiveMarkdown(text) && !openPlaceholderCount(text)
         && (!revisions || revisionsMatch("content", contentRevision(text), revisions[path]));
     } catch (error) { if (error.code === "ENOENT") return false; throw error; }
@@ -35,7 +33,7 @@ export async function currentProcedureContent(loaded, record, revisions = null) 
 // recurring occurrence. The selected Controls and their schedules choose the
 // work; actual actors, dates, populations and results establish completion.
 export async function assessProgramBaseline(loaded, program, controls, asOf, makeCheck) {
-  const byId = new Map(loaded.resources.map((record) => [record.id, record]));
+  const byId = registerGovernedLookup(new Map(loaded.resources.map((record) => [record.id, record])), loaded);
   const obligations = loaded.resources.filter((record) => record.type === "obligation" && record.status === "active"
     && recordBelongsToProgram(record, program, byId, loaded.model));
   const ruleFor = (record) => byId.get(record.activeRuleId) || record;
@@ -55,7 +53,7 @@ export async function assessProgramBaseline(loaded, program, controls, asOf, mak
   };
   const timezone = loaded.workspace?.timezone || "UTC";
   const assessedAt = asOf === currentCalendarDate(timezone) ? new Date().toISOString() : timestampFromLocalDateTime(`${asOf}T23:59:59`, timezone);
-  const calendar = planObligations(loaded.resources, { root: loaded.root, model: loaded.model, programId: program.id, asOf, from: asOf, through: asOf, includeComplete: true }).calendarItems;
+  const calendar = planObligations(loaded.resources, { root: loaded.root, loaded, model: loaded.model, programId: program.id, asOf, from: asOf, through: asOf, includeComplete: true }).calendarItems;
   const checks = [];
   for (const profile of loaded.model.operatingPreparation?.baselineProfiles || []) {
     const schedules = obligations.filter((record) => profile.activities.includes(record.activityType));
@@ -127,18 +125,19 @@ export async function assessProgramBaseline(loaded, program, controls, asOf, mak
       const scheduledSubjects = modelSupports(loaded.model, "operating-preparation")
         ? unique(schedules.flatMap(scheduleSubjectIds))
         : unique(schedules.flatMap((schedule) => [...ruleFor(schedule).scopeResourceIds || [], ...schedule.scopeResourceIds || [], ruleFor(schedule).templateResourceId, schedule.templateResourceId]));
-      const subjects = loaded.resources.filter((subject) => valid(subject) && ["approved", "active"].includes(subject.status) && (training
+      const sourceSubjects = loaded.resources.filter((subject) => ["policy", "document", "training"].includes(subject.type));
+      const subjects = modelSupports(loaded.model, "operating-preparation")
+        ? [...new Map(sourceSubjects.map((subject) => {
+          const baseline = governedContentBaseline(subject, byId, asOf, loaded.model,
+            { contentMatches: (candidate) => governedApprovalContentMatches(loaded, candidate) }) || subject;
+          return [baseline.id, baseline];
+        })).values()] : sourceSubjects;
+      const operatingSubjects = subjects.filter((subject) => valid(subject) && ["approved", "active"].includes(subject.status) && (training
         ? subject.type === "training" && (subject.controlIds?.some((id) => controlIds.includes(id))
           || scheduledSubjects.includes(subject.id))
         : subject.type === "policy" && policyIds.includes(subject.id)
           || subject.type === "document" && subject.acknowledgementRequired === true && subject.workflowScope === "program"
             && (subject.controlIds?.some((id) => controlIds.includes(id)) || scheduledSubjects.includes(subject.id))));
-      const operatingSubjects = modelSupports(loaded.model, "operating-preparation")
-        ? [...new Map(subjects.map((subject) => {
-          const baseline = governedContentBaseline(subject, byId, asOf, loaded.model,
-            { contentMatches: (candidate) => governedApprovalContentMatches(loaded, candidate) }) || subject;
-          return [baseline.id, baseline];
-        })).values()] : subjects;
       // All current internal workers are included, even when a new hire has not
       // yet acquired an owner role. Explicit schedule selectors can add the
       // applicable external workforce without pulling in external reviewers.

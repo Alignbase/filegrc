@@ -1,4 +1,4 @@
-import { governedContentBaseline } from "./governed-content-baseline.js";
+import { registerGovernedLookup, governedContentBaseline, governedContentOperatingOrigin } from "./governed-content-baseline.js";
 import { recordedCorrectionPopulation, currentSnapshotPopulation, samePopulation } from "./obligation-snapshot.js";
 import { getGitSummary } from "./git.js";
 import { populationCutoffDate, populationIsFinal, wholePeriodCoverage, completionCoversRequiredPeriod, requiredPeriodIsFinal, wholePeriodOccurrenceWindowIssue } from "./obligation-timing.js";
@@ -110,7 +110,7 @@ export function planObligations(resources, options = {}) {
   const requestedFrom = options.from ? requireDate(options.from, "from date") : null;
   if (through < asOf && !requestedFrom) throw new Error("The through date must not be before the as-of date.");
   if (requestedFrom && through < requestedFrom) throw new Error("The through date must not be before the from date.");
-  const byId = new Map(records.map((record) => [record.id, record]));
+  const byId = registerGovernedLookup(new Map(records.map((record) => [record.id, record])), options.loaded || { root: options.root, resources: records, model, workspace });
   const obligationProgram = program && options.additionalControlIds?.length
     ? { ...program, controlIds: [...new Set([...(program.controlIds || []), ...options.additionalControlIds])] }
     : program;
@@ -563,7 +563,7 @@ export async function createObligationEvent(input, options) {
 async function createObligationEventUnlocked(input, options) {
   const loaded = await loadWorkspace(input);
   const records = loaded.resources;
-  const byId = new Map(records.map((record) => [record.id, record]));
+  const byId = registerGovernedLookup(new Map(records.map((record) => [record.id, record])), loaded);
   const program = options?.allPrograms === true ? null : resolveProgram(loaded, options?.programId);
   const eventType = String(options?.eventType || "").trim();
   const occurredAt = options?.occurredAt ? requireTimestamp(options.occurredAt, "event timestamp") : null;
@@ -718,7 +718,7 @@ async function completeObligationOccurrenceUnlocked(input, options) {
     const program = resolveProgram(loaded, options.programId);
     const completedOn = executionDate(completionRecord, loaded.model, loaded.workspace.timezone);
     if (!completedOn) throw new Error("An actual completion date is required.");
-    const plan = planObligations(loaded.resources, {
+    const plan = planObligations(loaded.resources, { loaded,
       root: loaded.root,
       programId: program.id, asOf: completedOn, through: completedOn,
       includeComplete: true, model: loaded.model
@@ -870,7 +870,7 @@ export async function scaffoldObligationOccurrence(input, options = {}) {
   const program = resolveProgram(loaded, options.programId);
   const windowStart = requireDate(options.windowStart, "occurrence window start");
   const asOf = requireDate(options.asOf || currentCalendarDate(loaded.workspace.timezone), "as-of date");
-  const plan = planObligations(loaded.resources, {
+  const plan = planObligations(loaded.resources, { loaded,
     root: loaded.root,
     programId: program.id,
     from: windowStart,
@@ -1577,7 +1577,7 @@ function obligationCompletionContext(loaded, item) {
 
 function plannedOccurrenceForScaffold(loaded, obligation, windowStart, completedOn, programId) {
   const start = requireDate(windowStart, "occurrence window start");
-  const plan = planObligations(loaded.resources, {
+  const plan = planObligations(loaded.resources, { loaded,
     root: loaded.root,
     programId,
     from: start,
@@ -1596,7 +1596,7 @@ function plannedOccurrenceForScaffold(loaded, obligation, windowStart, completed
 }
 
 function plannedActionForScaffold(loaded, action, completedOn, programId) {
-  const plan = planObligations(loaded.resources, {
+  const plan = planObligations(loaded.resources, { loaded,
     root: loaded.root,
     programId,
     asOf: completedOn,
@@ -2193,7 +2193,7 @@ function completionFallsInWindow(record, window, timezone = "UTC", model) {
 export function assessCompletionForObligation(record, obligation, loaded, options = {}) {
   if (loaded.historicalCommit) obligation = loaded.resources.find(({ id }) => id === obligation.id) || obligation;
   const activity = obligationActivity(loaded.model, obligation);
-  const byId = new Map(loaded.resources.map((current) => [current.id, current]));
+  const byId = registerGovernedLookup(new Map(loaded.resources.map((current) => [current.id, current])), loaded);
   const date = executionDate(record, loaded.model, loaded.workspace?.timezone || "UTC");
   const issues = [];
   if (!completionMatchesObligation(record, obligation, loaded.model)) issues.push("Use the completion record type, activity profile, subtype, and Obligation linkage required by the adopted activity.");
@@ -2275,7 +2275,7 @@ export function obligationScheduleRecurrence(obligation, rule, byId, model, time
   const activationDate = !modelSupports(model, "operating-preparation")
     ? obligationActivationDate(obligation, byId, rule || model, timezone, asOf)
     : [obligationActivationDate(obligation, byId, rule || model, timezone, asOf),
-      obligationActivationDate(obligation, byId, model, timezone, asOf)].filter(Boolean).sort().at(-1);
+      obligationActivationDate(obligation, byId, model, timezone, asOf, { rule })].filter(Boolean).sort().at(-1);
   return {
     activationDate,
     recurrence: {
@@ -2291,22 +2291,41 @@ export function obligationScheduleRecurrence(obligation, rule, byId, model, time
   };
 }
 
-export function obligationActivationDate(obligation, byId, ruleOrModel, timezone = "UTC", asOf = currentCalendarDate(timezone)) {
+export function obligationActivationDate(obligation, byId, ruleOrModel, timezone = "UTC", asOf = currentCalendarDate(timezone), options = {}) {
   if (ruleOrModel?.type === "obligation-rule") {
     return ruleOrModel.effectiveAt
       ? currentCalendarDate(ruleOrModel.timezone || timezone, new Date(ruleOrModel.effectiveAt))
       : null;
   }
   const model = ruleOrModel;
+  const ruleStart = options.rule?.effectiveAt
+    ? currentCalendarDate(options.rule.timezone || timezone, new Date(options.rule.effectiveAt)) : null;
+  const operatingOrigin = (record) => {
+    if (!options.rule || !modelSupports(model, "operating-preparation")) return null;
+    const currentStart = [record.effectiveOn, record.activatedOn].filter(Boolean).sort().at(-1);
+    // When the explicit rule began after current content, an older content
+    // origin cannot change max(rule start, content start). Keep this common
+    // path free of historical workspace materialization.
+    if (ruleStart && currentStart && ruleStart >= currentStart) return null;
+    return governedContentOperatingOrigin(record, byId, asOf, model, {
+      scopeKey: options.rule.id,
+      dependencyIds: obligation.policyIds || [],
+      appliesOn: record.type === "policy" ? null : (on) => obligationGovernedContent(obligation, byId, model, on)
+        .some((candidate) => candidate.id === record.id)
+    });
+  };
   const policyDates = (obligation.policyIds || [])
     .map((id) => byId.get(id))
     .map((record) => modelSupports(model, "operating-preparation")
       ? governedContentBaseline(record, byId, asOf, model) || record : record)
     .filter((policy) => policy?.type === "policy")
-    .map((policy) => policy.effectiveOn)
+    .map((policy) => operatingOrigin(policy) || policy.effectiveOn)
     .filter(Boolean);
   const governedContentDates = obligationGovernedContent(obligation, byId, model, asOf)
-    .flatMap((record) => modelSupports(model, "operating-preparation") ? [record.effectiveOn, record.activatedOn] : [record.effectiveOn])
+    .flatMap((record) => {
+      const origin = operatingOrigin(record);
+      return origin ? [origin] : modelSupports(model, "operating-preparation") ? [record.effectiveOn, record.activatedOn] : [record.effectiveOn];
+    })
     .filter(Boolean);
   return [...policyDates, ...governedContentDates].sort().at(-1) || null;
 }

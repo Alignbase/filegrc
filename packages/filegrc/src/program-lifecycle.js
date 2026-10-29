@@ -89,7 +89,7 @@ export function obligationGovernedDocuments(obligation, byId, model, asOf = null
     ...(obligation.scopeResourceIds || []),
     ...(obligation.templateResourceId ? [obligation.templateResourceId] : [])
   ];
-  const requiredDocumentsByControl = indexRequiredDocumentsByControl(byId, model);
+  const requiredDocumentsByControl = indexRequiredDocumentsByControl(byId, model, asOf);
   const controlDocumentIds = (obligation.controlIds || [])
     .flatMap((id) => requiredDocumentsByControl.get(id) || []);
   return [...new Set([...policyDocumentIds, ...directDocumentIds, ...controlDocumentIds])]
@@ -119,12 +119,17 @@ export function obligationGovernedContent(obligation, byId, model, asOf = null) 
   return [...documents, ...training];
 }
 
-function indexRequiredDocumentsByControl(byId, model) {
+function indexRequiredDocumentsByControl(byId, model, asOf) {
   const modelVersion = String(model?.modelVersion || "");
-  const cached = requiredDocumentsByControlCache.get(byId);
-  if (cached?.modelVersion === modelVersion) return cached.index;
+  let cached = requiredDocumentsByControlCache.get(byId);
+  if (!cached) { cached = new Map(); requiredDocumentsByControlCache.set(byId, cached); }
+  const key = `${modelVersion}:${asOf || "current"}`;
+  if (cached.has(key)) return cached.get(key);
   const index = new Map();
-  for (const record of byId.values()) {
+  for (const source of byId.values()) {
+    if (source.type !== "document") continue;
+    const record = asOf && modelSupports(model, "operating-preparation")
+      ? governedContentBaseline(source, byId, asOf, model) || source : source;
     if (
       record.type !== "document"
       || record.programRole !== "required"
@@ -136,7 +141,8 @@ function indexRequiredDocumentsByControl(byId, model) {
       index.get(controlId).push(record.id);
     }
   }
-  requiredDocumentsByControlCache.set(byId, { modelVersion, index });
+  cached.set(key, index);
+  if (cached.size > 64) cached.delete(cached.keys().next().value);
   return index;
 }
 

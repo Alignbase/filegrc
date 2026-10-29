@@ -233,7 +233,7 @@ export function firstOperatingTasks(loaded, program, options = {}) {
   const futureDates = records.filter((record) => record.type === "obligation-rule" || record.type === "obligation")
     .flatMap((record) => [record.effectiveAt?.slice(0, 10), record.recurrence?.anchorDate, record.startsOn]).filter(Boolean);
   const horizon = [through.toISOString().slice(0, 10), ...futureDates].sort().at(-1);
-  const plan = planObligations(records, { root: loaded.root, model: loaded.model, programId: program.id, asOf,
+  const plan = planObligations(records, { root: loaded.root, loaded, model: loaded.model, programId: program.id, asOf,
     through: horizon, includeComplete: true, firstOnly: true });
   const byId = new Map(loaded.resources.map((record) => [record.id, record]));
   const first = new Map();

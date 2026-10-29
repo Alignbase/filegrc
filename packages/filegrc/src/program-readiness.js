@@ -1,10 +1,9 @@
-import { governedContentBaseline, pendingGovernedSuccessor, governedApprovalContentMatches } from "./governed-content-baseline.js";
+import { governedMarkdownSource, registerGovernedLookup, governedContentBaseline, pendingGovernedSuccessor, governedApprovalContentMatches } from "./governed-content-baseline.js";
 import { planWorkQueue, sourceDeadlineValidation } from "./work-queue.js";
 import { withAssessmentCache } from "./calculation-cache.js";
 import { assessOperatingPreparation, firstOperatingTasks } from "./operating-preparation.js";
 import { reportingCutoverIssues } from "./activation-readiness.js";
 import { recordBelongsToProgram } from "./program.js";
-import { readFile } from "node:fs/promises";
 import { modelSupports } from "../model/index.js";
 import { applicabilityReviewIsCurrent, createApplicabilityScopeIndex } from "./applicability-scope.js";
 import { assessRequiredAppointments } from "./appointments.js";
@@ -13,7 +12,6 @@ import { collectionMembershipSourceTypes, collectionRevisionInputs, collectionSc
 import { openPlaceholderCount, substantiveMarkdown } from "./content-readiness.js";
 import { coverageEnd, coverageStart } from "./coverage.js";
 import { planObligations } from "./obligations.js";
-import { resolveDataPath } from "./paths.js";
 import {
   contentRevisionBindingsMatch,
   documentIsAuditSpecific,
@@ -145,7 +143,7 @@ async function assessProgramReadinessUncached(input, options = {}) {
     ? input
     : await loadWorkspace(input);
   const records = loaded.resources;
-  const byId = new Map(records.map((record) => [record.id, record]));
+  const byId = registerGovernedLookup(new Map(records.map((record) => [record.id, record])), loaded);
   const workspace = loaded.workspace || records.find((record) => record.type === "workspace");
   const program = resolveProgram(loaded, options.programId);
   const asOf = options.asOf || currentCalendarDate(workspace?.timezone || "UTC");
@@ -167,8 +165,8 @@ async function assessProgramReadinessUncached(input, options = {}) {
   const markdown = new Map();
   const readMarkdown = async (record) => {
     if (!record) return "";
-    if (!markdown.has(record.id)) markdown.set(record.id, await primaryMarkdown(loaded, record));
-    return markdown.get(record.id);
+    if (!markdown.has(record)) markdown.set(record, await primaryMarkdown(loaded, record));
+    return markdown.get(record);
   };
 
   const policyStage = await policiesStage(scope, records, byId, readMarkdown, loaded.model);
@@ -314,7 +312,7 @@ async function assessProgramReadinessUncached(input, options = {}) {
         entry.status = "info";
         entry.progressUnit = false;
         entry.operatingBaselineId = baseline.id;
-        entry.message = `${baseline.title || baseline.id} remains the effective operating baseline while this successor awaits cutover. ${entry.message}`;
+        entry.message = `${baseline.title || baseline.id} remains the effective operating baseline while the proposed revision awaits cutover. ${entry.message}`;
       }
     }
   }
@@ -355,7 +353,7 @@ async function assessProgramReadinessUncached(input, options = {}) {
     program?.assuranceGoal === "soc-2-type-2"
     && progressWindow?.start <= asOf
   );
-  const obligations = planObligations(records, { root: loaded.root, programId: program.id, asOf, through: asOf, now: asOfTime, model: loaded.model });
+  const obligations = planObligations(records, { root: loaded.root, loaded, programId: program.id, asOf, through: asOf, now: asOfTime, model: loaded.model });
   const policyLibrary = await assessPolicyLibraryUpgrades(loaded);
   const operating = Boolean(
     evidenceReady
@@ -2036,7 +2034,7 @@ async function operationStage(loaded, workspace, scope, records, byId, asOf, evi
     ]);
   }
 
-  const obligations = planObligations(records, { root: loaded.root, programId: workspace.id, asOf, through: asOf, model });
+  const obligations = planObligations(records, { root: loaded.root, loaded, programId: workspace.id, asOf, through: asOf, model });
   const workQueue = planWorkQueue(records, obligations, { validationOk: await sourceDeadlineValidation(loaded), program: workspace, model });
   const start = progressWindow?.start || null;
   const end = progressWindow?.end || null;
@@ -2187,7 +2185,7 @@ async function primaryMarkdown(loaded, record) {
   ));
   if (!selected) return "";
   try {
-    return await readFile(resolveDataPath(loaded.root, selected.path), "utf8");
+    return governedMarkdownSource(loaded, record, selected.path) || "";
   } catch {
     return "";
   }

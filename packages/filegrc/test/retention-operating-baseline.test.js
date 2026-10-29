@@ -119,7 +119,7 @@ test("actual schedule cutover needs its own exact row approval and selects only 
   await writeJson(review.path, { ...review.record, status: "retired" });
   current = await loadWorkspace(root);
   const approved = { ...review.record, id: "collection-review-retention-next", supersedesId: review.record.id,
-    populationResourceIds: [nextRow.id], collectionRevision: collectionRevision(operatingRetentionScheduleWorkspace(current), "retention-schedule-item", { programId: program.id }) };
+    populationResourceIds: [nextRow.id], collectionRevision: collectionRevision(current, "retention-schedule-item", { programId: program.id }) };
   await writeJson(join(dirname(review.path), `${approved.id}.json`), approved);
   current = await loadWorkspace(root);
   const projected = operatingRetentionScheduleWorkspace(current);

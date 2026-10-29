@@ -1,3 +1,4 @@
+import { cleanupOwnedProcesses, processOwnerVariable } from "./test-process-cleanup.mjs";
 import childProcess from "node:child_process";
 import { syncBuiltinESMExports } from "node:module";
 import { resolve, relative, sep } from "node:path";
@@ -12,9 +13,9 @@ import {
 
 if (isMainThread) {
   let activeWorker = null;
-  const detachedGroups = new Set();
+  const detachedGroups = new Map();
 
-  process.once("disconnect", () => {
+  process.once("disconnect", async () => {
     if (process.platform === "win32") {
       const cleanup = childProcess.spawn(
         "taskkill.exe",
@@ -24,14 +25,9 @@ if (isMainThread) {
       cleanup.unref();
       return;
     }
-    for (const groupId of detachedGroups) {
-      try {
-        process.kill(-groupId, "SIGKILL");
-      } catch (error) {
-        if (error.code !== "ESRCH") throw error;
-      }
-    }
-    process.kill(-process.pid, "SIGKILL");
+    detachedGroups.set(process.pid, process.env[processOwnerVariable]);
+    await cleanupOwnedProcesses(detachedGroups);
+    process.exit(1);
   });
 
   process.on("message", async (message) => {
@@ -81,7 +77,7 @@ if (isMainThread) {
     };
     worker.on("message", (result) => {
       if (result?.type === "filegrc-child-process") {
-        detachedGroups.add(result.pid);
+        detachedGroups.set(result.pid, result.token);
         sendResult(result);
         return;
       }
@@ -112,14 +108,11 @@ function trackSpawnedProcesses(token) {
   for (const method of ["spawn", "fork"]) {
     const original = childProcess[method];
     childProcess[method] = function trackedChildProcess(...args) {
-      const child = original.apply(this, args);
       const options = args.at(-1);
-      if (
-        Number.isInteger(child.pid) &&
-        options &&
-        typeof options === "object" &&
-        options.detached === true
-      ) {
+      const detached = options && typeof options === "object" && options.detached === true;
+      if (detached) args[args.length - 1] = { ...options, env: { ...(options.env || process.env), [processOwnerVariable]: token } };
+      const child = original.apply(this, args);
+      if (Number.isInteger(child.pid) && detached) {
         parentPort.postMessage({
           type: "filegrc-child-process",
           token,

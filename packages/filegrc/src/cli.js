@@ -450,7 +450,7 @@ export async function runCli(argv = process.argv.slice(2)) {
   }
   if (command === "obligations") {
     const loaded = await loadWorkspace(root);
-    const result = planObligations(loaded.resources, { root: loaded.root,
+    const result = planObligations(loaded.resources, { root: loaded.root, loaded,
       programId: flags.program,
       asOf: flags["as-of"] ?? currentCalendarDate(loaded.workspace.timezone),
       from: flags.from,
