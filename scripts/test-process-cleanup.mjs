@@ -1,4 +1,6 @@
 import { execFile } from "node:child_process";
+import { readFile, readdir } from "node:fs/promises";
+import { join } from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
@@ -14,17 +16,44 @@ export async function processTable() {
 
 async function hasOwner(pid, owner) {
   try {
+    if (process.platform === "linux") {
+      const environment = await readFile(`/proc/${pid}/environ`, "utf8");
+      return environment.split("\0").includes(`${processOwnerVariable}=${owner}`);
+    }
     // Never expose process environments in logs or return values.
     const { stdout } = await execFileAsync("ps", ["eww", "-p", String(pid), "-o", "command="], { maxBuffer: 8 * 1024 * 1024 });
     return stdout.split(/\s+/).includes(`${processOwnerVariable}=${owner}`);
   } catch (error) {
     // ps exits 1 when the process has already gone away.
-    if (error.code === 1 && !error.stdout?.trim() && !error.stderr?.trim()) return false;
+    if (["ENOENT", "ESRCH"].includes(error.code) || (error.code === 1 && !error.stdout?.trim() && !error.stderr?.trim())) return false;
     throw new Error("Could not inspect test child process ownership.", { cause: { code: error.code } });
   }
 }
 
+export async function discoverLinuxOwners(owners, procRoot = "/proc") {
+  const marked = new Map();
+  try {
+    for (const entry of await readdir(procRoot)) {
+      if (!/^[1-9]\d*$/.test(entry) || Number(entry) <= 1) continue;
+      let environment;
+      try { environment = await readFile(join(procRoot, entry, "environ"), "utf8"); }
+      catch (error) {
+        // Unrelated processes may disappear or belong to another user. A
+        // selected target is separately verified, and its permission errors fail.
+        if (["ENOENT", "ESRCH", "EACCES", "EPERM"].includes(error.code)) continue;
+        throw error;
+      }
+      const owner = environment.split("\0").find((value) => value.startsWith(`${processOwnerVariable}=`))?.slice(processOwnerVariable.length + 1);
+      if (owners.has(owner)) marked.set(Number(entry), owner);
+    }
+    return marked;
+  } catch (error) {
+    throw new Error("Could not discover test child process ownership.", { cause: { code: error.code } });
+  }
+}
+
 async function discoverOwners(owners) {
+  if (process.platform === "linux") return discoverLinuxOwners(owners);
   try {
     // A descendant can create its own session and outlive its original group.
     // Inspect environments internally; never expose command text or environments.
@@ -56,7 +85,7 @@ export async function ownedProcessIds(groups, { table = processTable, owns = has
     // No marker means fail closed, including an orphan that cleared its environment.
     let verified = false;
     for (const member of members) {
-      if (await owns(member.pid, owner)) { verified = true; break; }
+      if (marked.get(member.pid) === owner && await owns(member.pid, owner)) { verified = true; break; }
     }
     if (verified) for (const { pid } of members) if (pid !== excludePid) targets.add(pid);
   }

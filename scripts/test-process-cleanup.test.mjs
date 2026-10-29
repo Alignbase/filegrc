@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { fork, spawn } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { once } from "node:events";
 import { test } from "node:test";
-import { cleanupOwnedProcesses, ownedProcessIds, processOwnerVariable } from "./test-process-cleanup.mjs";
+import { cleanupOwnedProcesses, discoverLinuxOwners, ownedProcessIds, processOwnerVariable } from "./test-process-cleanup.mjs";
 
 const owner = randomUUID();
 test("cleanup skips absent, reused and invalid groups without probing or signalling them", async () => {
@@ -17,7 +17,7 @@ test("cleanup skips absent, reused and invalid groups without probing or signall
     owns: async (pid) => { reads.push(pid); return false; },
     kill: () => assert.fail("unowned process signalled"),
   }), false);
-  assert.deepEqual(reads, [300, 300, 300]);
+  assert.deepEqual(reads, []);
 });
 
 test("cleanup rechecks ownership before KILL and preserves genuine permission failures", async () => {
@@ -25,6 +25,7 @@ test("cleanup rechecks ownership before KILL and preserves genuine permission fa
   const signals = [];
   await assert.rejects(cleanupOwnedProcesses(new Map([[200, owner]]), {
     table: async () => [{ pid: 201, groupId: 200, started: owned ? "old" : "new" }],
+    discover: async () => new Map([[201, owner]]),
     owns: async () => owned,
     kill: (pid, signal) => { signals.push([pid, signal]); owned = false; },
     delay: async () => {},
@@ -32,6 +33,7 @@ test("cleanup rechecks ownership before KILL and preserves genuine permission fa
   assert.deepEqual(signals, [[201, "SIGTERM"]]);
   await assert.rejects(cleanupOwnedProcesses(new Map([[200, owner]]), {
     table: async () => [{ pid: 201, groupId: 200 }], owns: async () => true,
+    discover: async () => new Map([[201, owner]]),
     kill: () => { throw Object.assign(new Error("denied"), { code: "EPERM" }); },
   }), { code: "EPERM" });
 });
@@ -143,4 +145,27 @@ test("cleanup retains an unmarked TERM-resistant child after its marked leader e
   const { processTable } = await import("./test-process-cleanup.mjs");
   assert.equal((await processTable()).some((entry) => entry.pid === pid), false);
   }
+});
+
+
+test("Linux ownership discovery uses exact NUL-delimited proc environments", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "filegrc-proc-owners-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const anotherOwner = randomUUID();
+  for (const [pid, environment] of [["200", `PATH=/bin\0${processOwnerVariable}=${owner}\0`], ["201", `OTHER=${processOwnerVariable}=${owner}\0`], ["202", `${processOwnerVariable}=${anotherOwner}\0`], ["203", `${processOwnerVariable}=${owner}-suffix\0`], ["1", `${processOwnerVariable}=${owner}\0`]]) {
+    await mkdir(join(directory, pid));
+    await writeFile(join(directory, pid, "environ"), environment);
+  }
+  await mkdir(join(directory, "204")); // Process disappeared before its env read.
+  assert.deepEqual(await discoverLinuxOwners(new Set([owner]), directory), new Map([[200, owner]]));
+});
+
+
+test("unknown inaccessible members of a reused group are never probed as owned", async () => {
+  assert.equal(await cleanupOwnedProcesses(new Map([[300, owner]]), {
+    table: async () => [{ pid: 300, groupId: 300, uid: 0, started: "unrelated" }],
+    discover: async () => new Map(),
+    owns: async () => { throw Object.assign(new Error("must not inspect unknown environment"), { code: "EACCES" }); },
+    kill: () => assert.fail("unrelated process signalled"),
+  }), false);
 });
