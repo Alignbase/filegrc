@@ -1,3 +1,4 @@
+import { cleanupOwnedProcesses, processOwnerVariable } from "./test-process-cleanup.mjs";
 import { createHash, randomUUID } from "node:crypto";
 import { execFile, fork } from "node:child_process";
 import { constants } from "node:fs";
@@ -215,9 +216,10 @@ export async function runTestSuite({
 }
 
 function createTestSupervisor({ runRoot }) {
+  const owner = randomUUID();
   const child = fork(workerPath, [], {
     detached: process.platform !== "win32",
-    env: { ...process.env, FILEGRC_TEST_RUN_ROOT: runRoot },
+    env: { ...process.env, FILEGRC_TEST_RUN_ROOT: runRoot, [processOwnerVariable]: owner },
     execArgv: [],
     stdio: ["ignore", "pipe", "pipe", "ipc"],
   });
@@ -227,7 +229,7 @@ function createTestSupervisor({ runRoot }) {
   child.once("exit", () => {
     running = false;
   });
-  return { child, processGroups: new Set(), alive: () => running };
+  return { child, owner, processGroups: new Map(), alive: () => running };
 }
 
 async function runSupervisorFile({ supervisor, name, cwd, file, timeoutMs }) {
@@ -243,7 +245,7 @@ async function runSupervisorFile({ supervisor, name, cwd, file, timeoutMs }) {
           Number.isInteger(message.pid) &&
           message.pid > 1
         ) {
-          supervisor.processGroups.add(message.pid);
+          supervisor.processGroups.set(message.pid, token);
           return;
         }
         if (
@@ -330,62 +332,25 @@ async function terminateSupervisorProcess(supervisor) {
     });
     return;
   }
-  const targets = await descendantProcessTargets(child.pid);
-  for (const groupId of supervisor.processGroups) targets.add(-groupId);
+  const groups = new Map(supervisor.processGroups);
+  groups.set(child.pid, supervisor.owner);
+  await cleanupOwnedProcesses(groups);
   supervisor.processGroups.clear();
-  for (const signal of ["SIGTERM", "SIGKILL"]) {
-    for (const target of targets) {
-      try {
-        process.kill(target, signal);
-      } catch (error) {
-        if (error.code !== "ESRCH") throw error;
-      }
-    }
-    if (signal === "SIGTERM") await delay(100);
-  }
-  await waitForProcessTargets(targets);
 }
 
 async function cleanupSupervisorChildGroups(supervisor) {
-  const trackedGroups = [...supervisor.processGroups];
-  supervisor.processGroups.clear();
+  const trackedGroups = [...supervisor.processGroups.keys()];
   if (process.platform === "win32") {
+    supervisor.processGroups.clear();
     await acknowledgeSupervisorCleanup(supervisor, trackedGroups);
     return false;
   }
-  const processes = await processTable();
-  const targets = new Set(
-    processes
-      .filter(
-        ({ pid, groupId }) =>
-          pid !== supervisor.child.pid && groupId === supervisor.child.pid,
-      )
-      .map(({ pid }) => pid),
-  );
-  for (const groupId of trackedGroups) {
-    try {
-      process.kill(-groupId, 0);
-      targets.add(-groupId);
-    } catch (error) {
-      if (error.code !== "ESRCH") throw error;
-    }
-  }
-  if (!targets.size) {
-    await acknowledgeSupervisorCleanup(supervisor, trackedGroups);
-    return false;
-  }
-  for (const signal of ["SIGTERM", "SIGKILL"]) {
-    for (const target of targets) {
-      try {
-        process.kill(target, signal);
-      } catch (error) {
-        if (error.code !== "ESRCH") throw error;
-      }
-    }
-    if (signal === "SIGTERM") await delay(100);
-  }
+  const groups = new Map(supervisor.processGroups);
+  groups.set(supervisor.child.pid, supervisor.owner);
+  const hadChildren = await cleanupOwnedProcesses(groups, { excludePid: supervisor.child.pid });
+  supervisor.processGroups.clear();
   await acknowledgeSupervisorCleanup(supervisor, trackedGroups);
-  return true;
+  return hadChildren;
 }
 
 async function acknowledgeSupervisorCleanup(supervisor, groupIds) {
@@ -423,59 +388,6 @@ async function acknowledgeSupervisorCleanup(supervisor, groupIds) {
       },
     );
   });
-}
-
-async function waitForProcessTargets(targets) {
-  const deadline = Date.now() + 2_000;
-  while (targets.size && Date.now() < deadline) {
-    for (const target of targets) {
-      try {
-        process.kill(target, 0);
-      } catch (error) {
-        if (error.code === "ESRCH") targets.delete(target);
-        else throw error;
-      }
-    }
-    if (targets.size) await delay(25);
-  }
-  if (targets.size) {
-    throw new Error("A test-file child process did not exit after cleanup.");
-  }
-}
-
-async function descendantProcessTargets(rootPid) {
-  const processes = await processTable();
-  const ownGroup = processes.find(({ pid }) => pid === process.pid)?.groupId;
-  const descendants = new Set([rootPid]);
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (const entry of processes) {
-      if (descendants.has(entry.parentPid) && !descendants.has(entry.pid)) {
-        descendants.add(entry.pid);
-        changed = true;
-      }
-    }
-  }
-  const groups = new Set(
-    processes
-      .filter(
-        ({ pid, groupId }) => descendants.has(pid) && groupId !== ownGroup,
-      )
-      .map(({ groupId }) => -groupId),
-  );
-  for (const pid of descendants) groups.add(pid);
-  return groups;
-}
-
-async function processTable() {
-  const { stdout } = await execFileAsync("ps", ["-axo", "pid=,ppid=,pgid="]);
-  return stdout
-    .trim()
-    .split("\n")
-    .map((line) => line.trim().split(/\s+/).map(Number))
-    .filter((parts) => parts.length === 3 && parts.every(Number.isInteger))
-    .map(([pid, parentPid, groupId]) => ({ pid, parentPid, groupId }));
 }
 
 async function anotherProcessIsWaiting() {
@@ -611,7 +523,7 @@ async function contentKey({ name, files, inputPaths, toolchainCommands }) {
   );
   const paths = [
     ...new Set(
-      [...inputPaths, workerPath, fileURLToPath(import.meta.url)].map((path) =>
+      [...inputPaths, workerPath, join(scriptsRoot, "test-process-cleanup.mjs"), fileURLToPath(import.meta.url)].map((path) =>
         resolve(path),
       ),
     ),
