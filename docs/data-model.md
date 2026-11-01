@@ -2443,7 +2443,7 @@ Timing: Collect real retained proof, then substantively review its source, scope
 When reviewing:
 
 - Collected means the artifact exists; Reviewed (stored as status verified) means a named Person actually checked it. Record that Person in verifierIds and the real review date in verifiedOn. The reviewer may be the collector. Do not infer review or independence from collection or fabricate review metadata.
-- Preserve any specifically required independent review, including configuration proof supporting Reporting Channel Set approval. Keep independent policy and risk-assessment approvals and the CPA firm’s examination separate from routine evidence review.
+- Preserve any specifically required independent review, including review of Reporting Channel Set configuration proof by someone independent of ongoing channel responsibility. That reviewer may also collect the proof. Keep independent policy and risk-assessment approvals and the CPA firm’s examination separate from routine evidence review.
 - For a signed management representation, choose "Signed Record" for "Artifact Kind" and enter "signed-management-representation" for "Artifact Subtype".
 - Enter when the representation was signed in "Business event time". Use "Collected On" for the date you received it.
 - For a final CPA report, choose "Third Party Report" for "Artifact Kind", enter "soc2-report" for "Artifact Subtype", and enter when the CPA firm issued it in "Source generation time".

@@ -905,7 +905,7 @@ test("reviews earlier fixed configuration against an unchanged proposal without 
     ...source, artifactKind: "configuration-export",
     collectedOn: "2021-07-31", verifiedOn: "2021-08-01",
     collectedAt: "2021-07-31T14:00:00Z", verifiedAt: "2021-08-01T15:00:00Z",
-    collectorIds: ["person-example"], verifierIds: ["person-independent-approver-example"],
+    collectorIds: ["person-independent-approver-example"], verifierIds: ["person-independent-approver-example"],
     coverage: { kind: "as-of", on: "2021-07-31" }
   };
   for (const field of ["generatedAt", "timezone", "queryDescription", "populationCount", "completenessValidation", "accuracyValidation"]) delete evidence[field];
@@ -922,6 +922,8 @@ test("reviews earlier fixed configuration against an unchanged proposal without 
     return reportingRouteApprovalEvidence(current, candidate, [evidence.id], decision, "UTC");
   };
   assert.equal((await support()).length, 1);
+  assert.equal((await support({ collectorIds: ["person-example"] })).length, 1);
+  assert.equal((await support({ collectorIds: ["person-example"], verifierIds: ["person-example"] })).length, 0);
   for (const patch of [
     { status: "collected" }, { verifierIds: ["person-example"] },
     { collectorIds: ["person-route-authority-successor"], verifierIds: ["person-example"] },

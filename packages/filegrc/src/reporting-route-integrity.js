@@ -192,10 +192,11 @@ export function reportingRouteApprovalEvidence(loaded, routeSet, evidenceIds, ap
       const committed = getFileObjectIdAtRevision(loaded.root, materialCommit, `data/${path}`);
       return committed && committed === getWorkingFileObjectId(loaded.root, `data/${path}`);
     })) return false;
-    // Review must concern an existing proposal and be independent of collection
-    // and ongoing channel responsibility. Date-only records retain day precision.
+    // Review must concern an existing proposal and be independent of ongoing
+    // channel responsibility. The reviewer may collect the proof themselves.
+    // Date-only records retain day precision.
     if (evidence.verifiedOn < proposalDate
-      || arrayValue(evidence.verifierIds).some((id) => authorityIds.has(id) || arrayValue(evidence.collectorIds).includes(id))) return false;
+      || arrayValue(evidence.verifierIds).some((id) => authorityIds.has(id))) return false;
     for (const field of ["collectedAt", "verifiedAt", "sourceGeneratedAt", "businessEventAt", "generatedAt"]) {
       if (evidence[field] && (!isRfc3339Timestamp(evidence[field]) || new Date(evidence[field]) > decision)) return false;
     }
