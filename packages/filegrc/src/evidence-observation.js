@@ -11,8 +11,9 @@ function canonical(value) {
   return Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonical(value[key])]));
 }
 
-// Finalized decisions bind the observation. A later first independent
-// verification may add only its own metadata, which then becomes immutable.
+// Finalized decisions bind the observation. A later first substantive review
+// may add only its actual metadata, which then becomes immutable. The collector
+// may review their own proof; scoped independence checks belong to the relying workflow.
 export function evidenceObservationMatches(original, current, loaded = null, reliedOnCommit = null) {
   if (!original || !current) return false;
   const index = loaded ? getDataRecordHistoryIndex(loaded.root) : null;
@@ -53,8 +54,7 @@ export function evidenceObservationMatches(original, current, loaded = null, rel
   if (!/^\d{4}-\d{2}-\d{2}$/.test(current.verifiedOn || "")
     || current.verifiedOn < original.collectedOn || current.verifiedOn > today
     || !Array.isArray(verifiers) || !verifiers.length
-    || verifiers.some((id) => (original.collectorIds || []).includes(id)
-      || !personWasActiveOn(context.resources.find((record) => record.id === id), current.verifiedOn))) return false;
+    || verifiers.some((id) => !personWasActiveOn(context.resources.find((record) => record.id === id), current.verifiedOn))) return false;
   if (current.verifiedAt && (!isRfc3339Timestamp(current.verifiedAt)
     || new Date(current.verifiedAt) > now
     || currentCalendarDate(timezone, new Date(current.verifiedAt)) !== current.verifiedOn

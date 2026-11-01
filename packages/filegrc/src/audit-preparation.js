@@ -1353,7 +1353,7 @@ function evidenceStage(audit, records, byId, model) {
       externalControls.length && controlsWithExternalEvidence.length === externalControls.length ? "complete" : externalControls.length ? "action" : "info",
       "Review Evidence Artifacts",
       externalControls.length
-        ? `${controlsWithExternalEvidence.length} of ${externalControls.length} selected controls that rely on external Components have verified Evidence Artifacts for the formal period. Confirm the source Component, date or period, control links, collector, verifier, and retained artifact or approved external reference.`
+        ? `${controlsWithExternalEvidence.length} of ${externalControls.length} selected controls that rely on external Components have reviewed Evidence Artifacts for the formal period. Confirm the source Component, date or period, control links, collector, actual reviewer, and retained artifact or approved external reference. The collector may also review unless independence is specifically required.`
         : "No selected controls require a separate Evidence Artifact.",
       externalEvidence[0] || { type: "evidence" }
     )
@@ -1404,8 +1404,8 @@ function evidenceStage(audit, records, byId, model) {
     const message = !sourceSystems.length
       ? `${source.description} Add the authoritative systems to Systems and assign these evidence source roles: ${(source.sourceKinds || []).map(displayValue).join(", ")}. ${source.timing}`
       : coveredControls.length !== relevantControls.length
-        ? `${sourceSystems.map((system) => system.title).join(", ")} ${sourceSystems.length === 1 ? "is" : "are"} cataloged, but verified source evidence covers ${coveredControls.length} of ${relevantControls.length} mapped controls. ${source.timing}`
-        : `${sourceSystems.map((system) => system.title).join(", ")} provide verified source evidence for ${relevantControls.length} mapped controls. ${source.timing}`;
+        ? `${sourceSystems.map((system) => system.title).join(", ")} ${sourceSystems.length === 1 ? "is" : "are"} cataloged, but reviewed source evidence covers ${coveredControls.length} of ${relevantControls.length} mapped controls. ${source.timing}`
+        : `${sourceSystems.map((system) => system.title).join(", ")} provide reviewed source evidence for ${relevantControls.length} mapped controls. ${source.timing}`;
     items.push(item(
       `source-${source.id}`,
       status,
@@ -1416,7 +1416,7 @@ function evidenceStage(audit, records, byId, model) {
         || { type: v4 ? "component" : "system" }
     ));
   }
-  return stage("evidence", "Audit Evidence", `Review both evidence paths: dated filegrc operating records and verified ${v4 ? "Evidence Artifacts from authoritative Components" : "External Evidence from authoritative systems"}. filegrc includes both in the audit packet.`, items);
+  return stage("evidence", "Audit Evidence", `Review both evidence paths: dated filegrc operating records and substantively reviewed ${v4 ? "Evidence Artifacts from authoritative Components" : "External Evidence from authoritative systems"}. filegrc includes both in the audit packet.`, items);
 }
 
 function populationsStage(audit, records, byId, model) {

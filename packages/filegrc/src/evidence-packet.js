@@ -1667,13 +1667,13 @@ function packetGaps({
     } else if (item.sourceCommit && !item.sourceCommitValid) {
       gaps.push(gap("error", "invalid-evidence-revision", `${item.title} names a source Git revision that is not available in this repository.`, item.id));
     }
-    if (item.status !== "verified") gaps.push(gap("error", "unverified-evidence", `${item.title} is ${item.status}, not verified.`, item.id));
+    if (item.status !== "verified") gaps.push(gap("error", "unverified-evidence", `${item.title} is ${item.status}, not substantively reviewed. Record the actual reviewer and review date; the reviewer may be the collector unless independence is specifically required.`, item.id));
     if (!item.collectorIds.length) gaps.push(gap("error", "evidence-collector-missing", `${item.title} does not identify who collected it.`, item.id));
     if (item.status === "verified" && (!item.verifierIds.length || !item.verifiedOn)) {
-      gaps.push(gap("error", "evidence-verification-missing", `${item.title} is marked verified without a verifier and verification date.`, item.id));
+      gaps.push(gap("error", "evidence-verification-missing", `${item.title} is marked reviewed without the actual reviewer and review date.`, item.id));
     }
     if (item.verifiedOn && item.collectedOn && item.verifiedOn < item.collectedOn) {
-      gaps.push(gap("error", "evidence-verification-sequence-invalid", `${item.title} was verified before it was collected.`, item.id));
+      gaps.push(gap("error", "evidence-verification-sequence-invalid", `${item.title} was reviewed before it was collected.`, item.id));
     }
     const hasManagementPurpose = item.auditIds.includes(audit?.id)
       || item.sourceResourceIds.some((id) => ["audit", "document", "vendor", "vendor-review"].includes(byId.get(id)?.type));
@@ -2250,6 +2250,8 @@ function packetMarkdown(packet) {
     "",
     readiness,
     "",
+    "Evidence review uses the existing `verified` status and `verifierIds`/`verifiedOn` metadata. A named authorized collector may also review unless independence is specifically required. The legacy CSV columns Verified On and Verifier IDs record actual review and do not assert independence. Collection alone does not establish review.",
+    "",
     "## Coverage",
     "",
     `- ${packet.summary.filegrcRecords} filegrc Evidence records`,
@@ -2297,7 +2299,7 @@ function packetHtml(packet) {
     ? `<table><thead><tr><th>Obligation</th><th>Allowed window</th><th>Status</th></tr></thead><tbody>${packet.obligations.map((item) => `<tr><td>${escapeHtml(item.title)}</td><td>${item.dueWindowStart} through ${item.dueWindowEnd}<br><small>Overdue ${item.overdueOn}</small></td><td>${escapeHtml(item.status)}</td></tr>`).join("")}</tbody></table>`
     : "<p>No recurring occurrences intersect this period.</p>";
   const evidence = packet.evidence.length
-    ? `<table><thead><tr><th>${artifactLabel}</th><th>Source and period</th><th>Controls</th><th>Files</th></tr></thead><tbody>${packet.evidence.map((item) => `<tr><td><a href="records/evidence/${encodeURIComponent(item.id)}.json">${escapeHtml(item.title)}</a><small>${escapeHtml(item.status)} · ${escapeHtml(item.artifactKind)}</small></td><td>${escapeHtml(item.sourceDescription)}<small>${escapeHtml(item.periodStart || item.collectedOn)}${item.periodEnd ? ` through ${escapeHtml(item.periodEnd)}` : ""}</small></td><td>${item.controlIds.map(escapeHtml).join("<br>") || "None"}</td><td>${item.filePaths.map((path) => `<a class="attachment" href="attachments/${path.split("/").map(encodeURIComponent).join("/")}">${escapeHtml(basename(path))}</a>`).join("") || "No fixed attachment"}</td></tr>`).join("")}</tbody></table>`
+    ? `<table><thead><tr><th>${artifactLabel}</th><th>Source and period</th><th>Controls</th><th>Files</th></tr></thead><tbody>${packet.evidence.map((item) => `<tr><td><a href="records/evidence/${encodeURIComponent(item.id)}.json">${escapeHtml(item.title)}</a><small>${escapeHtml(item.status === "verified" ? "Reviewed" : item.status)} · ${escapeHtml(item.artifactKind)}</small></td><td>${escapeHtml(item.sourceDescription)}<small>${escapeHtml(item.periodStart || item.collectedOn)}${item.periodEnd ? ` through ${escapeHtml(item.periodEnd)}` : ""}</small></td><td>${item.controlIds.map(escapeHtml).join("<br>") || "None"}</td><td>${item.filePaths.map((path) => `<a class="attachment" href="attachments/${path.split("/").map(encodeURIComponent).join("/")}">${escapeHtml(basename(path))}</a>`).join("") || "No fixed attachment"}</td></tr>`).join("")}</tbody></table>`
     : `<p>No ${artifactLabel} records were selected.</p>`;
   const packetSources = packet.sourceComponents || packet.sourceSystems || [];
   const sourceIndex = v4 ? "source-component-index.csv" : "source-system-index.csv";

@@ -66,6 +66,7 @@ export function buildAgentGuide(loaded, type, options = {}) {
       disjointFrom: field.disjointFrom ?? null,
       format: field.format ?? null,
       ...(field.description ? { description: field.description } : {}),
+      ...(field.valueLabels ? { valueLabels: field.valueLabels } : {}),
       ...(field.items ? { items: field.items } : {}),
       ...(field.objectType ? { objectType: field.objectType } : {}),
       ...(field.itemObjectType ? { itemObjectType: field.itemObjectType } : {})

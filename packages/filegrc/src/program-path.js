@@ -20,7 +20,7 @@ export const RESOURCE_INSTRUCTIONS = {
   document: "Complete the Document Markdown and intended values, assign an owner, and have a separate approver approve the exact revision.",
   control: "Open this Control’s next steps and inspect linked Policy, Obligations, Components, and operating records. Reuse existing workflows; fill only the implementation gap, and mark it Implemented when it works. Record actual operation separately.",
   "complementary-control": "Record each real customer or carved-out provider dependency, or confirm that the current scope has none.",
-  evidence: "Record a real artifact or approved reference, link its source and supported work, then have another person verify it.",
+  evidence: "Record a real artifact or approved reference, link its source and supported work, then record its actual substantive review. The authorized collector may review it unless a governing requirement specifically requires independence.",
   "risk-assessment": "Assess the in-scope service, record conclusions, and obtain an independent review.",
   risk: "Name the threat and impact, assign an owner, rate the risk, and record its response.",
   obligation: "Read the linked Policy and Control, fill the owner, cadence or trigger, deadline, and proof from those sources, then enable the rule when its Control is ready. Ask only for an unresolved management choice.",

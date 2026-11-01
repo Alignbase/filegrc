@@ -1761,11 +1761,11 @@ test("proper-cases enum displays and uses native required validation", () => {
   assert.match(APP_SCRIPT, /function properCase\(value\)/);
   assert.match(APP_SCRIPT, /esc\(properCase\(item\)\)/);
   assert.match(APP_SCRIPT, /field === "evidenceSourceKinds"\) return value\.map\(\(item\) => '<span class="tag choice-tag">' \+ esc\(properCase\(item\)\)/);
-  assert.match(APP_SCRIPT, /esc\(filterOptionLabel\(value\)\)/);
-  assert.match(APP_SCRIPT, /if \(definition\?\.type === "enum"\) return esc\(properCase\(value\)\)/);
-  assert.match(APP_SCRIPT, /status-' \+ esc\(String\(value\)\) \+ '">' \+ esc\(properCase\(value\)\)/);
+  assert.match(APP_SCRIPT, /esc\(filterOptionLabel\(value, type, name\)\)/);
+  assert.match(APP_SCRIPT, /if \(definition\?\.type === "enum"\) return esc\(choiceLabel\(type, field, value\)\)/);
+  assert.match(APP_SCRIPT, /status-' \+ esc\(String\(value\)\) \+ '">' \+ esc\(choiceLabel\(type, field, value\)\)/);
   assert.match(APP_SCRIPT, /status-' \+ status \+ '">' \+ esc\(properCase\(status\)\)/);
-  assert.match(APP_SCRIPT, /esc\(properCase\(item\.status\)\) \+ ' · ' \+ esc\(properCase\(item\.artifactKind\)\)/);
+  assert.match(APP_SCRIPT, /esc\(choiceLabel\("evidence", "status", item\.status\)\) \+ ' · ' \+ esc\(properCase\(item\.artifactKind\)\)/);
   assert.match(APP_SCRIPT, /esc\(properCase\(item\.severity\)\)/);
   assert.match(APP_SCRIPT, /<option value="">Not Set<\/option>/);
   assert.match(APP_SCRIPT, /labelledControl = labelledControl\.replace\([\s\S]*"<\$1 required"/);
