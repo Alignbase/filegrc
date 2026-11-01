@@ -3,7 +3,7 @@ import { reviewHistoricalWorkspace, reviewHistoryContext } from "./historical-wo
 import { reclassifyTemporalValidation } from "./temporal-diagnostics.js";
 import { workspaceEngineVersion, runtimeCompatibilityLine } from "./runtime-version.js";
 import { workflowSourceRuntimeIssues } from "./workflow-source-runtime.js";
-import { recordedCorrectionPopulation, currentSnapshotPopulation, samePopulation } from "./obligation-snapshot.js";
+import { recordedCorrectionPopulation, retainedCorrectionSource, currentSnapshotPopulation, samePopulation } from "./obligation-snapshot.js";
 import { populationCutoffDate, wholePeriodCoverage, requiredPeriodIsFinal, wholePeriodRuleWindowIssue, wholePeriodOccurrenceWindowIssue } from "./obligation-timing.js";
 import { occurrenceSelectorPopulation } from "./obligation-population.js";
 import { occurrenceCompletionContext } from "./obligation-completion-context.js";
@@ -659,6 +659,7 @@ function validateObligationOccurrence(record, model, resources, entries, root, w
   const loaded = { root, resources, model };
   const correctionPopulation = recordedCorrectionPopulation(loaded, record, rule);
   const snapshotPopulation = currentSnapshotPopulation(loaded, record, rule);
+  const retainedSource = retainedCorrectionSource(loaded, record);
   if (rule?.selector?.cutoff === "review-date") {
     if (!correctionPopulation && !snapshotPopulation && !record.collectionReviewId) diagnostics.push(error("missing-obligation-snapshot-source", path, "A review-date snapshot needs its exact committed scope, retained correction source or immutable temporal Collection Review."));
     if (!parseCalendarDate(record.membershipCutoffAt) || record.membershipCutoffAt < record.coverage?.startsOn
@@ -712,13 +713,13 @@ function validateObligationOccurrence(record, model, resources, entries, root, w
         "A historical occurrence must bind the exact immutable Collection Review revision, scope, cutoff coverage, and reviewed population."
       ));
     }
-  } else if (rule?.selector && record.membershipCutoffAt < asOf) {
+  } else if (rule?.selector && record.membershipCutoffAt < asOf && !retainedSource) {
     diagnostics.push(error(
       "missing-obligation-population-provenance",
       path,
       "A historical occurrence must bind an immutable Collection Review for its exact population cutoff."
     ));
-  } else if (rule?.selector) {
+  } else if (rule?.selector && !retainedSource) {
     const population = occurrenceSelectorPopulation({ root, resources, model }, record, rule.selector, byId.get(record.programId));
     const missingRecorded = population.memberIds.some((id) => !memberIds.includes(id));
     const unsupported = memberIds.some((id) => !population.expectedIds.includes(id));

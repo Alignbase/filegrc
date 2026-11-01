@@ -231,6 +231,29 @@ test("reviewed successor preserves the original window, historic proof and manag
   );
 });
 
+test("retained open correction sources stay valid after their former cutoff without weakening provenance", async (t) => {
+  const f = await fixture(t);
+  await snapshotSuccessor(f);
+  const loaded = await loadWorkspace(f.root);
+  const source = loaded.entries.find(({ record }) => record.id === f.occurrence.id);
+  const successor = loaded.entries.find(({ record }) => record.supersedesId === source.record.id);
+  const afterCutoff = new Date(`${addCalendarDays(source.record.membershipCutoffAt, 1)}T18:00:00Z`);
+  t.mock.timers.enable({ apis: ["Date"], now: afterCutoff });
+  const missingSource = async () => (await validateWorkspace(f.root)).diagnostics.some(
+    ({ code, path }) => code === "missing-obligation-population-provenance" && path.endsWith(`${source.record.id}.json`),
+  );
+  assert.equal(await missingSource(), false);
+
+  await writeJson(source.path, { ...source.record, title: "Altered retained source" });
+  assert.equal(await missingSource(), true, "A changed historical source must not inherit the successor's proof.");
+  await writeJson(source.path, source.record);
+  await writeJson(successor.path, { ...successor.record, populationSourceRevision: "0".repeat(40) });
+  assert.equal(await missingSource(), true, "An unsupported successor cannot excuse missing historical provenance.");
+  await writeJson(successor.path, successor.record);
+  await rm(successor.path);
+  assert.equal(await missingSource(), true, "Superseded status alone must not bypass the cutoff requirement.");
+});
+
 test("snapshot correction rejects changed duties, backdating, stale confirmation and whole-period downgrades", async (t) => {
   const f = await fixture(t);
   let p = await scaffoldObligationRuleCorrection(f.root, { ruleId: f.rule.id });
