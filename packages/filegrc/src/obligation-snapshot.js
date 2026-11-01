@@ -117,6 +117,17 @@ export function recordedCorrectionPopulation(loaded, occurrence, rule) {
   };
 }
 
+export function retainedCorrectionSource(loaded, occurrence) {
+  if (occurrence?.status !== "superseded") return false;
+  // The successor binds the unchanged, previously open source to Git history.
+  // Its former cutoff must not later require a review that never governed it.
+  return loaded.resources.some((candidate) => {
+    if (candidate.type !== "obligation-occurrence" || !candidate.populationSourceRevision) return false;
+    const rule = loaded.resources.find((record) => record.id === candidate.ruleId);
+    return recordedCorrectionPopulation(loaded, candidate, rule)?.source.id === occurrence.id;
+  });
+}
+
 export function currentSnapshotPopulation(loaded, occurrence, rule) {
   if (
     !loaded.root ||
