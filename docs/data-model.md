@@ -102,7 +102,7 @@ Operating record guides:
 - **Risks** (`risk`): Name the threat and impact, assign an owner, rate the risk, and record its response.
 - **Policy Events** (`obligation-event`): Record the actual event date and subject, then complete its linked Work Queue actions.
 - **Data requests** (`data-request`): Record the request scope, decision, response, and supporting evidence.
-- **Evidence Artifacts** (`evidence`): Record a real artifact or approved reference, link its source and supported work, then have another person verify it.
+- **Evidence Artifacts** (`evidence`): Record a real artifact or approved reference, link its source and supported work, then record its actual substantive review. The authorized collector may review it unless a governing requirement specifically requires independence.
 - **Policy reviews** (`policy-review`): Record the review date, reviewer, decision, and any required follow-up.
 - **Meetings** (`meeting`): Record attendees, decisions, minutes, and assigned follow-up for the meeting.
 - **Exceptions** (`exception`): Record the scope, owner, approval, and expiry before the departure begins.
@@ -2434,14 +2434,16 @@ Record Markdown: shown by default as an implicit companion file.
 
 A retained export, report, screenshot, signed record, fixed file, or approved external reference. FileGRC operating records may support an audit directly without wrappers.
 
-Instructions: Record a real artifact or approved reference, link its source and supported work, then have another person verify it.
+Instructions: Record a real artifact or approved reference, link its source and supported work, then record its actual substantive review. The authorized collector may review it unless a governing requirement specifically requires independence.
 
 Policy basis: The information security policy requires retained proof from authoritative Components when FileGRC operating records do not contain the full result.
 
-Timing: Create an Evidence Artifact only for a real retained artifact or approved reference. Identify its source Component or source records, Controls, collection and verification facts, coverage, revision, and classification.
+Timing: Collect real retained proof, then substantively review its source, scope, dates, completeness, accuracy and integrity before audit use. The authorized collector may also review and finalize it. A separate reviewer is required only by an applicable approved policy, Control, Commitment or legal requirement.
 
 When reviewing:
 
+- Collected means the artifact exists; Reviewed (stored as status verified) means a named Person actually checked it. Record that Person in verifierIds and the real review date in verifiedOn. The reviewer may be the collector. Do not infer review or independence from collection or fabricate review metadata.
+- Preserve any specifically required independent review, including configuration proof supporting Reporting Channel Set approval. Keep independent policy and risk-assessment approvals and the CPA firm’s examination separate from routine evidence review.
 - For a signed management representation, choose "Signed Record" for "Artifact Kind" and enter "signed-management-representation" for "Artifact Subtype".
 - Enter when the representation was signed in "Business event time". Use "Collected On" for the date you received it.
 - For a final CPA report, choose "Third Party Report" for "Artifact Kind", enter "soc2-report" for "Artifact Subtype", and enter when the CPA firm issued it in "Source generation time".
@@ -2472,8 +2474,8 @@ Markdown companions:
 | `controlIds` | array of id | No | References: `control` |
 | `auditIds` | array of id | No | References: `audit` |
 | `collectorIds` | array of id | Conditional | References: `person` Required when `status` is one of `collected`, `verified`, `withdrawn`. |
-| `verifierIds` | array of id | Conditional | References: `person` Required when `status` is `verified`. |
-| `verifiedOn` | date | Conditional | Required when `status` is `verified`. |
+| `verifierIds` | array of id | Conditional | Reviewed by References: `person` Required when `status` is `verified`. |
+| `verifiedOn` | date | Conditional | Reviewed on Required when `status` is `verified`. |
 | `expiresOn` | date | No |  |
 | `sourceResourceIds` | array of id | No | Relation group: `evidence-source-record`. References: `appointment`, `document`, `obligation`, `obligation-event`, `requirement`, `commitment`, `complementary-control`, `control`, `control-test`, `finding`, `exception`, `action-item`, `policy`, `policy-review`, `attestation`, `meeting`, `training`, `risk`, `risk-assessment`, `vendor`, `vendor-review`, `access-grant`, `access-review`, `vulnerability`, `vulnerability-scan`, `incident`, `exercise`, `backup-test`, `penetration-test`, `data-request`, `audit`, `audit-population`, `audit-request`, `source-coverage`, `control-activity`, `retention-schedule-item`, `requirement-mapping`, `obligation-rule`, `obligation-occurrence`, `reporting-route`, `reporting-route-set` |
 | `filePaths` | array of data-path | Conditional | Required when `sourceKind` is `file` and `status` is one of `collected`, `verified`, `withdrawn`. Allowed when `sourceKind` is one of `file`, `system`, `rendered-page`, `authored-record`, `component`. |
@@ -2486,7 +2488,7 @@ Markdown companions:
 | `businessEventAt` | timestamp | No | Business event time |
 | `sourceGeneratedAt` | timestamp | No | Source generation time |
 | `collectedAt` | timestamp | No | Collection time |
-| `verifiedAt` | timestamp | No | Verification time |
+| `verifiedAt` | timestamp | No | Review time |
 | `readinessTest` | boolean | No | Pre-period readiness test |
 | `coveredSourceFamilyIds` | array of string | No | Covered source families |
 | `retrievalMethodKey` | string (id) | No | Retrieval method key |

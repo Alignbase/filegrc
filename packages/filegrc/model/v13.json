@@ -1805,9 +1805,11 @@
       "description": "A retained export, report, screenshot, signed record, fixed file, or approved external reference. FileGRC operating records may support an audit directly without wrappers.",
       "guidance": {
         "policyBasis": "The information security policy requires retained proof from authoritative Components when FileGRC operating records do not contain the full result.",
-        "cadence": "Create an Evidence Artifact only for a real retained artifact or approved reference. Identify its source Component or source records, Controls, collection and verification facts, coverage, revision, and classification.",
+        "cadence": "Collect real retained proof, then substantively review its source, scope, dates, completeness, accuracy and integrity before audit use. The authorized collector may also review and finalize it. A separate reviewer is required only by an applicable approved policy, Control, Commitment or legal requirement.",
         "emptyState": "No Evidence Artifacts have been collected. Add one only when a real retained artifact or approved external reference exists.",
         "reviewPoints": [
+          "Collected means the artifact exists; Reviewed (stored as status verified) means a named Person actually checked it. Record that Person in verifierIds and the real review date in verifiedOn. The reviewer may be the collector. Do not infer review or independence from collection or fabricate review metadata.",
+          "Preserve any specifically required independent review, including configuration proof supporting Reporting Channel Set approval. Keep independent policy and risk-assessment approvals and the CPA firm\u2019s examination separate from routine evidence review.",
           "For a signed management representation, choose \"Signed Record\" for \"Artifact Kind\" and enter \"signed-management-representation\" for \"Artifact Subtype\".",
           "Enter when the representation was signed in \"Business event time\". Use \"Collected On\" for the date you received it.",
           "For a final CPA report, choose \"Third Party Report\" for \"Artifact Kind\", enter \"soc2-report\" for \"Artifact Subtype\", and enter when the CPA firm issued it in \"Source generation time\"."
@@ -1846,7 +1848,11 @@
             "verified",
             "withdrawn"
           ],
-          "filter": true
+          "filter": true,
+          "valueLabels": {
+            "verified": "Reviewed"
+          },
+          "description": "Draft is not collected. Collected proof is retained but not yet reviewed for audit use. Reviewed requires actual substantive review; it does not assert reviewer independence."
         },
         "artifactKind": {
           "type": "enum",
@@ -1994,7 +2000,9 @@
           },
           "visibleWhen": {
             "status": "verified"
-          }
+          },
+          "label": "Reviewed by",
+          "description": "Actual people who reviewed the evidence. May include its collector unless a governing requirement specifically requires independence."
         },
         "verifiedOn": {
           "type": "date",
@@ -2003,7 +2011,9 @@
           },
           "visibleWhen": {
             "status": "verified"
-          }
+          },
+          "label": "Reviewed on",
+          "description": "Actual substantive review date, on or after collection. Preserve historical verification dates."
         },
         "expiresOn": {
           "type": "date"
@@ -2126,7 +2136,7 @@
         },
         "verifiedAt": {
           "type": "timestamp",
-          "label": "Verification time"
+          "label": "Review time"
         },
         "readinessTest": {
           "type": "boolean",

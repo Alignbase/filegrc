@@ -2300,7 +2300,7 @@ function renderExternalEvidenceSection() {
   const recent = records.slice(0, 6).map((record) => (
     '<a href="#/resource/evidence/' + encodeURIComponent(record.id) + '"><span><strong>' + esc(record.title) + '</strong><small>' +
     esc(properCase(record.artifactKind || "Evidence")) + (record.collectedOn ? " · " + esc(formatCalendarDate(record.collectedOn)) : "") +
-    '</small></span><span class="badge status-' + esc(record.status || "draft") + '">' + esc(properCase(record.status || "draft")) + '</span></a>'
+    '</small></span><span class="badge status-' + esc(record.status || "draft") + '">' + esc(choiceLabel("evidence", "status", record.status || "draft")) + '</span></a>'
   )).join("");
   const createButton = state.readOnly
     ? ""
@@ -3385,7 +3385,7 @@ function renderAuditPacket(main, params = new URLSearchParams()) {
     ["Evidence Artifacts", evidence.length + " " + pluralize("record", evidence.length), "#/resources/evidence", evidence.length ? "good" : "neutral"],
     ["Policy work", queueState().counts.overdue ? queueState().counts.overdue + " overdue" : queueState().counts.blocked ? queueState().counts.blocked + " blocked" : queueState().counts.due ? queueState().counts.due + " due" : queueState().counts.proposed ? queueState().counts.proposed + " proposals" : "No work due", "#/stage/run", queueState().counts.overdue || queueState().counts.blocked ? "bad" : queueState().counts.due ? "warn" : queueState().counts.proposed ? "neutral" : "good"]
   ];
-  const evidencePaths = '<section class="panel audit-evidence-paths"><div class="panel-head"><div><p class="kicker">Evidence workflow</p><h3>Review both evidence paths</h3><p>Use the formal audit date or period. Each selected control may need one or both paths.</p></div></div><div class="audit-evidence-path-grid"><a href="#/stage/run"><span class="step-label">filegrc Evidence</span><h4>Review operating records</h4><p>Confirm the applicable Step 4 records are complete and linked to their Controls.</p></a><a href="#/resources/evidence"><span class="step-label">Evidence Artifacts</span><h4>Review imported or referenced proof</h4><p>Confirm each artifact is fixed, verified, and linked to its source Component and Controls.</p></a></div></section>';
+  const evidencePaths = '<section class="panel audit-evidence-paths"><div class="panel-head"><div><p class="kicker">Evidence workflow</p><h3>Review both evidence paths</h3><p>Use the formal audit date or period. Each selected control may need one or both paths.</p></div></div><div class="audit-evidence-path-grid"><a href="#/stage/run"><span class="step-label">filegrc Evidence</span><h4>Review operating records</h4><p>Confirm the applicable Step 4 records are complete and linked to their Controls.</p></a><a href="#/resources/evidence"><span class="step-label">Evidence Artifacts</span><h4>Review imported or referenced proof</h4><p>Confirm each artifact is fixed, substantively reviewed, and linked to its source Component and Controls. The collector may review it unless independence is specifically required.</p></a></div></section>';
   const dateFields = typeOne
     ? '<label><span>As-of date</span><input type="date" name="start" required value="' + esc(start) + '"></label>'
     : '<label><span>Period start</span><input type="date" name="start" required value="' + esc(start) + '"></label><label><span>Period end</span><input type="date" name="end" required value="' + esc(end) + '"></label>';
@@ -3483,7 +3483,7 @@ function renderPacketResults(container, result) {
     metric("Evidence Artifacts", packet.summary.evidence, packet.summary.policies + " policies · " + packet.summary.controls + " controls", "neutral") +
     metric("Review items", packet.summary.gaps, packet.summary.errors + " errors · " + packet.summary.warnings + " warnings", packet.summary.errors ? "bad" : packet.summary.warnings ? "warn" : "good") +
     '</section><section class="panel packet-output"><div class="panel-head"><div><p class="kicker">' + (ready ? "filegrc management checks passed" : "Draft packet") + '</p><h3>' + esc(result.output) + '</h3></div>' + (result.packetUrl ? '<a class="button primary" href="' + esc(result.packetUrl) + '" target="_blank" rel="noreferrer">Open index</a>' : "") + '</div><p>The directory contains ' + result.files.length + ' files. ' + (ready ? "Verify the checksums, reconcile external deliveries, and let the engagement team confirm evidence sufficiency." : "Do not deliver it until every error is resolved and each warning has been reviewed.") + '</p></section>' +
-    '<div class="dashboard-grid"><section class="panel span-2"><div class="panel-head"><h3>Coverage Gaps and Warnings</h3></div>' + (packet.gaps.length ? '<div class="packet-gaps">' + packet.gaps.map((gap) => '<div><span class="badge ' + (gap.severity === "error" ? "bad" : "warn") + '">' + esc(properCase(gap.severity)) + '</span><p>' + esc(gap.message) + '</p></div>').join("") + '</div>' : empty("No packet gaps were detected.")) + '</section><section class="panel"><div class="panel-head"><h3>Included filegrc Evidence</h3></div>' + (packet.filegrcRecords.length ? '<div class="packet-list">' + packet.filegrcRecords.slice(0, 12).map((item) => '<a href="#/resource/' + encodeURIComponent(item.type) + '/' + encodeURIComponent(item.id) + '"><strong>' + esc(item.title) + '</strong><small>' + esc(properCase(item.type)) + ' · ' + esc(item.primaryDate) + '</small></a>').join("") + '</div>' : empty("No filegrc Evidence matched.")) + '</section><section class="panel"><div class="panel-head"><h3>Included Evidence Artifacts</h3></div>' + (packet.evidence.length ? '<div class="packet-list">' + packet.evidence.slice(0, 12).map((item) => '<a href="#/resource/evidence/' + encodeURIComponent(item.id) + '"><strong>' + esc(item.title) + '</strong><small>' + esc(properCase(item.status)) + ' · ' + esc(properCase(item.artifactKind)) + '</small></a>').join("") + '</div>' : empty("No Evidence Artifacts matched.")) + '</section></div>';
+    '<div class="dashboard-grid"><section class="panel span-2"><div class="panel-head"><h3>Coverage Gaps and Warnings</h3></div>' + (packet.gaps.length ? '<div class="packet-gaps">' + packet.gaps.map((gap) => '<div><span class="badge ' + (gap.severity === "error" ? "bad" : "warn") + '">' + esc(properCase(gap.severity)) + '</span><p>' + esc(gap.message) + '</p></div>').join("") + '</div>' : empty("No packet gaps were detected.")) + '</section><section class="panel"><div class="panel-head"><h3>Included filegrc Evidence</h3></div>' + (packet.filegrcRecords.length ? '<div class="packet-list">' + packet.filegrcRecords.slice(0, 12).map((item) => '<a href="#/resource/' + encodeURIComponent(item.type) + '/' + encodeURIComponent(item.id) + '"><strong>' + esc(item.title) + '</strong><small>' + esc(properCase(item.type)) + ' · ' + esc(item.primaryDate) + '</small></a>').join("") + '</div>' : empty("No filegrc Evidence matched.")) + '</section><section class="panel"><div class="panel-head"><h3>Included Evidence Artifacts</h3></div>' + (packet.evidence.length ? '<div class="packet-list">' + packet.evidence.slice(0, 12).map((item) => '<a href="#/resource/evidence/' + encodeURIComponent(item.id) + '"><strong>' + esc(item.title) + '</strong><small>' + esc(choiceLabel("evidence", "status", item.status)) + ' · ' + esc(properCase(item.artifactKind)) + '</small></a>').join("") + '</div>' : empty("No Evidence Artifacts matched.")) + '</section></div>';
 }
 
 function obligationPreview(items) {
@@ -3596,7 +3596,7 @@ function renderList(main, type, params = new URLSearchParams()) {
     : "";
   const guideTrigger = '<button class="guide-trigger" id="resource-guide-trigger" type="button" aria-label="About ' + esc(definition.pluralTitle) + '" aria-haspopup="dialog" aria-controls="resource-guide" aria-expanded="false"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8"></circle><path d="M7.8 7.5a2.4 2.4 0 1 1 3.25 2.25c-.7.31-1.05.72-1.05 1.5v.25M10 14.5v.1"></path></svg></button>';
   const listTools = '<div class="list-tools list-header-tools"><label><span class="sr-only">Filter list</span><input id="list-search" type="search" placeholder="Filter ' + esc(definition.pluralTitle.toLowerCase()) + '"></label>' +
-    filters.map(({ name, label, values }) => '<select class="field-filter" data-field="' + esc(name) + '" aria-label="Filter by ' + esc(label.toLowerCase()) + '"><option value="">Any ' + esc(properCase(label)) + '</option>' + values.map((value) => '<option value="' + esc(value) + '">' + esc(filterOptionLabel(value)) + '</option>').join("") + '</select>').join("") + '<span id="result-count" aria-live="polite">' + entries.length + ' records</span>' + applicabilityButton + createButton + '</div>';
+    filters.map(({ name, label, values }) => '<select class="field-filter" data-field="' + esc(name) + '" aria-label="Filter by ' + esc(label.toLowerCase()) + '"><option value="">Any ' + esc(properCase(label)) + '</option>' + values.map((value) => '<option value="' + esc(value) + '">' + esc(filterOptionLabel(value, type, name)) + '</option>').join("") + '</select>').join("") + '<span id="result-count" aria-live="polite">' + entries.length + ' records</span>' + applicabilityButton + createButton + '</div>';
   const relatedGuidance = type === "document" && documentScope === "audit"
     ? listStage?.sections.flatMap((section) => section.relatedLinks || []).find((link) => link.type === "document" && link.instructions)
     : null;
@@ -5777,10 +5777,10 @@ function editorField(type, name, field, value, required, editing, oneOfRequired 
     : "";
   const relation = field.relation || state.model.relationGroups?.[field.relationGroup];
   const relationField = relation ? { ...field, relation } : field;
-  const help = name === "title"
+  const help = field.description || (name === "title"
     ? (editing ? "Renaming this record will not change its stable ID." : "A stable ID and file name will be generated from this value.")
     : relation ? relationHelp(relationField)
-    : "";
+    : "");
   let control;
   if (field.managed) {
     control = '<textarea readonly spellcheck="false" placeholder="Filled when approval is saved">' + esc(value === undefined ? "" : JSON.stringify(value, null, 2)) + '</textarea>';
@@ -5818,7 +5818,7 @@ function editorField(type, name, field, value, required, editing, oneOfRequired 
       : activationManagedType && name === "status" && value !== "active"
         ? values.filter((item) => item !== "active")
         : editableValues;
-    control = '<select><option value="">Select</option>' + availableValues.map((item) => '<option value="' + esc(item) + '" ' + (value === item ? "selected" : "") + '>' + esc(properCase(item)) + '</option>').join("") + '</select>';
+    control = '<select><option value="">Select</option>' + availableValues.map((item) => '<option value="' + esc(item) + '" ' + (value === item ? "selected" : "") + '>' + esc(choiceLabel(type, name, item)) + '</option>').join("") + '</select>';
     const enumHelp = activationManagedType && name === "status"
       ? type === "document"
         ? "Approval ends at Approved. Activate program Documents from Step 3 after implementation, and engagement Documents from Step 5 after their Audit facts are complete."
@@ -6606,7 +6606,8 @@ function fieldLabel(type, name) {
   if (markdown) return markdown.label;
   return fieldDefinition(type, name)?.label || humanize(name);
 }
-function filterOptionLabel(value) { return state.resources.find(({ record }) => record.id === value)?.record.title || properCase(value); }
+function choiceLabel(type, field, value) { return fieldDefinition(type, field)?.valueLabels?.[value] || properCase(value); }
+function filterOptionLabel(value, type, field) { return state.resources.find(({ record }) => record.id === value)?.record.title || choiceLabel(type, field, value); }
 function humanize(value) { return String(value).replace(/[-_]+/g, " ").replace(/Ids?$/, "").replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, (letter) => letter.toUpperCase()); }
 function properCase(value) { return humanize(value).replace(/\b[a-z]/g, (letter) => letter.toUpperCase()).replace(/\bSoc 2\b/g, "SOC 2"); }
 function displayStatus(record) {
@@ -6670,7 +6671,7 @@ function formatValue(value, field, type, compact = false, record = null) {
     const label = value === "active" ? "Enabled" : properCase(value);
     return '<span class="badge ' + (value === "active" ? "neutral" : "status-" + esc(String(value))) + '">' + esc(label) + '</span>';
   }
-  if (field === "status" || field.endsWith("Rating") || field === "severity" || field === "outcome") return '<span class="badge status-' + esc(String(value)) + '">' + esc(properCase(value)) + '</span>';
+  if (field === "status" || field.endsWith("Rating") || field === "severity" || field === "outcome") return '<span class="badge status-' + esc(String(value)) + '">' + esc(choiceLabel(type, field, value)) + '</span>';
   if (Array.isArray(value) && definition?.items === "object") return formatObjectArray(value, definition.itemObjectType, compact);
   if (Array.isArray(value)) {
     if (!value.length) return '<span class="muted">None</span>';
@@ -6685,7 +6686,7 @@ function formatValue(value, field, type, compact = false, record = null) {
   if (typeof value === "boolean") return value ? "Yes" : "No";
   const reference = state.resources.find(({ record }) => record.id === value);
   if (reference) return '<a class="tag relation" href="#/resource/' + encodeURIComponent(reference.record.type) + '/' + encodeURIComponent(reference.record.id) + '">' + esc(reference.record.title) + '</a>';
-  if (definition?.type === "enum") return esc(properCase(value));
+  if (definition?.type === "enum") return esc(choiceLabel(type, field, value));
   return esc(String(value));
 }
 

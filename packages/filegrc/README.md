@@ -194,3 +194,7 @@ proposals remain proposals and canceled/superseded records stay out of the board
 record lifecycle and existing owner/contact resolution remain authoritative.
 The full workflow's `workItems` retains its existing complete deadline listing.
 No deadline, completion, approval or assignee is inferred from displaying a card.
+
+## Evidence collection and review
+
+An authorized collector may also review and finalize an Evidence Artifact unless an applicable approved Policy, Control, Commitment or legal requirement specifically requires independence. Collected proof remains distinct from reviewed proof. The UI shows Reviewed for the existing `verified` status; `verifierIds`, `verifiedOn`, `verifiedAt` and the evidence-index CSV columns “Verifier IDs” and “Verified On” retain their technical names for compatibility and record the actual review, without asserting independence. Preserve existing verification history. Completed Vendor Reviews may use collected supporting proof; audit packet delivery still requires substantive artifact review. Independent policy approvals, risk-assessment reviews and CPA examination judgments remain separate.

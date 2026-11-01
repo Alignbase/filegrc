@@ -22,7 +22,7 @@ Select a framework containing every CC1.1 through CC9.2 Security Common Criterio
 Review both evidence paths for the exact formal date or period:
 
 1. FileGRC Evidence consists of dated Step 4 operating records. Complete the record, link it to the applicable Controls, record the result in its fields or Markdown, and link any external artifact needed to support that result.
-2. Evidence Artifacts are verified `evidence` records from source Components. Read each artifact and its linked records to check the source Component, date or period, Control links, collector, verifier, and fixed attachment or approved external reference. Ask only for a missing source fact or independent verification.
+2. Evidence Artifacts are substantively reviewed (`status: "verified"`) `evidence` records from source Components. Read each artifact and its linked records to check the source Component, date or period, Control links, collector, actual reviewer, and fixed attachment or approved external reference. Ask only for a missing source fact or substantive review. The collector may also review unless a governing requirement specifically requires independence. A completed Vendor Review is not unfinished solely because supporting Evidence has no separate verifier; audit packet review remains a distinct check.
 
 The packet compiles both paths. It includes FileGRC records and Markdown with Git history, plus Evidence Artifacts, retained attachments, delivery indexes, and checksums.
 
@@ -40,3 +40,5 @@ The signed representation requires verified `signed-record` Evidence with `artif
 At report draft and again before closure, record the subsequent-events review through the CPA report date. Name the actual reviewers, review on or after the through date, state management's conclusion, and link relevant incidents, findings, and Evidence.
 
 For each packet delivery, name the people who performed the least-disclosure review and approved delivery. Record the redaction decision, recipient, approved delivery System, exact packet Git revision, SHA-256 manifest checksum, chronological review, approval, and delivery dates, and the receipt reference. Final assertion and representation signers must have active authority Appointments linked from the Audit.
+
+Evidence review does not require a second person by default. The authorized collector may review and finalize proof. Preserve any specific independence requirement, prior verification metadata and approvals. Collection alone is not review, and a completed supplier assessment does not become unfinished solely because supporting proof lacks a separate verifier.

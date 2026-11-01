@@ -78,12 +78,12 @@ test("one additive verification preserves collected proof across finalized owner
   assert.ok((await integrity(f.root)).some(({ message }) => message.includes(f.proof.id)));
 });
 
-test("promotion rejects observation rewrites, conflicted verifiers and backdated or future verification", async (t) => {
+test("promotion rejects observation rewrites, invalid reviewers and backdated or future review", async (t) => {
   const f = await fixture(t);
   const variants = [
     { ...f.promote, title: "Different observation" }, { ...f.promote, sourceResourceIds: ["control-example"] },
     { ...f.promote, filePaths: [] }, { ...f.promote, collectorIds: ["person-independent-approver-example"] },
-    { ...f.promote, collectedOn: "2026-07-02" }, { ...f.promote, verifierIds: f.proof.collectorIds },
+    { ...f.promote, collectedOn: "2026-07-02" },
     { ...f.promote, verifierIds: [] }, { ...f.promote, verifierIds: ["appointment-example"] },
     { ...f.promote, verifiedOn: "2026-07-08" }, { ...f.promote, verifiedOn: "2999-01-01" },
     { ...f.promote, verifiedAt: "2999-01-01T12:00:00Z" }
@@ -144,4 +144,21 @@ test("historical promotion cannot become valid through time passing or later ver
   await writeJson(join(f.root, "data/people/person-added-after-verification.json"), { ...person, id: "person-added-after-verification" });
   commitAt("2026-07-04T12:00:00Z", "Add later person inventory");
   assert.equal(evidenceObservationMatches(f.proof, missingPerson, await loadWorkspace(f.root), reliedOn), false);
+});
+
+
+test("a collector may substantively review finalized proof without inventing another person", async (t) => {
+  const f = await fixture(t);
+  const before = await integrity(f.root);
+  const content = await readFile(f.markdown, "utf8");
+  const bytes = await readFile(join(f.root, "data", f.proof.filePaths[0]));
+  const reviewed = { ...f.promote, verifierIds: f.proof.collectorIds };
+  assert.equal(evidenceObservationMatches(f.proof, reviewed, await loadWorkspace(f.root)), true);
+  await updateResource(f.root, "evidence", f.proof.id, reviewed);
+  await commitWorkspaceFiles(f.root, "Record actual collector review of retained proof");
+  assert.deepEqual(await integrity(f.root), before);
+  assert.equal(await readFile(f.markdown, "utf8"), content);
+  assert.deepEqual(await readFile(join(f.root, "data", f.proof.filePaths[0])), bytes);
+  await assert.rejects(updateResource(f.root, "evidence", f.proof.id, { ...reviewed, verifierIds: ["person-independent-approver-example"] }), /immutable/);
+  await assert.rejects(updateResource(f.root, "evidence", f.proof.id, f.proof), /immutable/);
 });
