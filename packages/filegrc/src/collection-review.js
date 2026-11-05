@@ -1,7 +1,7 @@
 import { firstOperatingTasks } from "./operating-preparation.js";
 import { resourceIndex } from "./resource-index.js";
 import { scheduleSetIssues, scheduleReviewerConflicts } from "./schedule-set.js";
-import { calculationMemo } from "./calculation-cache.js";
+import { calculationMemo, withAssessmentCache } from "./calculation-cache.js";
 import { readFile } from "node:fs/promises";
 import { modelSupports } from "../model/index.js";
 import {
@@ -32,13 +32,13 @@ export function assessCollectionReviews(input, options = {}) {
     ? input
     : null;
   if (!loaded) throw new Error("Collection review assessment requires a loaded workspace.");
-  return Object.keys(loaded.model.collectionReviews || {})
-    .map((resourceType) => assessCollectionReview(loaded, resourceType, options));
+  return withAssessmentCache(() => Object.keys(loaded.model.collectionReviews || {})
+    .map((resourceType) => assessCollectionReview(loaded, resourceType, options)));
 }
 
 export function assessCollectionReview(loaded, resourceType, options = {}) {
-  return calculationMemo(loaded, "collection-review", [resourceType, options.programId], () =>
-    assessCollectionReviewUncached(loaded, resourceType, options));
+  return withAssessmentCache(() => calculationMemo(loaded, "collection-review", [resourceType, options.programId], () =>
+    assessCollectionReviewUncached(loaded, resourceType, options)));
 }
 
 function assessCollectionReviewUncached(loaded, resourceType, options) {
@@ -192,6 +192,10 @@ export function retentionScheduleIsAuthoritative(loaded, program) {
 }
 
 export async function scaffoldCollectionReview(input = process.cwd(), options = {}) {
+  return withAssessmentCache(() => scaffoldCollectionReviewUncached(input, options));
+}
+
+async function scaffoldCollectionReviewUncached(input, options) {
   const loaded = await loadWorkspace(input);
   const program = resolveProgram(loaded, options.programId);
   const resourceType = requiredType(loaded, options.resourceType);
@@ -240,6 +244,10 @@ export async function scaffoldCollectionReview(input = process.cwd(), options = 
 }
 
 export async function planCollectionReview(input = process.cwd(), options = {}) {
+  return withAssessmentCache(() => planCollectionReviewUncached(input, options));
+}
+
+async function planCollectionReviewUncached(input, options) {
   const loaded = await loadWorkspace(input);
   const program = resolveProgram(loaded, options.programId);
   const resourceType = requiredType(loaded, options.resourceType);

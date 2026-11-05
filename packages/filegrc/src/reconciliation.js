@@ -1,3 +1,4 @@
+import { withAssessmentCache } from "./calculation-cache.js";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -122,6 +123,10 @@ function allowsHistoricalTypeTransition(parentModel, currentModel, beforeType, a
 }
 
 export async function planReconciliation(input = process.cwd(), options = {}) {
+  return withAssessmentCache(() => planReconciliationUncached(input, options));
+}
+
+async function planReconciliationUncached(input, options) {
   const loaded = input?.entries && input?.resources && input?.model
     ? input
     : await loadWorkspace(input);

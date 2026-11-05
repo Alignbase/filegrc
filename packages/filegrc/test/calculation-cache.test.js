@@ -341,3 +341,75 @@ test("a completed app-state read cannot authorize a stale Markdown mutation", as
   }), /Content at data\/.* changed after you opened it/);
   assert.equal(await readFile(path, "utf8"), changed);
 });
+
+test("schedule commands and direct obligation planning bound shared reads and refresh source changes", async (context) => {
+  const { createRequire, syncBuiltinESMExports } = await import("node:module");
+  const { hasCalculationCache } = await import("../src/calculation-cache.js");
+  const { scaffoldCollectionReview, planCollectionReview, applyCollectionReview } = await import("../src/collection-review.js");
+  const { planObligations } = await import("../src/obligations.js");
+  const root = await mkdtemp(join(tmpdir(), "filegrc-schedule-cache-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeComprehensiveWorkspace(root, "13");
+  const initial = await loadWorkspace(root);
+  const obligation = initial.entries.find(({ record }) => record.type === "obligation");
+  const rule = initial.entries.find(({ record }) => record.type === "obligation-rule");
+  for (let index = 0; index < 20; index++) {
+    const id = `obligation-shared-${index}`, ruleId = `obligation-rule-shared-${index}`;
+    await writeFile(join(root, "data", dirname(obligation.relativePath), `${id}.json`), JSON.stringify({
+      ...obligation.record, id, ruleIds: [ruleId], activeRuleId: ruleId
+    }));
+    await writeFile(join(root, "data", dirname(rule.relativePath), `${ruleId}.json`), JSON.stringify({
+      ...rule.record, id: ruleId, obligationId: id
+    }));
+  }
+  const git = (...args) => execFileSync("git", args, { cwd: root, encoding: "utf8" });
+  git("init", "--initial-branch=main");
+  git("-c", "user.name=Test User", "-c", "user.email=test@example.test", "add", ".");
+  git("-c", "user.name=Test User", "-c", "user.email=test@example.test", "commit", "-m", "Create schedule review fixture");
+  const policy = initial.entries.find(({ record }) => record.type === "policy");
+  const path = join(initial.root, "data", policy.relativePath.replace(/\.json$/, ".md"));
+  const fs = createRequire(import.meta.url)("node:fs"), originalRead = fs.readFileSync;
+  let reads = 0;
+  fs.readFileSync = function (file, ...args) {
+    if (String(file) === path) {
+      reads++;
+      assert.equal(hasCalculationCache(), true, "shared source reads belong to this invocation");
+    }
+    return originalRead.call(this, file, ...args);
+  };
+  syncBuiltinESMExports();
+  try {
+    const scaffold = await scaffoldCollectionReview(root, { resourceType: "obligation" });
+    assert.equal(scaffold.scheduleDecisions.length, 21);
+    assert.ok(reads > 0 && reads <= 2, `schedule scaffold source reads: ${reads}`);
+    assert.equal(hasCalculationCache(), false);
+    const payload = { ...scaffold, rationale: "Reviewed every operating schedule and its allowed proof.",
+      reviewedByIds: ["person-independent-approver-example"],
+      reviewedOn: (await import("../src/time.js")).currentCalendarDate(initial.workspace.timezone),
+      scheduleDecisions: scaffold.scheduleDecisions.map((decision) => ({ ...decision, disposition: "adopted", rationale: "Reviewed the current operating rule." })) };
+    const beforePreview = reads;
+    const preview = await planCollectionReview(root, payload);
+    assert.equal(preview.resourceType, "obligation");
+    assert.ok(reads > beforePreview && reads - beforePreview <= 2, `schedule preview shared reads: ${reads - beforePreview}`);
+    const beforePlan = reads;
+    const loaded = await loadWorkspace(root);
+    planObligations(loaded.resources, { loaded, root, model: loaded.model, asOf: "2026-11-05" });
+    assert.ok(reads > beforePlan && reads - beforePlan <= 2, `planner shared reads: ${reads - beforePlan}`);
+    assert.equal(hasCalculationCache(), false);
+    // A new request must observe a Markdown edit even when handed the same loaded records.
+    const original = originalRead(path, "utf8");
+    await writeFile(path, `${original}\nChanged governing security procedure.\n`);
+    const beforeNext = reads;
+    planObligations(loaded.resources, { loaded, root, model: loaded.model, asOf: "2026-11-05" });
+    assert.ok(reads > beforeNext && reads - beforeNext <= 2);
+    const changed = await scaffoldCollectionReview(root, { resourceType: "obligation" });
+    assert.notEqual(changed.expectedCollectionRevision, scaffold.expectedCollectionRevision);
+    const stale = payload;
+    await assert.rejects(planCollectionReview(root, stale), /changed after it was displayed/);
+    await assert.rejects(applyCollectionReview(root, { ...stale, confirmed: true }), /changed after it was displayed/);
+    assert.equal(hasCalculationCache(), false, "failed approval must release the read cache");
+  } finally {
+    fs.readFileSync = originalRead;
+    syncBuiltinESMExports();
+  }
+});

@@ -1,3 +1,4 @@
+import { withAssessmentCache } from "./calculation-cache.js";
 import { registerGovernedLookup, governedContentBaseline, governedContentOperatingOrigin } from "./governed-content-baseline.js";
 import { recordedCorrectionPopulation, currentSnapshotPopulation, samePopulation } from "./obligation-snapshot.js";
 import { getGitSummary } from "./git.js";
@@ -73,6 +74,10 @@ const SCAFFOLDED_COMPLETION_TYPES = new Set([
 ]);
 
 export function planObligations(resources, options = {}) {
+  return withAssessmentCache(() => planObligationsUncached(resources, options));
+}
+
+function planObligationsUncached(resources, options) {
   const records = resources.map((item) => item?.record ?? item).filter(Boolean);
   const workspace = records.find((record) => record.type === "workspace");
   const programs = records.filter((record) => record.type === "program" && record.status !== "retired");
@@ -2191,6 +2196,10 @@ function completionFallsInWindow(record, window, timezone = "UTC", model) {
 }
 
 export function assessCompletionForObligation(record, obligation, loaded, options = {}) {
+  return withAssessmentCache(() => assessCompletionForObligationUncached(record, obligation, loaded, options));
+}
+
+function assessCompletionForObligationUncached(record, obligation, loaded, options) {
   if (loaded.historicalCommit) obligation = loaded.resources.find(({ id }) => id === obligation.id) || obligation;
   const activity = obligationActivity(loaded.model, obligation);
   const byId = registerGovernedLookup(new Map(loaded.resources.map((current) => [current.id, current])), loaded);

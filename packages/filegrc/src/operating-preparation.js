@@ -1,3 +1,4 @@
+import { withAssessmentCache } from "./calculation-cache.js";
 import { assessProgramBaseline, currentProcedureContent } from "./operating-baseline.js";
 import { selectScopedCollectionRecords } from "./collection-scope.js";
 import { readFile } from "node:fs/promises";
@@ -55,6 +56,10 @@ async function approvedProcedure(loaded, record, asOf, byId) {
 }
 
 export async function assessOperatingPreparation(loaded, program, selectedControls, asOf) {
+  return withAssessmentCache(() => assessOperatingPreparationUncached(loaded, program, selectedControls, asOf));
+}
+
+async function assessOperatingPreparationUncached(loaded, program, selectedControls, asOf) {
   const byId = new Map(loaded.resources.map((record) => [record.id, record]));
   const controls = selectedControls.filter(({ status }) => !["not-applicable", "retired"].includes(status));
   const sourceWork = new Map();
@@ -221,6 +226,10 @@ function schedulePreparationPurpose(model, activityType, declaredPurpose) {
 }
 
 export function firstOperatingTasks(loaded, program, options = {}) {
+  return withAssessmentCache(() => firstOperatingTasksUncached(loaded, program, options));
+}
+
+function firstOperatingTasksUncached(loaded, program, options) {
   const timezone = loaded.workspace?.timezone || "UTC";
   const asOf = options.effectiveOn || currentCalendarDate(timezone);
   const selectedIds = options.resourceIds ? new Set(options.resourceIds) : null;
