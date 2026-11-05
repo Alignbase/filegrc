@@ -532,7 +532,7 @@ test("creates a complete generic repository with one dependency", async (context
     mode: "calendar",
     unit: "month",
     interval: 1,
-    anchorDate: "2026-07-25"
+    anchorDate: "2026-07-01"
   });
   assert.equal(obligationsById.get("obligation-monthly-endpoint-protection-verification").activityType, "endpoint-verification");
   assert.equal(rulesByObligationId.get("obligation-quarterly-vulnerability-scan").recurrence.interval, 3);

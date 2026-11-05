@@ -1133,7 +1133,7 @@ export function baselineRecordFiles(effectiveDate, starter = "security") {
     obligationId: obligation.id,
     activityDefinitionVersion: "1",
     recurrence: obligation.recurrence.mode === "calendar"
-      ? { ...obligation.recurrence, anchorDate: effectiveDate }
+      ? { ...obligation.recurrence, anchorDate: starterCalendarAnchor(obligation.recurrence, effectiveDate) }
       : obligation.recurrence,
     ...(obligation.window ? { window: obligation.window } : {}),
     ...(starterObligationSelector(obligation.id) ? { selector: starterObligationSelector(obligation.id), completionCoverage: "point-in-time" } : {}),
@@ -1254,6 +1254,18 @@ function calendar(unit, interval, anchorDate) {
     interval,
     ...(anchorDate ? { anchorDate } : {})
   };
+}
+
+function starterCalendarAnchor(recurrence, effectiveDate) {
+  if (recurrence.anchorDate) return recurrence.anchorDate;
+  if (recurrence.anchorMode === "activation" || recurrence.unit !== "month") return effectiveDate;
+  if (recurrence.interval === 1) return `${effectiveDate.slice(0, 7)}-01`;
+  if (recurrence.interval === 3) {
+    const month = Number(effectiveDate.slice(5, 7));
+    const quarterMonth = Math.floor((month - 1) / 3) * 3 + 1;
+    return `${effectiveDate.slice(0, 4)}-${String(quarterMonth).padStart(2, "0")}-01`;
+  }
+  return effectiveDate;
 }
 
 function event(eventType) {
