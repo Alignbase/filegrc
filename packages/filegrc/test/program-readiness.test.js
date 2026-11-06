@@ -479,8 +479,9 @@ test("rolls collection proposals into one preparation unit and one review unit",
   assessment.recordProposals[1].complete = true;
   const prepared = collectionReviewReadinessItem(assessment);
   assert.deepEqual(prepared.progressUnits.map(({ status }) => status), ["complete", "action"]);
-  assert.match(prepared.commands[0], /review-collection component --scaffold > REVIEW\.json/);
-  assert.match(prepared.commands[2], /review-collection component REVIEW\.json --yes --json/);
+  assert.match(prepared.commands[0], /review-collection component.*--scaffold --output /);
+  assert.doesNotMatch(prepared.commands[0], /> REVIEW\.json/);
+  assert.match(prepared.commands[2], /review-collection component.*--yes --summary --json/);
   assert.deepEqual(prepared.destination, { kind: "collection-review", resourceType: "component" });
 
   assessment.complete = true;

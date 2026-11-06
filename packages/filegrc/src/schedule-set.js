@@ -17,7 +17,7 @@ export function scheduleSetRecords(loaded, program) {
 }
 
 export function scheduleSetInputs(loaded, program, options = {}) {
-  const obligations = scheduleSetRecords(loaded, program);
+  const obligations = scheduleSetRecords(loaded, program).filter(({ id }) => !options.obligationIds || options.obligationIds.includes(id));
   const ids = new Set(obligations.flatMap((record) => [record.id, ...(record.ruleIds || []),
     ...(record.controlIds || []), ...(record.policyIds || []), ...(record.scopeResourceIds || []), record.templateResourceId]).filter(Boolean));
   for (const rule of resourceIndex(loaded.resources).related("obligation-rule", "obligationId", obligations.map(({ id }) => id))) {
