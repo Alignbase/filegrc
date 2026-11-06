@@ -125,7 +125,8 @@ test("schedule-set review is exact, independent, and available through the CLI",
   assert.equal(scaffold.scheduleDecisions.length, scheduleSetRecords(loaded, program).length);
   const cli = fileURLToPath(new URL("../bin/filegrc.js", import.meta.url));
   const output = await executeCli(runCli, process.execPath, [cli, "review-collection", "obligation", "--program", program.id, "--scaffold", "--root", root]);
-  assert.deepEqual(JSON.parse(output.stdout), scaffold);
+  const { firstOperatingTasks: omittedOperatingPreview, ...compactScaffold } = scaffold;
+  assert.deepEqual(JSON.parse(output.stdout), compactScaffold);
   const payload = { ...scaffold, reviewedByIds: ["person-independent-approver-example"], reviewedOn: currentCalendarDate(loaded.workspace.timezone), rationale: "Reviewed the complete schedule set.", scheduleDecisions: scaffold.scheduleDecisions.map((decision) => ({ ...decision, disposition: "adopted", rationale: "Required for the selected Control." })) };
   await assert.rejects(planCollectionReview(root, { ...payload, reviewedByIds: ["person-example"] }), /independent/);
   const plan = await planCollectionReview(root, payload);

@@ -1,3 +1,4 @@
+import { collectionReviewCommands } from "./collection-review-handoff.js";
 import { modelSupports } from "../model/index.js";
 import { createResourceId } from "./id.js";
 import { markdownEntries } from "./resource-markdown.js";
@@ -119,7 +120,9 @@ export function buildAgentGuide(loaded, type, options = {}) {
             status: collectionReview.status,
             recordCount: collectionReview.recordCount,
             ...(collectionReview.changesSinceReview ? { changesSinceReview: collectionReview.changesSinceReview } : {}),
-            command: `npx filegrc review-collection ${type} --scaffold`
+            ...(type === "obligation" ? { reviewInstructions: "The scaffold includes a compact scheduleReview packet with changed rules and before/after timing. Fill only decisions requiring review, explicitly confirm unchanged dispositions against the bound prior review, and supply fresh reviewer, date and conclusion. Use --output to create the private payload outside the checkout; generated preview/save commands use --summary for compact results. Add --include-operating-preview for detailed first-work proof." } : {}),
+            command: collectionReviewCommands(collectionReview)[0],
+            commands: collectionReviewCommands(collectionReview)
           }
         : null
     },

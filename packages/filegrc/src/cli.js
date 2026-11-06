@@ -1,3 +1,4 @@
+import { writeReviewPayload, summarizeCollectionReview } from "./collection-review-handoff.js";
 import { scaffoldPeriodImpactReview, previewPeriodImpactReview, recordPeriodImpactReview } from "./period-impact.js";
 import { scaffoldObligationRuleWithdrawal, previewObligationRuleWithdrawal, withdrawObligationRule } from "./obligation-rule-withdrawal.js";
 import { planWorkQueue, sourceDeadlineValidation } from "./work-queue.js";
@@ -98,6 +99,7 @@ import {
 } from "./workflow.js";
 
 const BOOLEAN_FLAGS = new Set([
+  "include-operating-preview",
   "allow-non-authoritative-writes",
   "apply",
   "check-docs",
@@ -836,21 +838,28 @@ export async function runCli(argv = process.argv.slice(2)) {
   if (command === "review-collection") {
     const resourceType = positionals[0] || flags.type;
     if (flags.scaffold) {
-      const result = await scaffoldCollectionReview(root, { resourceType, programId: flags.program });
-      console.log(JSON.stringify(result, null, 2));
+      const result = await scaffoldCollectionReview(root, { resourceType, programId: flags.program, includeOperatingPreview: flags["include-operating-preview"] === true });
+      if (resourceType === "obligation" && result.scheduleReview) {
+        const unchanged = new Set(result.scheduleReview.rows.filter(({ state }) => state === "unchanged").map(({ obligationId }) => obligationId));
+        result.scheduleDecisions = result.scheduleDecisions.filter(({ obligationId }) => !unchanged.has(obligationId));
+      }
+      const outputPath = flags.output ? await writeReviewPayload(root, flags.output, result) : null;
+      console.log(JSON.stringify(outputPath ? { outputPath, ...result } : result, null, 2));
       return result;
     }
     const payload = await readSetupPayload(positionals[1]);
     const options = {
       ...payload,
       resourceType: resourceType || payload.resourceType,
+      includeOperatingPreview: flags["include-operating-preview"] === true,
       programId: flags.program || payload.programId,
       confirmed: flags.yes === true
     };
     const result = flags.preview
       ? await planCollectionReview(root, options)
       : await withWorkflowDelta(root, () => applyCollectionReview(root, options));
-    if (flags.json) console.log(JSON.stringify(result, null, 2));
+    const output = flags.summary ? summarizeCollectionReview(result, flags.preview === true) : result;
+    if (flags.json || flags.summary) console.log(JSON.stringify(output, null, 2));
     else if (flags.preview) { console.log(`Collection review preview: ${result.assessment.configuration.title}.`); printOperatingPreview(result.firstOperatingTasks); }
     else console.log(`Confirmed ${result.assessment.configuration.title}.`);
     return result;
@@ -1515,7 +1524,7 @@ Usage:
   filegrc external-reviewer-setup <reviewer.json|-> [--preview|--yes] [--json]
   filegrc next-audit-cycle <prior-audit-id> [cycle.json|-] --start YYYY-MM-DD --end YYYY-MM-DD [--preview|--yes] [--json]
   filegrc review-applicability [--scaffold --type requirement|control|commitment|complementary-control] [decisions.json|-] [--preview|--yes] [--json]
-  filegrc review-collection <resource-type> [--scaffold | review.json|-] [--preview|--yes] [--json]
+  filegrc review-collection <resource-type> [--scaffold | review.json|-] [--preview|--yes] [--include-operating-preview] [--output path] [--summary] [--json]
   filegrc activate-policies [--scaffold | activation.json|-] [--effective-on YYYY-MM-DD] [--preview|--yes] [--json]
   filegrc activate-content [--scaffold | activation.json|-] [--program id] [--activated-by person-id] [--activated-on YYYY-MM-DD] [--effective-on YYYY-MM-DD] [--preview|--yes] [--json]
   filegrc activate-documents [--scaffold | activation.json|-] [--program id | --audit id] [--activated-by person-id] [--activated-on YYYY-MM-DD] [--effective-on YYYY-MM-DD] [--preview|--yes] [--json]

@@ -377,6 +377,7 @@ function serializeCollectionReviewAssessment(assessment) {
     ...(assessment.resourceType === "obligation" ? { recordIds: assessment.records.map(({ id }) => id) } : {}),
     review: assessment.review,
     reviewRevision: assessment.reviewRevision,
+    ...(assessment.scheduleReview ? { scheduleReview: assessment.scheduleReview } : {}),
     collectionRevision: assessment.collectionRevision,
     status: assessment.status,
     complete: assessment.complete,

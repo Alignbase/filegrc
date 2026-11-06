@@ -1,3 +1,4 @@
+import { collectionReviewCommands } from "./collection-review-handoff.js";
 import { governedMarkdownSource, registerGovernedLookup, governedContentBaseline, pendingGovernedSuccessor, governedApprovalContentMatches } from "./governed-content-baseline.js";
 import { planWorkQueue, sourceDeadlineValidation } from "./work-queue.js";
 import { withAssessmentCache } from "./calculation-cache.js";
@@ -175,11 +176,7 @@ async function assessProgramReadinessUncached(input, options = {}) {
     ...collectionReviewReadinessItem(assessment),
     title: "Approve the Program schedule set",
     programId: program.id,
-    commands: [
-      `npx filegrc review-collection obligation --program ${shellArgument(program.id)} --scaffold > REVIEW.json`,
-      `npx filegrc review-collection obligation --program ${shellArgument(program.id)} REVIEW.json --preview --json`,
-      `npx filegrc review-collection obligation --program ${shellArgument(program.id)} REVIEW.json --yes --json`
-    ]
+    commands: collectionReviewCommands(assessment, shellArgument)
   })));
   controlStage.items.unshift(...collectionReviews
     .filter(({ resourceType }) => resourceType === "complementary-control")
@@ -946,11 +943,7 @@ export function collectionReviewReadinessItem(assessment) {
             ]
           : approvalAction
             ? approvalAction.commands
-            : [
-              `npx filegrc review-collection ${assessment.resourceType} --scaffold > REVIEW.json`,
-              `npx filegrc review-collection ${assessment.resourceType} REVIEW.json --preview --json`,
-              `npx filegrc review-collection ${assessment.resourceType} REVIEW.json --yes --json`
-            ]
+            : collectionReviewCommands(assessment, shellArgument)
     }
   );
 }
@@ -991,7 +984,7 @@ function collectionApprovalIssueAction(assessment) {
     title: "Review similar Information Types",
     resourceType: "information-type",
     reviewCollection: true,
-    commands: ["npx filegrc list information-type --workflow --json", "npx filegrc review-collection information-type --scaffold > REVIEW.json", "npx filegrc review-collection information-type REVIEW.json --preview --json", "npx filegrc review-collection information-type REVIEW.json --yes --json"]
+    commands: ["npx filegrc list information-type --workflow --json", ...collectionReviewCommands({ resourceType: "information-type", programId: assessment.programId }, shellArgument)]
   };
   return {
     title: "Complete retention schedule coverage",

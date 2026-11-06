@@ -2031,7 +2031,7 @@ test("keeps operation status explicit and stage instructions available on demand
   assert.match(APP_SCRIPT, /FileGRC will ask for another review/);
   assert.match(APP_SCRIPT, /priorDecisionStillValid[\s\S]*priorDecision !== "zero-population"[\s\S]*priorDecision !== "complete"/);
   assert.match(APP_SCRIPT, /priorAuthoritativeSourceActive[\s\S]*systems\.some[\s\S]*preservedAuthoritativeSourceId/);
-  assert.match(APP_SCRIPT, /name="reviewedOn" type="date" required value="' \+ esc\(currentDate\(\)\) \+ '">/);
+  assert.match(APP_SCRIPT, /name="reviewedOn" type="date" required value="">/);
   assert.doesNotMatch(APP_SCRIPT, /assessment\.review\?\.reviewedOn \|\| currentDate\(\)/);
   assert.match(APP_SCRIPT, /" Note: " \+ esc\(assessment\.review\.rationale\)/);
   assert.match(APP_SCRIPT, /scheduleReview \? "Show approved revision" : "Show scope confirmation"/);
@@ -3112,4 +3112,52 @@ test("browser pending reads keep waiting for actual state and stop on errors or 
   const bounded = harness([pending()], () => clock++ === 0 ? 0 : 135_000);
   await assert.rejects(bounded.load("/api/state/repository?token=token-a"), /taking too long/);
   assert.equal(bounded.calls(), 1);
+});
+
+
+test("schedule review timing identifies the timezone beside before and after cutoffs", () => {
+  const source = APP_SCRIPT.slice(APP_SCRIPT.indexOf("function scheduleTimingHtml"), APP_SCRIPT.indexOf("function scheduleChangeContextHtml"));
+  const render = vm.runInNewContext(source + "\nscheduleTimingHtml", { esc: String });
+  const facts = { recurrence: { mode: "calendar", unit: "month", interval: 3, anchorDate: "2027-01-01" },
+    nextWindow: { dueWindowStart: "2027-01-01", dueWindowEnd: "2027-03-31", overdueOn: "2027-04-01" } };
+  const prior = render({ ...facts, timezone: "America/Chicago" });
+  const current = render({ ...facts, timezone: "UTC" });
+  assert.match(prior, /Timezone: <strong>America\/Chicago<\/strong>/);
+  assert.match(current, /Timezone: <strong>UTC<\/strong>/);
+  assert.match(prior, /2027-03-31/);
+  assert.match(current, /2027-03-31/);
+});
+
+
+test("direct collection review intent survives either lazy-state order and is consumed only once", () => {
+  const source = APP_SCRIPT.slice(APP_SCRIPT.indexOf("function openLinkedCollectionReview"), APP_SCRIPT.indexOf("function scheduleTimingHtml"));
+  for (const order of ["program-first", "repository-first"]) {
+    const state = { readOnly: true };
+    let available = false, open = false, clicks = 0, routeType = "obligation";
+    let params = new URLSearchParams("review-collection=1&q=review");
+    const button = { disabled: false, click() { clicks++; open = true; } };
+    const context = { state, URLSearchParams, encodeURIComponent,
+      parseRoute: () => ({ name: "list", type: routeType, params }),
+      root: { querySelector: () => available ? button : null },
+      document: { querySelector: () => open ? {} : null },
+      history: { replaceState(_state, _title, url) { params = new URLSearchParams(url.split("?")[1] || ""); } } };
+    const attempt = vm.runInNewContext(source + "\nopenLinkedCollectionReview", context);
+    if (order === "program-first") available = true;
+    else state.readOnly = false;
+    assert.equal(attempt("obligation"), false, order);
+    assert.equal(params.get("review-collection"), "1", order);
+    available = true; state.readOnly = false;
+    assert.equal(attempt("obligation"), true, order);
+    assert.equal(clicks, 1);
+    assert.equal(params.get("review-collection"), null);
+    assert.equal(params.get("q"), "review");
+    open = false; // Cancelling the opened review cannot reopen it on a later render.
+    assert.equal(attempt("obligation"), false);
+    assert.equal(clicks, 1);
+    params = new URLSearchParams("review-collection=1"); routeType = "person";
+    assert.equal(attempt("obligation"), false, "a real navigation cancels the old collection intent");
+    routeType = "obligation"; state.readOnly = true;
+    assert.equal(attempt("obligation"), false, "a permanently read-only checkout never opens or writes");
+    assert.equal(clicks, 1);
+  }
 });

@@ -241,7 +241,8 @@ function calculateCollectionRevisionUncached(loaded, resourceType, options, lega
     legacyRetentionSourceBasis: options.legacyRetentionSourceBasis,
     legacyGovernedLifecycleMetadata: options.legacyGovernedLifecycleMetadata,
     retentionRuleSemantics: options.retentionRuleSemantics,
-    legacyScheduleApprovalDates: options.legacyScheduleApprovalDates
+    legacyScheduleApprovalDates: options.legacyScheduleApprovalDates,
+    obligationIds: options.obligationIds
   })
     .map((input) => [input.record.id, input]));
   const authoritativeSource = loaded.resources.find(({ id }) => id === options.authoritativeSourceId);

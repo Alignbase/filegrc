@@ -1768,9 +1768,10 @@ test("scaffolds every collection re-review with today's workspace date and prior
       programId: "program-example",
       now: "2026-09-01T00:30:00.000Z"
     });
-    assert.equal(scaffold.reviewedOn, "2026-08-31", resourceType);
-    assert.deepEqual(scaffold.reviewedByIds, ["person-independent-approver-example"], resourceType);
-    assert.equal(scaffold.rationale, `Prior notes for ${resourceType}.`, resourceType);
+    assert.equal(scaffold.reviewedOn, null, resourceType);
+    assert.deepEqual(scaffold.reviewedByIds, [], resourceType);
+    assert.equal(scaffold.rationale, null, resourceType);
+    assert.equal(scaffold.priorReview.rationale, `Prior notes for ${resourceType}.`, resourceType);
     if (resourceType === "vendor") {
       assert.equal(scaffold.decision, "externally-managed");
       assert.equal(scaffold.authoritativeComponentId, "component-example");
@@ -1956,4 +1957,24 @@ test("exposes collection confirmation preview and apply through the browser API"
   });
   assert.equal(standardResponse.status, 201);
   assert.equal((await standardResponse.json()).state.collectionReviews.person.status, "current");
+});
+
+
+test("dated planned review prompts never become prior approval context", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "filegrc-draft-review-context-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await makeComprehensiveWorkspace(root, "13");
+  const loaded = await loadWorkspace(root);
+  const entry = loaded.entries.find(({ record }) => record.type === "collection-review");
+  for (const resourceType of ["person", "obligation"]) {
+    await writeFile(entry.path, JSON.stringify({ ...entry.record, resourceType, status: "planned", reviewedOn: "2026-01-15",
+      reviewedByIds: ["person-independent-approver-example"], rationale: "Unfinished draft notes, not a management review." }));
+    const scaffold = await scaffoldCollectionReview(root, { resourceType, includeOperatingPreview: false });
+    assert.equal(scaffold.priorReview, undefined);
+    assert.equal(scaffold.scheduleReview?.priorReview, undefined);
+    assert.equal(scaffold.scheduleReview?.historyAvailable || false, false);
+    assert.equal(scaffold.rationale, null);
+    assert.deepEqual(scaffold.reviewedByIds, []);
+    assert.equal(scaffold.reviewedOn, null);
+  }
 });

@@ -64,6 +64,9 @@ export function collectionChangesSinceReview(loaded, resourceType, review, progr
         title: record.title || id,
         kind: !prior ? "added" : !current ? "removed" : "changed",
         fields,
+        ...(prior && current ? { fieldChanges: [...new Set([...Object.keys(prior.value || {}), ...Object.keys(current.value || {})])]
+          .filter((field) => !sameValue(prior.value?.[field], current.value?.[field]))
+          .map((field) => ({ field, before: prior.value?.[field] ?? null, after: current.value?.[field] ?? null })) } : {}),
         ...(contentChanged ? { contentChanged: true } : {}),
         ...(membershipChanged ? { membershipChanged: true } : {})
       });
