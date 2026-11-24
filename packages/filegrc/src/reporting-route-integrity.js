@@ -12,6 +12,8 @@ import { coverageContains } from "./coverage.js";
 import { appointmentWasAuthorizedOn } from "./soc2.js";
 import { isRfc3339Timestamp, localDateTimeValue, timestampFromLocalDateTime } from "./time.js";
 import { calculateRevision } from "./revisions.js";
+import { reviewHistoricalWorkspace, reviewHistoryContext } from "./historical-workspace.js";
+import { calculationMemo } from "./calculation-cache.js";
 
 const CONTEMPORANEOUS_COMMIT_WINDOW_MS = 86_400_000;
 const REPORTING_ROUTE_REQUIREMENT_SOURCE_TYPES = new Set(["policy", "document", "commitment", "risk"]);
@@ -773,6 +775,15 @@ export function reportingRouteProposalAssessmentTime(timestamp, assessmentAt = n
 
 export function recordsAtRevision(loaded, commit) {
   const index = getDataRecordHistoryIndex(loaded.root);
+  if (index.available && index.parentsByCommit.has(commit)) {
+    const snapshot = reviewHistoricalWorkspace(reviewHistoryContext(loaded.root, loaded), commit);
+    if (snapshot) {
+      const sources = calculationMemo(snapshot, "historical-record-sources", [], () => new Map(snapshot.entries.map(entry => [entry.record.id, entry.source])));
+      // Preserve the identity index's ordering and return independent mutable
+      // records, as the individual historical-file reader does below.
+      return [...index.historiesById.keys()].filter(id => sources.has(id)).map(id => JSON.parse(sources.get(id)));
+    }
+  }
   const records = [];
   for (const [id, history] of index.historiesById) {
     const identity = history.find(({ commit: changedAt }) => isDataHistoryAncestor(loaded, changedAt, commit));

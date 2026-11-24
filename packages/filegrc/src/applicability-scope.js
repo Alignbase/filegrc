@@ -1,7 +1,7 @@
 import { resourceIndex } from "./resource-index.js";
 import { calculationMemo } from "./calculation-cache.js";
 import { CALCULATED_REVISION_FIELDS, CALCULATED_REVISION_MAP_FIELDS, calculateRevision, canonicalCalculatedRevision, revisionsMatch } from "./revisions.js";
-import { reviewCommitsChangingTypes, reviewHistoricalWorkspace, reviewHistoryCommits, reviewHistoryContext } from "./historical-workspace.js";
+import { prioritizeReviewCommits, reviewCommitsChangingTypes, reviewHistoricalWorkspace, reviewHistoryCommits, reviewHistoryContext } from "./historical-workspace.js";
 import { loadModel } from "../model/index.js";
 
 const scopeSourceTypes = new Set([
@@ -388,7 +388,7 @@ function historicalScopedReviewMatches(stored, record, program, resources, model
   const commits = context.applicabilityCommits ||= index?.available
     ? reviewCommitsChangingTypes(index, scopeSourceTypes)
     : reviewHistoryCommits(context);
-  for (const commit of [...commits].reverse()) {
+  for (const commit of prioritizeReviewCommits(context, "applicability-scope", stored, [...commits].reverse())) {
     const snapshot = reviewHistoricalWorkspace(context, commit);
     if (!snapshot) continue;
     const historicalResources = snapshot.resources;

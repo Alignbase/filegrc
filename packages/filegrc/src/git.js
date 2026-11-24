@@ -513,7 +513,7 @@ export function getDataRecordHistoryIndex(input, options = {}) {
           relativePath: path,
         })),
         {
-          batchSize: 512,
+          batchSize: DATA_HISTORY_MAX_SOURCE_REQUESTS,
           maxRequests: DATA_HISTORY_MAX_SOURCE_REQUESTS,
           maxTotalBytes: DATA_HISTORY_MAX_SOURCE_BYTES,
           deadline,
@@ -594,6 +594,7 @@ export function getDataRecordHistoryIndex(input, options = {}) {
   // Classify files against the complete owning state at each revision. A
   // current attachment declaration must never hide an earlier malformed record.
   const states = new Map();
+  const attachmentSources = new Map();
   const remainingChildren = new Map();
   for (const parents of parentsByCommit.values()) {
     const parent = parents[0];
@@ -610,7 +611,7 @@ export function getDataRecordHistoryIndex(input, options = {}) {
     if (!available) break;
     const parent = parentsByCommit.get(commit)?.[0];
     const parentState = states.get(parent) || new Map();
-    const previousAttachments = historicalAttachmentPaths(parentState);
+    const previousAttachments = historicalAttachmentPaths(parentState, attachmentSources);
     const state = new Map(parentState);
     for (const [path, source] of fileChangesByCommit.get(commit) || []) {
       if (source === null) state.delete(path);
@@ -621,7 +622,7 @@ export function getDataRecordHistoryIndex(input, options = {}) {
       remainingChildren.set(parent, remainingChildren.get(parent) - 1);
       if (!remainingChildren.get(parent)) states.delete(parent);
     }
-    const attachments = historicalAttachmentPaths(state);
+    const attachments = historicalAttachmentPaths(state, attachmentSources);
     const domainChanges = (changesByCommit.get(commit) || []).map((change) => ({
       ...change,
       beforePath: change.beforePath?.endsWith(".json")
@@ -973,13 +974,7 @@ export function getFileObjectIdAtRevision(input, revision, relativePath) {
       const dataPath = workspacePrefix ? `${workspacePrefix}/data` : "data";
       const tree = assessmentRevisionTree(root, revision, dataPath);
       if (tree !== null) {
-        for (const entry of tree.split("\0")) {
-          const separator = entry.indexOf("\t");
-          if (separator < 0 || entry.slice(separator + 1) !== repositoryPath) continue;
-          const objectId = entry.slice(0, separator).split(" ")[2];
-          return /^[a-f0-9]{40}(?:[a-f0-9]{24})?$/i.test(objectId) ? objectId : null;
-        }
-        return null;
+        return tree.get(repositoryPath) ?? null;
       }
     }
     const objectId = git(root, ["rev-parse", `${revision}:${repositoryPath}`]);
@@ -995,22 +990,31 @@ function assessmentRevisionTree(root, revision, dataPath) {
   let cache = revisionTreeCaches.get(owner);
   if (!cache) revisionTreeCaches.set(owner, cache = { entries: new Map(), bytes: 0 });
   const key = `${root}\0${revision}`;
-  if (cache.entries.has(key)) return cache.entries.get(key);
+  if (cache.entries.has(key)) return cache.entries.get(key).tree;
   let tree = null;
   try {
     const output = gitRaw(root, ["ls-tree", "--full-tree", "-r", "-t", "-z", revision, "--", `:(literal)${dataPath}`]);
-    if (Buffer.byteLength(output) <= GIT_COMMAND_CACHE_MAX_ENTRY_BYTES) tree = output;
+    if (Buffer.byteLength(output) <= GIT_COMMAND_CACHE_MAX_ENTRY_BYTES) {
+      tree = new Map();
+      for (const entry of output.split("\0")) {
+        const separator = entry.indexOf("\t");
+        if (separator < 0) continue;
+        const objectId = entry.slice(0, separator).split(" ")[2];
+        if (/^[a-f0-9]{40}(?:[a-f0-9]{24})?$/i.test(objectId))
+          tree.set(entry.slice(separator + 1), objectId);
+      }
+    }
   } catch (error) {
     rethrowGitDeadline(error);
     // Large trees or older Git implementations retain individual object reads.
   }
-  const bytes = tree === null ? 0 : Buffer.byteLength(tree);
+  const bytes = tree === null ? 0 : [...tree].reduce((total, [path, id]) => total + Buffer.byteLength(path) + id.length + 64, 0);
   while (cache.entries.size >= 32 || cache.bytes + bytes > GIT_COMMAND_CACHE_MAX_BYTES) {
     const oldest = cache.entries.keys().next().value;
-    cache.bytes -= Buffer.byteLength(cache.entries.get(oldest) || "");
+    cache.bytes -= cache.entries.get(oldest).bytes;
     cache.entries.delete(oldest);
   }
-  cache.entries.set(key, tree);
+  cache.entries.set(key, { tree, bytes });
   cache.bytes += bytes;
   return tree;
 }
@@ -1240,6 +1244,11 @@ export function getFilesAtRevisions(input, requests, options = {}) {
   const results = new Array(requests.length);
   const missing = [];
   requests.forEach((request, index) => {
+    const indexed = indexedDataFile(dataRecordHistoryIndexCache.get(root), request.revision, request.relativePath);
+    if (indexed !== undefined) {
+      results[index] = indexed;
+      return;
+    }
     const key = `${root}\0${request.revision}\0${request.relativePath}`;
     if (historicalFileCache.has(key)) {
       results[index] = historicalFileCache.get(key);
@@ -1286,7 +1295,7 @@ export function getFilesAtRevisions(input, requests, options = {}) {
     }
     const batchSize = Math.max(
       1,
-      Math.min(Number(options.batchSize) || 4, 512),
+      Math.min(Number(options.batchSize) || 4, maxTotalBytes && maxTotalBytes <= DATA_HISTORY_MAX_SOURCE_BYTES ? DATA_HISTORY_MAX_SOURCE_REQUESTS : 512),
     );
     for (let offset = 0; offset < missing.length; offset += batchSize) {
       const batch = missing.slice(offset, offset + batchSize);

@@ -12,7 +12,7 @@ import { markdownEntries } from "./resource-markdown.js";
 import { modelSupports } from "../model/index.js";
 import { canonicalCalculatedRevisionJson, revisionDigest, revisionsMatch } from "./revisions.js";
 import { getFileAtRevision } from "./git.js";
-import { reviewHistoricalWorkspace, reviewHistoryCommits, reviewHistoryContext } from "./historical-workspace.js";
+import { indexedReviewSource, prioritizeReviewCommits, reviewHistoricalWorkspace, reviewHistoryCommits, reviewHistoryContext } from "./historical-workspace.js";
 
 export function operatingRetentionReadWorkspace(loaded) {
   return calculationMemo(loaded, "operating-retention-read-workspace", [], () => operatingRetentionScheduleWorkspace(loaded));
@@ -268,7 +268,8 @@ function reviewMarkdownSource(loaded, path, commit = null, files = null) {
 export function resourceReviewRevisionsSync(loaded, ids, scopeHashInput = "legacy", legacySource = false, historicalCommit = null, reviewer = null, lifecycleNeutral = true) {
   const wanted = new Set(ids);
   const entries = calculationMemo(loaded, "review-entry-index", [], () => new Map(loaded.entries.map((entry) => [entry.record.id, entry])));
-  const revisions = calculationMemo(loaded, "review-graph", [scopeHashInput, legacySource, historicalCommit, reviewerSourceKey(reviewer), lifecycleNeutral], () => new Map());
+  const source = indexedReviewSource(loaded);
+  const revisions = calculationMemo(source || loaded, "review-graph", [source ? loaded.historicalCommit : null, scopeHashInput, legacySource, historicalCommit, reviewerSourceKey(reviewer), lifecycleNeutral], () => new Map());
   const reviewing = new Set();
   const review = (id, heading = null) => {
     const key = `${id}\0${heading || ""}`;
@@ -351,7 +352,7 @@ function historicallyEquivalentReviewSourceUncached(loaded, id, stored, current,
     for (const sourceId of entry.record.sourceResourceIds || []) visit(sourceId);
   };
   if (relevantPaths) visit(id);
-  for (const commit of [...reviewHistoryCommits(context)].reverse()) {
+  for (const commit of prioritizeReviewCommits(context, "content", stored, [...reviewHistoryCommits(context)].reverse())) {
     const changed = index?.available ? index.fileChangesByCommit.get(commit) : null;
     if (relevantPaths && ![...changed.keys()].some((path) => relevantPaths.has(path) || path.endsWith(".md"))) continue;
     const snapshot = reviewHistoricalWorkspace(context, commit);

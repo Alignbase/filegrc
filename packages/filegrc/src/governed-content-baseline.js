@@ -1,5 +1,5 @@
 import { retentionScheduleOperatingProofMatches, retentionScheduleOperatingHistoryIds } from "./retention-schedule-approval.js";
-import { getFileAtRevision, getFileHistoryWithPaths, getFilesAtRevisions, isGitAncestor } from "./git.js";
+import { getFileAtRevision, getFileHistoryWithPaths, getFilesAtRevisions, isGitAncestor, isDataHistoryAncestor } from "./git.js";
 import { reviewHistoryContext, reviewHistoryCommits, reviewHistoricalWorkspace } from "./historical-workspace.js";
 import { calculationMemo } from "./calculation-cache.js";
 import { readFileSync } from "node:fs";
@@ -249,7 +249,7 @@ function originHistoryRecords(loaded, byId, record, dependencyIds) {
     const records = [];
     const context = loaded?.root ? reviewHistoryContext(loaded.root, loaded) : null;
     const allowed = (commit) => !loaded?.historicalCommit || commit === loaded.historicalCommit
-      || isGitAncestor(loaded.root, commit, loaded.historicalCommit);
+      || (context?.index?.available ? isDataHistoryAncestor(loaded, commit, loaded.historicalCommit) : isGitAncestor(loaded.root, commit, loaded.historicalCommit));
     const seen = new Set();
     while ([...ids].some((id) => !seen.has(id))) {
       const id = [...ids].find((candidate) => !seen.has(candidate));

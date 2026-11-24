@@ -45,6 +45,7 @@ import { documentIsAuditSpecific } from "./program-lifecycle.js";
 import { resourceProgramContext } from "./program-path.js";
 import { currentCalendarDate } from "./time.js";
 import { measureTiming } from "./timing.js";
+import { performance } from "node:perf_hooks";
 import { validateWorkspace } from "./validate.js";
 import { notificationContacts } from "./notifications.js";
 import { loadWorkspace } from "./workspace.js";
@@ -65,19 +66,7 @@ async function assessWorkflowUnmeasured(input, options = {}) {
   const loaded = input?.resources && input?.model && input?.entries
     ? input
     : await loadWorkspace(input);
-  const workspace = loaded.workspace
-    || loaded.resources.find((record) => record.type === "workspace");
-  const selectedAuditRecords = selectedAudits(loaded.resources, options.auditId);
-  const programRecord = resolveProgram(loaded, options.programId || (options.auditId ? selectedAuditRecords[0]?.programId : undefined));
-  if (options.auditId && selectedAuditRecords[0]?.programId && selectedAuditRecords[0].programId !== programRecord.id) {
-    throw new Error(`Audit "${options.auditId}" belongs to Program "${selectedAuditRecords[0].programId}", not "${programRecord.id}".`);
-  }
-  const audits = modelSupports(loaded.model, "program-scope")
-    ? selectedAuditRecords.filter(({ programId }) => programId === programRecord.id)
-    : selectedAuditRecords;
-  const timezone = options.timezone || workspace?.timezone || "UTC";
-  const asOf = options.asOf || currentCalendarDate(timezone);
-  const evaluatedAt = options.evaluatedAt || options.now || new Date().toISOString();
+  const { workspace, audits, programRecord, timezone, asOf, evaluatedAt } = workflowContext(loaded, options);
   const program = options.programReadiness || await assessProgramReadiness(loaded, {
     asOf,
     generatedAt: evaluatedAt,
@@ -1793,7 +1782,58 @@ function rankingReason(item) {
   return "Ranked by due date, workflow state, and stable item key.";
 }
 
-// The same deterministic work items exposed by the browser, HTTP API, and CLI.
+function workflowContext(loaded, options) {
+  const workspace = loaded.workspace
+    || loaded.resources.find((record) => record.type === "workspace");
+  const selectedAuditRecords = selectedAudits(loaded.resources, options.auditId);
+  const programRecord = resolveProgram(loaded, options.programId || (options.auditId ? selectedAuditRecords[0]?.programId : undefined));
+  if (options.auditId && selectedAuditRecords[0]?.programId && selectedAuditRecords[0].programId !== programRecord.id) {
+    throw new Error(`Audit "${options.auditId}" belongs to Program "${selectedAuditRecords[0].programId}", not "${programRecord.id}".`);
+  }
+  const audits = modelSupports(loaded.model, "program-scope")
+    ? selectedAuditRecords.filter(({ programId }) => programId === programRecord.id)
+    : selectedAuditRecords;
+  const timezone = options.timezone || workspace?.timezone || "UTC";
+  const asOf = options.asOf || currentCalendarDate(timezone);
+  const evaluatedAt = options.evaluatedAt || options.now || new Date().toISOString();
+  return { workspace, audits, programRecord, timezone, asOf, evaluatedAt };
+}
+
+// Calculate the same queue without constructing unrelated readiness reports.
+// Record validation and temporal reclassification remain the full shared checks.
 export async function getWorkItems(input = process.cwd(), options = {}) {
-  return (await assessWorkflow(input, options)).workItems;
+  return withAssessmentGitCache(() => withAssessmentCache(async () => {
+    const loaded = input?.resources && input?.model && input?.entries ? input : await loadWorkspace(input);
+    const { audits, programRecord, asOf, evaluatedAt } = workflowContext(loaded, options);
+    const rawValidation = options.validation || await validateWorkspace(loaded);
+    const coverage = normalizeCoverage(options.auditId ? audits[0]?.coverage : options.coverage || programRecord?.candidateCoverage);
+    const validation = reclassifyTemporalValidation(rawValidation, loaded, { programId: programRecord.id, auditId: options.auditId, coverage });
+    const obligationPlan = options.obligations || planObligations(loaded.resources, { root: loaded.root, loaded,
+      programId: programRecord.id, asOf, through: options.through || asOf, now: evaluatedAt,
+      includeComplete: Boolean(options.includeComplete), model: loaded.model
+    });
+    return buildWorkItems(loaded.resources, obligationPlan, {
+      asOf, includeComplete: Boolean(options.includeComplete), programId: programRecord.id,
+      program: programRecord, model: loaded.model, validationOk: validation.ok
+    }).map(item => ({ ...item, notificationContacts: notificationContacts(item.ownerIds, loaded.resources) })).sort(compareWorkItems);
+  }));
+}
+
+// Hosted queue readers need full validation and current work, without the
+// unrelated setup, audit-preparation, and guided-readiness reports.
+export async function assessWorkItems(input = process.cwd(), options = {}) {
+  return withAssessmentGitCache(() => withAssessmentCache(async () => {
+    const loaded = input?.resources && input?.model && input?.entries ? input : await loadWorkspace(input);
+    const timed = async (stage, calculate) => {
+      options.onStage?.(stage);
+      const started = performance.now();
+      try { return await calculate(); }
+      finally { options.onTiming?.(stage, performance.now() - started); }
+    };
+    const validation = await timed("validation", () => validateWorkspace(loaded));
+    const workItems = validation.ok
+      ? await timed("assessment", () => getWorkItems(loaded, { ...options, validation }))
+      : null;
+    return { contractVersion: WORKFLOW_CONTRACT_VERSION, dataModelVersion: loaded.model.modelVersion, validation, workItems };
+  }));
 }
