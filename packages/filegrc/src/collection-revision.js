@@ -11,7 +11,7 @@ import {
   scopedCollectionRecords
 } from "./collection-scope.js";
 import { getFileAtRevision } from "./git.js";
-import { reviewHistoricalWorkspace, reviewHistoryCommits, reviewHistoryContext } from "./historical-workspace.js";
+import { indexedReviewSource, reviewHistoricalWorkspace, reviewHistoryCommits, reviewHistoryContext } from "./historical-workspace.js";
 import { resolveProgram } from "./program.js";
 import { currentPartyPeople, queueOwnerPeople } from "./parties.js";
 import { markdownEntries } from "./resource-markdown.js";
@@ -81,12 +81,18 @@ export function collectionReviewDecisionMatches(loaded, resourceType, review, re
       collectionRevision(historical, "obligation", { program, historicalCommit: review.scopeRevision }));
   }
   if (resourceType === "retention-schedule-item" && loaded.model.resources["retention-application"]) {
-    if (collectionRevisionMatches(loaded, resourceType, review.collectionRevision, options)) return true;
-    if (!loaded.root || !review.scopeRevision) return false;
-    const historical = reviewHistoricalWorkspace(reviewHistoryContext(loaded.root, loaded), review.scopeRevision);
-    if (!historical || !collectionRevisionMatches(historical, resourceType, review.collectionRevision, { ...options, historicalCommit: review.scopeRevision, currentRevision: undefined })) return false;
-    return revisionsMatch("collection", collectionRevision(loaded, resourceType, { ...options, retentionRuleSemantics: true }),
-      collectionRevision(historical, resourceType, { ...options, historicalCommit: review.scopeRevision, retentionRuleSemantics: true }));
+    const current = options.currentRevision || collectionRevision(loaded, resourceType, options);
+    if (revisionsMatch("collection", review.collectionRevision, current)) return true;
+    // A reviewed scope names its exact Git basis. Check that proof before the
+    // legacy recovery scan, which otherwise searches every historical commit
+    // even when this known basis already proves the unchanged rule semantics.
+    if (loaded.root && review.scopeRevision) {
+      const historical = reviewHistoricalWorkspace(reviewHistoryContext(loaded.root, loaded), review.scopeRevision);
+      if (historical && collectionRevisionMatches(historical, resourceType, review.collectionRevision, { ...options, historicalCommit: review.scopeRevision, currentRevision: undefined })
+        && revisionsMatch("collection", collectionRevision(loaded, resourceType, { ...options, retentionRuleSemantics: true }),
+          collectionRevision(historical, resourceType, { ...options, historicalCommit: review.scopeRevision, retentionRuleSemantics: true }))) return true;
+    }
+    return collectionRevisionMatches(loaded, resourceType, review.collectionRevision, options);
   }
   if (resourceType === "retention-schedule-item" || Number(loaded.model.modelVersion) < 11) {
     return collectionRevisionMatches(loaded, resourceType, review.collectionRevision, options);
@@ -221,7 +227,10 @@ function historicallyEquivalentCollectionUncached(loaded, resourceType, stored, 
 }
 
 function calculateCollectionRevision(loaded, resourceType, options, legacy, scopeHashInput = "legacy", scopeFactsInput = "legacy") {
-  return calculationMemo(loaded, "collection-revision", [resourceType, JSON.stringify(options), legacy, scopeHashInput, scopeFactsInput], () =>
+  // Bounded historical workspace maps can evict and rematerialize a revision.
+  // Its calculated hashes still belong to the same immutable indexed commit.
+  const source = indexedReviewSource(loaded);
+  return calculationMemo(source || loaded, "collection-revision", [source ? loaded.historicalCommit : null, resourceType, JSON.stringify(options), legacy, scopeHashInput, scopeFactsInput], () =>
     calculateCollectionRevisionUncached(loaded, resourceType, options, legacy, scopeHashInput, scopeFactsInput));
 }
 
