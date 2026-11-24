@@ -26,7 +26,7 @@ import {
   deleteResource,
   updateResource
 } from "./files.js";
-import { isGitAncestor, getGitSummary, getWorkspaceHistories, runGitCommandSync } from "./git.js";
+import { withAssessmentGitCache, isGitAncestor, getGitSummary, getWorkspaceHistories, runGitCommandSync } from "./git.js";
 import {
   completeObligationAction,
   completeObligationEvent,
@@ -58,7 +58,7 @@ export const WORKFLOW_CONTRACT_VERSION = 1;
  * the complete contract for cross-interface workflow guidance.
  */
 export async function assessWorkflow(input, options = {}) {
-  return withAssessmentCache(() => measureTiming("workflow-assessment", () => assessWorkflowUnmeasured(input, options)));
+  return withAssessmentGitCache(() => withAssessmentCache(() => measureTiming("workflow-assessment", () => assessWorkflowUnmeasured(input, options))));
 }
 
 async function assessWorkflowUnmeasured(input, options = {}) {

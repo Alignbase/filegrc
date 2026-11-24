@@ -4,6 +4,12 @@ import { getDataCommitHistory, getDataFilesAtRevision, getDataRecordHistoryIndex
 import { performance } from "node:perf_hooks";
 
 const reviewContexts = new WeakMap();
+const indexedSources = new WeakMap();
+
+// Only snapshots materialized from this index have an immutable identity.
+export function indexedReviewSource(loaded) {
+  return indexedSources.get(loaded);
+}
 
 export function reviewHistoryContext(root, owner) {
   const key = owner.resources || owner;
@@ -131,6 +137,7 @@ export function indexedHistoricalWorkspace(context, commit) {
       root, entries, resources, workspace, model: historicalModel(context, workspace.dataModelVersion),
       historicalCommit: commit, historicalFiles: state, byId: new Map(resources.map((record) => [record.id, record]))
     };
+    indexedSources.set(loaded, index);
     context.workspacesByCommit.set(commit, loaded);
     if (context.workspacesByCommit.size > cacheLimit) context.workspacesByCommit.delete(context.workspacesByCommit.keys().next().value);
     return loaded;

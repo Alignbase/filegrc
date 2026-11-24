@@ -26,7 +26,7 @@ import {
   reviewedControlConflictIds
 } from "./collection-revision.js";
 import { isSafeGitName } from "./git-name.js";
-import { getDataRecordHistoryIndex, getFileAtRevision, getFileBufferAtRevision, getFileObjectIdAtRevision, getFilePathAtRevision, getGitSummary, getWorkingFileObjectId, hasGitRevision, isDataHistoryAncestor } from "./git.js";
+import { withAssessmentGitCache, getDataRecordHistoryIndex, getFileAtRevision, getFileBufferAtRevision, getFileObjectIdAtRevision, getFilePathAtRevision, getGitSummary, getWorkingFileObjectId, hasGitRevision, isDataHistoryAncestor } from "./git.js";
 import { isCanonicalDataPath, resolveDataPath } from "./paths.js";
 import {
   addCalendarDays,
@@ -93,7 +93,7 @@ const DEFERRED_VALIDATION_CONCURRENCY = 16;
 export async function validateWorkspace(input = process.cwd(), options = {}) {
   const timingStarted = performance.now();
   try {
-    return await withAssessmentCache(() => validateWorkspaceUnmeasured(input, options));
+    return await withAssessmentGitCache(() => withAssessmentCache(() => validateWorkspaceUnmeasured(input, options)));
   } finally {
     recordTiming("validation", performance.now() - timingStarted);
   }

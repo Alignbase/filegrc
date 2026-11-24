@@ -53,6 +53,7 @@ const gitCommandDeadlines = new AsyncLocalStorage();
 const gitCommandTimeoutLimits = new AsyncLocalStorage();
 const gitCommandAdapters = new AsyncLocalStorage();
 const gitCommandCacheBytes = new WeakMap();
+const revisionTreeCaches = new WeakMap();
 let gitCommandInterceptor = null;
 let gitSubprocessObserver = null;
 let historicalBatchInterceptor = null;
@@ -79,6 +80,12 @@ export function withGitCommandCache(cache, callback) {
   if (!(cache instanceof Map))
     throw new TypeError("The Git command cache must be a Map.");
   return gitCommandCaches.run(cache, callback);
+}
+
+// A read assessment may share bounded Git results until it returns. Preserve
+// an enclosing verified snapshot cache, but never retain a new one across reads.
+export function withAssessmentGitCache(callback) {
+  return gitCommandCaches.getStore() ? callback() : withGitCommandCache(new Map(), callback);
 }
 
 export function withGitCommandDeadline(deadlineAt, callback, options = {}) {
@@ -959,12 +966,53 @@ export function getFileObjectIdAtRevision(input, revision, relativePath) {
     const repositoryPath = workspacePrefix
       ? `${workspacePrefix}/${relativePath}`
       : relativePath;
+    if (gitCommandCaches.getStore()) {
+      // Read object metadata once per revision, rather than spawning Git for
+      // every attachment checked against the same finalized state. The command
+      // cache bounds both lifetime and retained output; no blob bytes are read.
+      const dataPath = workspacePrefix ? `${workspacePrefix}/data` : "data";
+      const tree = assessmentRevisionTree(root, revision, dataPath);
+      if (tree !== null) {
+        for (const entry of tree.split("\0")) {
+          const separator = entry.indexOf("\t");
+          if (separator < 0 || entry.slice(separator + 1) !== repositoryPath) continue;
+          const objectId = entry.slice(0, separator).split(" ")[2];
+          return /^[a-f0-9]{40}(?:[a-f0-9]{24})?$/i.test(objectId) ? objectId : null;
+        }
+        return null;
+      }
+    }
     const objectId = git(root, ["rev-parse", `${revision}:${repositoryPath}`]);
     return /^[a-f0-9]{40}(?:[a-f0-9]{24})?$/i.test(objectId) ? objectId : null;
   } catch (error) {
     rethrowGitDeadline(error);
     return null;
   }
+}
+
+function assessmentRevisionTree(root, revision, dataPath) {
+  const owner = gitCommandCaches.getStore();
+  let cache = revisionTreeCaches.get(owner);
+  if (!cache) revisionTreeCaches.set(owner, cache = { entries: new Map(), bytes: 0 });
+  const key = `${root}\0${revision}`;
+  if (cache.entries.has(key)) return cache.entries.get(key);
+  let tree = null;
+  try {
+    const output = gitRaw(root, ["ls-tree", "--full-tree", "-r", "-t", "-z", revision, "--", `:(literal)${dataPath}`]);
+    if (Buffer.byteLength(output) <= GIT_COMMAND_CACHE_MAX_ENTRY_BYTES) tree = output;
+  } catch (error) {
+    rethrowGitDeadline(error);
+    // Large trees or older Git implementations retain individual object reads.
+  }
+  const bytes = tree === null ? 0 : Buffer.byteLength(tree);
+  while (cache.entries.size >= 32 || cache.bytes + bytes > GIT_COMMAND_CACHE_MAX_BYTES) {
+    const oldest = cache.entries.keys().next().value;
+    cache.bytes -= Buffer.byteLength(cache.entries.get(oldest) || "");
+    cache.entries.delete(oldest);
+  }
+  cache.entries.set(key, tree);
+  cache.bytes += bytes;
+  return tree;
 }
 
 export function getWorkingFileObjectId(input, relativePath) {
