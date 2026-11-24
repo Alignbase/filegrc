@@ -2,6 +2,8 @@ import { historicalAttachmentPaths, historicalJsonRecordPath } from "./historica
 import { loadModel } from "../model/index.js";
 import { getDataCommitHistory, getDataFilesAtRevision, getDataRecordHistoryIndex, getFileAtRevision } from "./git.js";
 import { performance } from "node:perf_hooks";
+import { calculationMemo } from "./calculation-cache.js";
+import { revisionDigest } from "./revisions.js";
 
 const reviewContexts = new WeakMap();
 const indexedSources = new WeakMap();
@@ -17,9 +19,8 @@ export function reviewHistoryContext(root, owner) {
   if (context?.root === root) return context;
   let index = null;
   try {
-    // Leave time for the original Git recovery path if this larger index
-    // cannot be built within a browser request.
-    index = getDataRecordHistoryIndex(root, { deadline: performance.now() + 3_000 });
+    // Keep index construction bounded before the complete Git recovery path.
+    index = getDataRecordHistoryIndex(root);
   } catch (error) {
     if (error.code !== "FILEGRC_HISTORY_DEADLINE") throw error;
   }
@@ -36,6 +37,36 @@ export function reviewHistoryCommits(context) {
   if (context.index?.error?.code === "FILEGRC_INVALID_HISTORY_RECORD") return [];
   context.fallbackCommits ||= getDataCommitHistory(context.root);
   return context.fallbackCommits;
+}
+
+// Recovery still checks the same complete history, but first tries the Git
+// basis where the stored binding entered the records. Only a full semantic and
+// digest comparison by the caller can accept a binding.
+export function prioritizeReviewCommits(context, kind, revision, commits) {
+  if (!context.index?.available) return commits;
+  const origins = calculationMemo(context.index, "review-binding-origins", [], () => {
+    const result = new Map();
+    const add = (kind, value, commit, basis) => {
+      if (typeof value !== "string") return;
+      const digest = revisionDigest(kind, value);
+      const key = `${kind}:${digest}`;
+      if (!digest || result.has(key) || result.size >= 20_000) return;
+      result.set(key, [basis, ...(context.index.parentsByCommit.get(commit) || []), commit].filter(Boolean));
+    };
+    for (const commit of context.index.commits) {
+      for (const { record } of context.index.recordsByCommit.get(commit)?.values() || []) {
+        add("applicability-scope", record.applicabilityReview?.scopeRevision, commit);
+        for (const review of Array.isArray(record.requirementApplicability) ? record.requirementApplicability : []) add("applicability-scope", review?.scopeRevision, commit);
+        add("collection", record.collectionRevision, commit, record.scopeRevision);
+        for (const revision of Object.values(record.reviewedSourceRevisions || {})) add("content", revision, commit);
+      }
+    }
+    return result;
+  });
+  const available = new Set(commits);
+  const preferred = [...new Set(origins.get(`${kind}:${revisionDigest(kind, revision)}`) || [])].filter(commit => available.has(commit));
+  const selected = new Set(preferred);
+  return [...preferred, ...commits.filter(commit => !selected.has(commit))];
 }
 
 export function reviewCommitsChangingTypes(index, types) {
@@ -66,7 +97,7 @@ function historicalWorkspace(context, commit) {
   const { root } = context;
   const state = new Map(getDataFilesAtRevision(root, commit).filter(historicalJsonRecordPath)
     .map((path) => [path, getFileAtRevision(root, commit, path)]));
-  const attachments = historicalAttachmentPaths(state);
+  const attachments = historicalAttachmentPaths(state, calculationMemo(context, "attachment-sources", [], () => new Map()));
   const entries = [];
   for (const [path, source] of state) {
     if (attachments.has(path)) continue;
@@ -94,9 +125,17 @@ function historicalWorkspace(context, commit) {
 export function indexedHistoricalWorkspace(context, commit) {
   const { root, index } = context;
   if (!index?.available || !index.parentsByCommit.has(commit)) return null;
+  // Every reader of one immutable index shares its materializations. Separate
+  // per-record contexts otherwise rebuild the same complete historical trees.
+  const shared = calculationMemo(index, "historical-materialization-context", [], () => context);
+  return materializeIndexedWorkspace(shared, commit);
+}
+
+function materializeIndexedWorkspace(context, commit) {
+  const { root, index } = context;
   // Reuse a full request-sized history for ordinary workspaces while bounding
   // retained maps when a repository contains many thousands of data files.
-  const cacheLimit = Math.max(1, Math.min(512, Math.floor(200_000 / Math.max(1, index.historicalRecordPaths.size))));
+  const cacheLimit = Math.max(1, Math.min(512, Math.floor(500_000 / Math.max(1, index.historicalRecordPaths.size))));
   if (context.workspacesByCommit.has(commit)) return context.workspacesByCommit.get(commit);
   let state = context.statesByCommit.get(commit);
   if (!state) {
@@ -106,20 +145,20 @@ export function indexedHistoricalWorkspace(context, commit) {
       lineage.push(cursor);
       cursor = index.parentsByCommit.get(cursor)?.[0] || null;
     }
-    state = cursor ? context.statesByCommit.get(cursor) : new Map();
+    state = new Map(cursor ? context.statesByCommit.get(cursor) : []);
     for (let position = lineage.length - 1; position >= 0; position -= 1) {
       const changedAt = lineage[position];
-      const next = new Map(state);
       for (const [path, source] of index.fileChangesByCommit.get(changedAt) || []) {
-        if (source === null) next.delete(path);
-        else next.set(path, source);
+        if (source === null) state.delete(path);
+        else state.set(path, source);
       }
-      context.statesByCommit.set(changedAt, next);
-      if (context.statesByCommit.size > cacheLimit) context.statesByCommit.delete(context.statesByCommit.keys().next().value);
-      state = next;
+      if (position === 0 || position % 32 === 0) {
+        context.statesByCommit.set(changedAt, position === 0 ? state : new Map(state));
+        if (context.statesByCommit.size > cacheLimit) context.statesByCommit.delete(context.statesByCommit.keys().next().value);
+      }
     }
   }
-  const attachments = historicalAttachmentPaths(state);
+  const attachments = historicalAttachmentPaths(state, calculationMemo(context, "attachment-sources", [], () => new Map()));
   const entries = [];
   for (const [path, source] of state) {
     if (!historicalJsonRecordPath(path) || attachments.has(path)) continue;

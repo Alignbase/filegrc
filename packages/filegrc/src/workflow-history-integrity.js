@@ -1,3 +1,4 @@
+import { calculationMemo } from "./calculation-cache.js";
 import { workflowProofIds } from "./workflow-proof.js";
 import { evidenceObservationMatches } from "./evidence-observation.js";
 import { readFile } from "node:fs/promises";
@@ -785,15 +786,19 @@ function workspaceTimezoneAtRevision(loaded, commit) {
 }
 
 function historicalWorkspaceTimezoneAtRevision(loaded, commit) {
-  try {
-    const workspace = JSON.parse(getFileAtRevision(loaded.root, commit, "data/workspace.json"));
-    if (typeof workspace?.timezone !== "string" || !workspace.timezone.trim()) return null;
-    new Intl.DateTimeFormat("en", { timeZone: workspace.timezone }).format();
-    return workspace.timezone;
-  } catch (error) {
-    rethrowGitDeadline(error);
-    return null;
-  }
+  return calculationMemo(loaded, "historical-workspace-timezone", [commit], () => {
+    try {
+      const workspace = JSON.parse(getFileAtRevision(loaded.root, commit, "data/workspace.json"));
+      if (typeof workspace?.timezone !== "string" || !workspace.timezone.trim()) return null;
+      return calculationMemo(loaded, "valid-historical-timezone", [workspace.timezone], () => {
+        new Intl.DateTimeFormat("en", { timeZone: workspace.timezone }).format();
+        return workspace.timezone;
+      });
+    } catch (error) {
+      rethrowGitDeadline(error);
+      return null;
+    }
+  });
 }
 
 function pick(record, fields) {

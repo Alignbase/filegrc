@@ -132,6 +132,7 @@ export { calculatedRevisionDiagnostic, REVISION_SCHEME_VERSION } from "./revisio
 export { validateWorkspace } from "./validate.js";
 export {
   assessWorkflow,
+  assessWorkItems,
   getWorkItems,
   buildWorkflowDelta,
   previewWorkflowMutation,

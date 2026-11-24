@@ -11,7 +11,7 @@ import {
   scopedCollectionRecords
 } from "./collection-scope.js";
 import { getFileAtRevision } from "./git.js";
-import { indexedReviewSource, reviewHistoricalWorkspace, reviewHistoryCommits, reviewHistoryContext } from "./historical-workspace.js";
+import { indexedReviewSource, prioritizeReviewCommits, reviewHistoricalWorkspace, reviewHistoryCommits, reviewHistoryContext } from "./historical-workspace.js";
 import { resolveProgram } from "./program.js";
 import { currentPartyPeople, queueOwnerPeople } from "./parties.js";
 import { markdownEntries } from "./resource-markdown.js";
@@ -183,14 +183,15 @@ export function controlReviewerConflictIds(loaded, controls, byId = resourceInde
 }
 
 function historicallyEquivalentCollection(loaded, resourceType, stored, options, current) {
-  return calculationMemo(loaded, "historical-collection-equivalence", [resourceType, stored, JSON.stringify(options), current], () =>
+  const index = loaded.root ? reviewHistoryContext(loaded.root, loaded).index : null;
+  return calculationMemo(index?.available ? index : loaded, "historical-collection-equivalence", [loaded.model, resourceType, stored, JSON.stringify(options), current], () =>
     historicallyEquivalentCollectionUncached(loaded, resourceType, stored, options, current));
 }
 
 function historicallyEquivalentCollectionUncached(loaded, resourceType, stored, options, current) {
   if (!loaded.root) return false;
   const context = reviewHistoryContext(loaded.root, loaded);
-  for (const commit of [...reviewHistoryCommits(context)].reverse()) {
+  for (const commit of prioritizeReviewCommits(context, "collection", stored, [...reviewHistoryCommits(context)].reverse())) {
     const snapshot = reviewHistoricalWorkspace(context, commit);
     if (!snapshot) continue;
     const historicalOptions = {
@@ -267,9 +268,9 @@ function calculateCollectionRevisionUncached(loaded, resourceType, options, lega
   const records = [...inputs.values()]
     .map(({ record, value, includeContent }) => ({
       id: record.id,
-      revision: createHash("sha256")
+      revision: calculationMemo(record, "collection-record-hash", [loaded.model, scopeHashInput, JSON.stringify(value)], () => createHash("sha256")
         .update(JSON.stringify(canonicalRecordValue(loaded.model, record.type, value, scopeHashInput)))
-        .digest("hex"),
+        .digest("hex")),
       contentRevisions: (legacy || includeContent ? markdownEntries(loaded.model, record) : []).flatMap(({ path }) => {
         try {
           const content = options.historicalCommit
@@ -283,7 +284,7 @@ function calculateCollectionRevisionUncached(loaded, resourceType, options, lega
               return governedMarkdownSource(loaded, record, path);
             })();
           if (content === null) return [];
-          return [{ path, revision: createHash("sha256").update(content).digest("hex") }];
+          return [{ path, revision: calculationMemo(record, "collection-content-hash", [path, content], () => createHash("sha256").update(content).digest("hex")) }];
         } catch (error) {
           if (error.code === "ENOENT") return [];
           throw error;

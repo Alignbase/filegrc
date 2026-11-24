@@ -96,6 +96,8 @@ The authoritative data model ships in this package. Import the public Node.js AP
 
 ## Workflow notification contacts
 
+`assessWorkItems(root, options)` runs full workspace validation and calculates the work queue without constructing readiness reports. It returns `{ contractVersion, dataModelVersion, validation, workItems }`. Invalid workspaces return `workItems: null`; a supplied `options.validation` cannot bypass its checks. Optional `onStage(stage)` and `onTiming(stage, milliseconds)` callbacks report validation and queue calculation progress without record contents.
+
 `getWorkItems(root, options)` returns the same work items as `assessWorkflow(root, options).workItems`, including stable `ownerIds` and `notificationContacts`. Each contact contains `personId` and optional `email` from the Person record. `notificationContacts(ownerIds, resources)` resolves active Team members and chairs and active Appointment holders to active People, deduplicated and sorted by Person ID. Inactive People receive no contact entry. People without email still have a Person ID contact.
 
 Core calculates work and exposes repository contacts. Autopilot manages notification settings and Person-to-Slack links in its database, using Core contact Person IDs to look up destinations.

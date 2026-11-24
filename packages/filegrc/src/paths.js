@@ -3,6 +3,7 @@ import { dirname, isAbsolute, join, posix, relative, resolve, sep } from "node:p
 
 export function resolveWorkspaceRoot(input = process.cwd()) {
   let current = resolve(input);
+  if (existsSync(join(current, "data", "workspace.json"))) return canonicalWorkspaceRoot(current);
   if (existsSync(current) && !isDirectory(current)) current = dirname(current);
 
   while (true) {
@@ -33,7 +34,7 @@ export function resolveDataPath(root, dataRelativePath) {
   const dataRoot = join(resolveWorkspaceRoot(root), "data");
   const target = resolve(dataRoot, dataRelativePath);
   if (!isWithin(dataRoot, target)) throw new Error(`Path leaves data/: ${dataRelativePath}`);
-  const realDataRoot = realpathSync(dataRoot);
+  const realDataRoot = realpathSync.native(dataRoot);
   const existing = nearestExistingPath(target);
   if (!isWithin(realDataRoot, realExistingPath(existing, dataRelativePath))) {
     throw new Error(`Path resolves outside data/: ${dataRelativePath}`);
@@ -79,13 +80,13 @@ function isDirectory(path) {
 }
 
 function canonicalWorkspaceRoot(path) {
-  const root = realpathSync(path);
+  const root = realpathSync.native(path);
   const dataPath = join(root, "data");
-  const dataRoot = realpathSync(dataPath);
-  if (!isWithin(root, dataRoot)) {
-    throw new Error("The data directory resolves outside the workspace.");
-  }
   if (lstatSync(dataPath).isSymbolicLink()) {
+    const dataRoot = realpathSync.native(dataPath);
+    if (!isWithin(root, dataRoot)) {
+      throw new Error("The data directory resolves outside the workspace.");
+    }
     throw new Error("The data directory must be a real directory, not a symbolic link.");
   }
   return root;
@@ -129,7 +130,7 @@ function entryExists(path) {
 
 function realExistingPath(path, displayPath) {
   try {
-    return realpathSync(path);
+    return realpathSync.native(path);
   } catch (error) {
     if (error.code === "ENOENT") throw new Error(`Path contains an unavailable symlink: ${displayPath}`);
     throw error;
