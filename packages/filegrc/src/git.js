@@ -1080,6 +1080,8 @@ function repositoryObjectFormat(root) {
   return objectFormat;
 }
 
+const workspaceHistoryPosition = new WeakMap();
+
 export function getWorkspaceHistories(
   input,
   relativePaths,
@@ -1142,10 +1144,11 @@ export function getWorkspaceHistories(
         },
       ),
     );
-    for (const block of output.split("\x1e")) {
+    for (const [position, block] of output.split("\x1e").entries()) {
       const lines = block.trim().split("\n").filter(Boolean);
       if (lines.length < 2) continue;
       const commit = parseLogLine(lines[0]);
+      workspaceHistoryPosition.set(commit, position);
       for (const path of lines.slice(1)) {
         if (!allHistories.has(path)) allHistories.set(path, []);
         const history = allHistories.get(path);
@@ -1169,6 +1172,12 @@ export function getWorkspaceHistories(
     });
   for (const path of wanted) histories.set(path, allHistories.get(path) ?? []);
   return histories;
+}
+
+export function getCombinedWorkspaceHistory(input, paths, limit = 12, options = {}) {
+  const histories = getWorkspaceHistories(input, paths, limit, options);
+  const commits = new Set([...histories.values()].flat());
+  return [...commits].sort((left, right) => workspaceHistoryPosition.get(left) - workspaceHistoryPosition.get(right)).slice(0, limit);
 }
 
 function gitHistoryUnavailableError(cause) {
@@ -1415,6 +1424,20 @@ function dataHistoryLimitError(message) {
   const error = new Error(message);
   error.code = "FILEGRC_HISTORY_INDEX_LIMIT";
   return error;
+}
+
+export function getRegularDataPathsAtRevision(input, revision) {
+  if (!/^[a-f0-9]{40}$/i.test(String(revision))) throw new Error("A full Git commit ID is required.");
+  const root = resolveWorkspaceRoot(input);
+  const entries = gitRaw(root, ["ls-tree", "-r", "-z", revision, "--", "data"]);
+  const regular = new Set();
+  for (const entry of entries.split("\0")) {
+    const tab = entry.indexOf("\t");
+    if (tab === -1 || !/^100(?:644|755) blob /.test(entry.slice(0, tab))) continue;
+    const path = entry.slice(tab + 1);
+    if (isSafeDataGitPath(path)) regular.add(path);
+  }
+  return regular;
 }
 
 export function getDataFilesAtRevision(input, revision) {

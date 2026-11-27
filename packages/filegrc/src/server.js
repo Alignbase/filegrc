@@ -1,3 +1,4 @@
+import { exportDocumentPdf } from "./document-pdf.js";
 import { scaffoldPeriodImpactReview, previewPeriodImpactReview, recordPeriodImpactReview } from "./period-impact.js";
 import { scaffoldObligationRuleWithdrawal, previewObligationRuleWithdrawal, withdrawObligationRule } from "./obligation-rule-withdrawal.js";
 import { planWorkQueue, sourceDeadlineValidation } from "./work-queue.js";
@@ -774,6 +775,37 @@ export function createFilegrcServer(input = process.cwd(), options = {}) {
           ...result,
           ...(result.stateRefresh ? { html: renderMarkdown(result.source) } : {})
         });
+      }
+      const pdfMatch = /^\/api\/resource\/([^/]+)\/([^/]+)\/pdf$/.exec(url.pathname);
+      if (request.method === "GET" && pdfMatch) {
+        if (!sameOriginBrowserRead(request)) return json(response, 403, { error: "Cross-origin PDF downloads are not allowed." });
+        const [, encodedType, encodedId] = pdfMatch;
+        const type = decodeURIComponent(encodedType);
+        const id = decodeURIComponent(encodedId);
+        if (!safeSegment(type) || !safeSegment(id)) return json(response, 400, { error: "Unsafe resource identifier." });
+        const commit = url.searchParams.get("commit") ?? undefined;
+        const expectedRecordRevision = url.searchParams.get("recordRevision");
+        const expectedContentRevision = url.searchParams.get("contentRevision");
+        if (!commit && (!expectedRecordRevision || !expectedContentRevision || !url.searchParams.get("slot"))) {
+          return json(response, 400, { error: "Select a commit or the record and Markdown revisions shown in the document." });
+        }
+        let exported;
+        try {
+          exported = await exportDocumentPdf(input, type, id, {
+            commit, slot: url.searchParams.get("slot"), expectedRecordRevision, expectedContentRevision
+          });
+        } catch (error) {
+          if (!error.pdfStatus) throw error;
+          return json(response, error.pdfStatus, { error: error.message });
+        }
+        response.writeHead(200, {
+          "content-type": "application/pdf",
+          "content-disposition": `attachment; filename="${exported.filename}"`,
+          "content-length": exported.bytes.length,
+          "cache-control": "no-store",
+          "x-content-type-options": "nosniff"
+        });
+        return response.end(exported.bytes);
       }
       const match = /^\/api\/resource\/([^/]+)\/([^/]+)$/.exec(url.pathname);
       if (match) {

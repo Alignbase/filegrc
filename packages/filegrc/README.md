@@ -94,6 +94,28 @@ The editable server has no authentication and binds to loopback by default. Put 
 
 The authoritative data model ships in this package. Import the public Node.js API from `filegrc` and the model loader from `filegrc/model`.
 
+## Export governed Markdown to PDF
+
+Open a Policy, Document, or Training record in the served app and select **Download PDF** beside its Markdown. To export the primary Markdown from a commit, open **File history** from the record menu and download from the entry for that commit.
+
+```sh
+npx filegrc export-pdf policy policy-information-security
+npx filegrc export-pdf document document-service-agreement-template --revision FULL_COMMIT_ID --json
+```
+
+The CLI writes to `.filegrc/exports/`. Omit `--revision` for the working copy. Pass a Markdown slot after the record ID to choose a companion. The CLI defaults to the primary slot. The PDF identifies its source revision and shows approval only when the approval binds to the selected content. Document records marked as templates export with an **Unsigned template** label.
+
+To add fillable text fields and a printable signature line, put each labeled blank on its own line. Use a unique lowercase field ID starting with a letter, with up to 64 letters, digits, or hyphens. Separate signers with a blank line so each group stays together on a page.
+
+```markdown
+Printed name: {{pdf-field:customer-name}}
+Title: {{pdf-field:customer-title}}
+Date: {{pdf-field:customer-date}}
+Signature: {{pdf-blank}}
+```
+
+Type and save values in a PDF viewer that supports interactive forms. The values live in that copy of the PDF. The source record and its approval and activation state stay unchanged. Keep executed copies in the appropriate agreement or evidence store. PDF export embeds Noto Serif and reports characters it cannot render.
+
 ## Workflow notification contacts
 
 `assessWorkItems(root, options)` runs full workspace validation and calculates the work queue without constructing readiness reports. It returns `{ contractVersion, dataModelVersion, validation, workItems }`. Invalid workspaces return `workItems: null`; a supplied `options.validation` cannot bypass its checks. Optional `onStage(stage)` and `onTiming(stage, milliseconds)` callbacks report validation and queue calculation progress without record contents.

@@ -1,4 +1,36 @@
 export function renderMarkdown(source = "") {
+  return parseMarkdownBlocks(source).map((block) => {
+    const { kind, text, level, items, rows, start } = block;
+    if (kind === "paragraph") return `<p>${inline(text)}</p>`;
+    if (kind === "heading") return `<h${level}>${inline(text)}</h${level}>`;
+    if (kind === "quote") return `<blockquote>${inline(text)}</blockquote>`;
+    if (kind === "code") return `<pre><code>${escapeHtml(text)}</code></pre>`;
+    if (kind === "rule") return "<hr>";
+    if (kind === "fields") return `<div class="pdf-blanks">${items.map(({ label, name }) => `<div><span>${escapeHtml(label)}:</span><span class="pdf-blank" aria-label="${name ? "Fillable in the PDF" : "Blank line"}"></span></div>`).join("")}</div>`;
+    if (kind === "table") {
+      const [head, ...body] = rows;
+      return `<div class="table-wrap"><table><thead><tr>${head.map((cell) => `<th>${inline(cell)}</th>`).join("")}</tr></thead><tbody>${body.map((row) => `<tr>${row.map((cell) => `<td>${inline(cell)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+    }
+    return `<${kind}${kind === "ol" && start !== 1 ? ` start="${start}"` : ""}>${items.map((item) => `<li>${inline(item)}</li>`).join("")}</${kind}>`;
+  }).join("\n");
+}
+
+const PDF_BLANK = /^([^:{}|]+):[ \t]+\{\{pdf-(?:field:([a-z][a-z0-9-]{0,63})|blank)\}\}[ \t]*$/;
+
+export function withoutPdfBlanks(source, keepLabels = false) {
+  let fenced = false;
+  return source.split(/\r\n?|\n/).map((line) => {
+    if (isCodeFence(line)) {
+      fenced = !fenced;
+      return line;
+    }
+    if (fenced) return line;
+    const blank = PDF_BLANK.exec(line);
+    return blank ? (keepLabels ? blank[1] : "") : line;
+  }).join("\n");
+}
+
+export function parseMarkdownBlocks(source = "") {
   const lines = String(source).replace(/\r\n?/g, "\n").split("\n");
   const output = [];
   let paragraph = [];
@@ -8,18 +40,17 @@ export function renderMarkdown(source = "") {
 
   const flushParagraph = () => {
     if (!paragraph.length) return;
-    output.push(`<p>${inline(paragraph.join(" "))}</p>`);
+    output.push({ kind: "paragraph", text: paragraph.join(" ") });
     paragraph = [];
   };
   const flushList = () => {
     if (!list) return;
-    output.push(`<${list.kind}>${list.items.map((item) => `<li>${inline(item)}</li>`).join("")}</${list.kind}>`);
+    output.push(list);
     list = null;
   };
   const flushTable = () => {
     if (!table) return;
-    const [head, ...rows] = table;
-    output.push(`<div class="table-wrap"><table><thead><tr>${head.map((cell) => `<th>${inline(cell)}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${row.map((cell) => `<td>${inline(cell)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`);
+    output.push({ kind: "table", rows: table });
     table = null;
   };
   const flush = () => {
@@ -31,45 +62,52 @@ export function renderMarkdown(source = "") {
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
     if (code) {
-      if (line.startsWith("```")) {
-        output.push(`<pre><code>${escapeHtml(code.join("\n"))}</code></pre>`);
+      if (isCodeFence(line)) {
+        output.push({ kind: "code", text: code.join("\n") });
         code = null;
       } else {
         code.push(line);
       }
       continue;
     }
-    if (line.startsWith("```")) {
+    if (isCodeFence(line)) {
       flush();
       code = [];
+      continue;
+    }
+    const blank = PDF_BLANK.exec(line);
+    if (blank) {
+      flush();
+      if (!index || !PDF_BLANK.test(lines[index - 1])) output.push({ kind: "fields", items: [] });
+      output.at(-1).items.push({ label: blank[1].trim(), name: blank[2] });
       continue;
     }
     const heading = /^(#{1,6})\s+(.+)$/.exec(line);
     if (heading) {
       flush();
       const level = heading[1].length;
-      output.push(`<h${level}>${inline(heading[2])}</h${level}>`);
+      output.push({ kind: "heading", level, text: heading[2] });
       continue;
     }
     if (/^>\s?/.test(line)) {
       flush();
-      output.push(`<blockquote>${inline(line.replace(/^>\s?/, ""))}</blockquote>`);
+      output.push({ kind: "quote", text: line.replace(/^>\s?/, "") });
       continue;
     }
     if (/^[-*_]{3,}\s*$/.test(line)) {
       flush();
-      output.push("<hr>");
+      output.push({ kind: "rule" });
       continue;
     }
     const unordered = /^\s*[-*]\s+(.+)$/.exec(line);
-    const ordered = /^\s*\d+[.)]\s+(.+)$/.exec(line);
+    const ordered = /^\s*(\d{1,9})[.)]\s+(.+)$/.exec(line);
     if (unordered || ordered) {
       flushParagraph();
       flushTable();
       const kind = ordered ? "ol" : "ul";
       if (list && list.kind !== kind) flushList();
-      list ??= { kind, items: [] };
-      list.items.push((unordered ?? ordered)[1]);
+      list ??= { kind, items: [], ...(ordered ? { start: Number(ordered[1]) } : {}) };
+      list.items.push(unordered?.[1] ?? ordered[2]);
       continue;
     }
     if (line.includes("|") && index + 1 < lines.length && isTableDivider(lines[index + 1])) {
@@ -89,8 +127,8 @@ export function renderMarkdown(source = "") {
     paragraph.push(line.trim());
   }
   flush();
-  if (code) output.push(`<pre><code>${escapeHtml(code.join("\n"))}</code></pre>`);
-  return output.join("\n");
+  if (code) output.push({ kind: "code", text: code.join("\n") });
+  return output;
 }
 
 function inline(source) {
@@ -105,8 +143,27 @@ function inline(source) {
   return value;
 }
 
+function isCodeFence(line) {
+  return line.startsWith("```");
+}
+
 function parseTableRow(line) {
-  return line.replace(/^\s*\||\|\s*$/g, "").split("|").map((cell) => cell.trim());
+  const source = line.trim();
+  const cells = [""];
+  let start = source.startsWith("|") ? 1 : 0;
+  for (const match of source.matchAll(/\\[\\|]|\|/g)) {
+    const position = match.index;
+    if (position < start) continue;
+    cells[cells.length - 1] += source.slice(start, position);
+    if (match[0] === "|") {
+      if (position < source.length - 1) cells.push("");
+    } else {
+      cells[cells.length - 1] += match[0][1];
+    }
+    start = position + match[0].length;
+  }
+  cells[cells.length - 1] += source.slice(start);
+  return cells.map((cell) => cell.trim());
 }
 
 function isTableDivider(line) {
