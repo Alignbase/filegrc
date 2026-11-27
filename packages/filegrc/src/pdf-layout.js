@@ -55,8 +55,7 @@ export function layoutPdf(document, fonts) {
     pages.push(page);
     y = TOP;
     const header = document.status + (document.template ? " | Unsigned template" : "");
-    textAt("FileGRC", LEFT, 754, 10, 1);
-    textAt(header, RIGHT - widthOf(header, 9, 1), 754, 9, 1);
+    textAt(header, LEFT, 754, 9, 1);
     line(LEFT, RIGHT, 743);
   }
 
@@ -221,10 +220,6 @@ export function layoutPdf(document, fonts) {
     page = current;
     line(LEFT, RIGHT, 49);
     const number = `Page ${index + 1} of ${pages.length}`;
-    const available = WIDTH - widthOf(number, 8) - 15;
-    const footerId = wrap(document.id, 8, available, 0, true);
-    paintLine(footerId[0], LEFT, 35, 8);
-    textAt(document.revisionLabel, LEFT, 24, 8);
     textAt(number, RIGHT - widthOf(number, 8), 35, 8);
   });
   return pages;

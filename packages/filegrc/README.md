@@ -103,7 +103,7 @@ npx filegrc export-pdf policy policy-information-security
 npx filegrc export-pdf document document-service-agreement-template --revision FULL_COMMIT_ID --json
 ```
 
-The CLI writes to `.filegrc/exports/`. Omit `--revision` for the working copy. Pass a Markdown slot after the record ID to choose a companion. The CLI defaults to the primary slot. The PDF identifies its source revision and shows approval only when the approval binds to the selected content. Document records marked as templates export with an **Unsigned template** label.
+The CLI writes into per-export directories under `.filegrc/exports/`. Omit `--revision` for the working copy. Pass a Markdown slot after the record ID to choose a companion. The CLI defaults to the primary slot. Downloads use an ASCII filename based on the document title, with the record type as a fallback. The PDF shows approval only when the approval binds to the selected content. Use CLI JSON output for source revision details. Document records marked as templates export with an **Unsigned template** label.
 
 To add fillable text fields and a printable signature line, put each labeled blank on its own line. Use a unique lowercase field ID starting with a letter, with up to 64 letters, digits, or hyphens. Separate signers with a blank line so each group stays together on a page.
 

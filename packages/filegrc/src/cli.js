@@ -1261,10 +1261,10 @@ export async function runCli(argv = process.argv.slice(2)) {
   if (command === "export-pdf") {
     const [type, id, slot] = positionals;
     if (!type || !id) throw new Error("A resource type and ID are required.");
-    const { bytes, root: workspaceRoot, ...metadata } = await exportDocumentPdf(root, type, id, {
+    const { bytes, root: workspaceRoot, storageKey, ...metadata } = await exportDocumentPdf(root, type, id, {
       slot, commit: flags.revision
     });
-    const path = await writeDocumentPdf({ ...metadata, root: workspaceRoot, bytes });
+    const path = await writeDocumentPdf({ ...metadata, root: workspaceRoot, bytes, storageKey });
     const result = { ...metadata, path };
     if (flags.json) console.log(JSON.stringify(result, null, 2));
     else console.log(path);

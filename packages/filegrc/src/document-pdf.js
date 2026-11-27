@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { link, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { resolveWorkspacePath, resolveWorkspaceRoot } from "./paths.js";
 import { calculateRevision, revisionDigest, revisionsMatch } from "./revisions.js";
@@ -88,21 +89,23 @@ export async function exportDocumentPdf(input, type, id, options = {}) {
   if (["superseded", "retired"].includes(record.status)) status += ` | ${record.status === "retired" ? "Retired" : "Superseded"}`;
 
   const markdownDigest = revisionDigest("content", item.revision);
-  const snapshotDigest = revisionDigest("content", calculateRevision("content", JSON.stringify({
-    recordRevision,
-    status,
-    contentRevisions: slots.map(({ name }) => content[name]?.revision ?? null)
-  })));
   const template = type === "document" && record.template === true;
-  const revisionLabel = commit ? `Commit ${commit}` : `Working copy ${snapshotDigest}`;
   let bytes;
   try {
-    bytes = renderDocument({ title: record.title, id, source: item.source, status, template, revisionLabel });
+    bytes = renderDocument({ title: record.title, source: item.source, status, template });
   } catch (error) {
     throw exportError(error.message, 422);
   }
-  const filename = `${id}-${slot.name}-${(commit ?? snapshotDigest).slice(0, 12)}.pdf`.replace(/[^a-zA-Z0-9._-]/g, "-");
-  return { root, filename, bytes, commit: commit ?? null, markdownDigest, recordRevision, slot: slot.name, status };
+  const titleSlug = record.title.normalize("NFKD").replace(/\p{M}/gu, "")
+    .toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 100).replace(/^-|-$/g, "");
+  const stem = !titleSlug || /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/.test(titleSlug)
+    ? `${type}${titleSlug ? `-${titleSlug}` : ""}` : titleSlug;
+  const filename = `${stem}.pdf`;
+  const storageKey = createHash("sha256")
+    .update(JSON.stringify([type, id, slot.name, commit ?? recordRevision, item.revision]))
+    .update(bytes).digest("hex");
+  return { root, filename, bytes, storageKey,
+    commit: commit ?? null, markdownDigest, recordRevision, slot: slot.name, status };
 }
 
 function readCommittedDocument(root, commit, type, id) {
@@ -153,10 +156,13 @@ function hasIndependentApproval(record, approverIds, parties) {
 }
 
 export async function writeDocumentPdf(exported) {
-  const folder = resolveWorkspacePath(exported.root, ".filegrc/exports");
+  if (!/^[a-zA-Z0-9-]+\.pdf$/.test(exported.filename)
+    || !/^[a-f0-9]{64}$/.test(exported.storageKey ?? "")) throw new Error("Invalid PDF export path.");
+  const relativeFolder = `.filegrc/exports/${exported.storageKey}`;
+  const folder = resolveWorkspacePath(exported.root, relativeFolder);
   await mkdir(folder, { recursive: true, mode: 0o700 });
-  if (!/^[a-zA-Z0-9._-]+\.pdf$/.test(exported.filename)) throw new Error("Invalid PDF export filename.");
-  const target = resolveWorkspacePath(exported.root, `.filegrc/exports/${exported.filename}`);
+  const relativeTarget = `${relativeFolder}/${exported.filename}`;
+  const target = resolveWorkspacePath(exported.root, relativeTarget);
   const temporary = await mkdtemp(`${folder}/.pdf-`);
   try {
     await writeFile(`${temporary}/export.pdf`, exported.bytes, { mode: 0o600 });
@@ -164,7 +170,7 @@ export async function writeDocumentPdf(exported) {
       await link(`${temporary}/export.pdf`, target);
     } catch (error) {
       if (error.code !== "EEXIST") throw error;
-      const existing = await readFile(resolveWorkspacePath(exported.root, `.filegrc/exports/${exported.filename}`));
+      const existing = await readFile(resolveWorkspacePath(exported.root, relativeTarget));
       if (!existing.equals(exported.bytes)) throw new Error(`A different PDF already exists at ${target}. Move it before exporting again.`);
     }
   } finally {
