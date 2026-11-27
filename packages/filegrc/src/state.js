@@ -1,10 +1,12 @@
+import { supportsDocumentPdf } from "./document-pdf.js";
+import { markdownEntries } from "./resource-markdown.js";
 import { loadWorkspace } from "./workspace.js";
 import { planWorkQueue, sourceDeadlineValidation } from "./work-queue.js";
 import { amendedResourceView } from "./nonmaterial-amendments.js";
 import { assessReportingRouteSets } from "./reporting-route-sets.js";
 import { assessAuditPreparation } from "./audit-preparation.js";
 import { assessCollectionReviews } from "./collection-review.js";
-import { getBrowserRepositoryState, getRepositorySnapshot, getWorkspaceHistories } from "./git.js";
+import { getBrowserRepositoryState, getCombinedWorkspaceHistory, getRepositorySnapshot, getWorkspaceHistories } from "./git.js";
 import { renderMarkdown } from "./markdown.js";
 import { planObligations } from "./obligations.js";
 import { planReconciliation } from "./reconciliation.js";
@@ -402,17 +404,11 @@ export async function createResourceDetail(input, type, id, options = {}) {
 async function createResourceDetailFromLoaded(loaded, type, id, options) {
   const entry = loaded.entries.find(({ record }) => record.type === type && record.id === id);
   if (!entry) return null;
-  const relativePath = `data/${entry.relativePath}`;
   const includeHistory = options.includeHistory !== false;
-  const histories = includeHistory
-    ? getWorkspaceHistories(loaded.root, [relativePath], 12, {
-        deadlineAt: options.historyDeadlineAt
-      })
-    : new Map();
   return createStateEntry(loaded, entry, {
     includeDetails: true,
     includeHistory,
-    history: includeHistory ? histories.get(relativePath) ?? [] : undefined
+    history: includeHistory ? resourceFileHistory(loaded, entry, options) : undefined
   });
 }
 
@@ -427,13 +423,18 @@ export async function createResourceHistory(input, type, id, options = {}) {
 function createResourceHistoryFromLoaded(loaded, type, id, options) {
   const entry = loaded.entries.find(({ record }) => record.type === type && record.id === id);
   if (!entry) return null;
-  const relativePath = `data/${entry.relativePath}`;
   return {
-    history: getWorkspaceHistories(loaded.root, [relativePath], 12, {
-      deadlineAt: options.historyDeadlineAt
-    }).get(relativePath) ?? [],
+    history: resourceFileHistory(loaded, entry, options),
     historyLoaded: true
   };
+}
+
+function resourceFileHistory(loaded, entry, options) {
+  const paths = [`data/${entry.relativePath}`];
+  if (supportsDocumentPdf(loaded.model, entry.record.type)) {
+    paths.push(...markdownEntries(loaded.model, entry.record).map(({ path }) => `data/${path}`));
+  }
+  return getCombinedWorkspaceHistory(loaded.root, paths, 12, { deadlineAt: options.historyDeadlineAt });
 }
 
 async function createStateEntry(loaded, entry, options) {
@@ -455,6 +456,7 @@ async function createStateEntry(loaded, entry, options) {
     content,
     history: options.includeDetails && options.includeHistory !== false ? options.history : undefined,
     historyLoaded: options.includeDetails ? options.includeHistory !== false : false,
+    ...(options.includeDetails && supportsDocumentPdf(loaded.model, record.type) ? { pdfExport: true } : {}),
     detailsLoaded: options.includeDetails
   };
 }

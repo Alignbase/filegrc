@@ -1,3 +1,4 @@
+import { exportDocumentPdf, writeDocumentPdf } from "./document-pdf.js";
 import { writeReviewPayload, summarizeCollectionReview } from "./collection-review-handoff.js";
 import { scaffoldPeriodImpactReview, previewPeriodImpactReview, recordPeriodImpactReview } from "./period-impact.js";
 import { scaffoldObligationRuleWithdrawal, previewObligationRuleWithdrawal, withdrawObligationRule } from "./obligation-rule-withdrawal.js";
@@ -1257,6 +1258,18 @@ export async function runCli(argv = process.argv.slice(2)) {
     else console.log(`Updated ${result.record.type}/${result.record.id}`);
     return result;
   }
+  if (command === "export-pdf") {
+    const [type, id, slot] = positionals;
+    if (!type || !id) throw new Error("A resource type and ID are required.");
+    const { bytes, root: workspaceRoot, ...metadata } = await exportDocumentPdf(root, type, id, {
+      slot, commit: flags.revision
+    });
+    const path = await writeDocumentPdf({ ...metadata, root: workspaceRoot, bytes });
+    const result = { ...metadata, path };
+    if (flags.json) console.log(JSON.stringify(result, null, 2));
+    else console.log(path);
+    return result;
+  }
   if (command === "content") {
     const [type, id, requestedSlot] = positionals;
     if (!type || !id) throw new Error("A resource type and ID are required.");
@@ -1549,6 +1562,7 @@ Usage:
   filegrc complete-action <action-item-id> <completion-record.json|-> --completed-on YYYY-MM-DD [--expected-revision hash] [--json]
   filegrc complete-event <obligation-event-id> --program program-id --completed-on YYYY-MM-DD --expected-revision hash [--json]
   filegrc update <resource-type> <id> <mutation.json|-> [--json]
+  filegrc export-pdf <resource-type> <id> [slot] [--revision commit-id] [--json]
   filegrc content <resource-type> <id> [slot] [--write markdown-file|-] [--expected-revision hash] [--json]
   filegrc attach <evidence-id> <source-file> --expected-revision hash [--name file-name] [--json]
   filegrc detach <evidence-id> <attachment-name> --yes --expected-revision hash [--json]
@@ -1558,6 +1572,15 @@ All commands accept --root <workspace>. Writes never create Git commits.`);
 }
 
 function printCommandHelp(command) {
+  if (command === "export-pdf") {
+    console.log(`Usage:
+  filegrc export-pdf <policy|document|training> <id> [slot] [--revision commit-id] [--json]
+
+Exports governed Markdown to .filegrc/exports/. The default is the primary
+Markdown slot in the working copy. Use --revision with a full Git commit ID
+to export the record and its Markdown as of that commit.`);
+    return;
+  }
   if (command === "automation") {
     console.log("Usage: filegrc automation [--json] [--open] [--root PATH]\nInspect local FileGRC Autopilot configuration. --open opens the dashboard or setup guide; live status remains unknown.");
     return;
@@ -1897,6 +1920,7 @@ function agentOverview(model, connection) {
     completeAction: "filegrc complete-action <action-item-id> <completion-mutation.json> --completed-on <date>",
     completeEvent: "filegrc complete-event <obligation-event-id> --completed-on <date>",
     update: "filegrc update <resource-type> <id> <mutation.json>",
+    exportPdf: "filegrc export-pdf <policy|document|training> <id> [slot] [--revision commit-id] [--json]",
     content: "filegrc content <resource-type> <id> [slot] [--write <markdown-file|->]",
     attach: "filegrc attach <evidence-id> <source-file> [--name <file-name>]",
     detach: "filegrc detach <evidence-id> <attachment-name> --yes",

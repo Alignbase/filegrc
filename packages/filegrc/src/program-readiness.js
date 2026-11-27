@@ -10,7 +10,7 @@ import { applicabilityReviewIsCurrent, createApplicabilityScopeIndex } from "./a
 import { assessRequiredAppointments } from "./appointments.js";
 import { assessCollectionReviews } from "./collection-review.js";
 import { collectionMembershipSourceTypes, collectionRevisionInputs, collectionScopeRevisionFacts } from "./collection-scope.js";
-import { openPlaceholderCount, substantiveMarkdown } from "./content-readiness.js";
+import { hasMarkdownContent, openPlaceholderCount, substantiveMarkdown } from "./content-readiness.js";
 import { coverageEnd, coverageStart } from "./coverage.js";
 import { planObligations } from "./obligations.js";
 import {
@@ -1203,7 +1203,7 @@ async function policiesStage(scope, records, byId, readMarkdown, model) {
         && policy.approvedOn
         && partiesIndependent(policy.ownerIds, policy.approverIds, byId),
       linkedControls: scope.controls.some((control) => (control.policyIds || []).includes(policy.id)),
-      contentComplete: Boolean(source.trim()) && placeholderCount === 0
+      contentComplete: hasMarkdownContent(source) && placeholderCount === 0
     };
     const missing = Object.entries(checks).filter(([, value]) => !value).map(([name]) => policyCheckLabel(name));
     items.push(item(
