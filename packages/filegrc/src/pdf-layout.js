@@ -6,7 +6,7 @@ export const PDF_PAGE_HEIGHT = 792;
 const LEFT = 54;
 const RIGHT = PDF_PAGE_WIDTH - LEFT;
 const WIDTH = RIGHT - LEFT;
-const TOP = 728;
+const TOP = PDF_PAGE_HEIGHT - 54;
 const BOTTOM = 58;
 
 function inlineRuns(source, face) {
@@ -54,9 +54,6 @@ export function layoutPdf(document, fonts) {
     page = { operations: [], fields: [], faces: new Set() };
     pages.push(page);
     y = TOP;
-    const header = document.status + (document.template ? " | Unsigned template" : "");
-    textAt(header, LEFT, 754, 9, 1);
-    line(LEFT, RIGHT, 743);
   }
 
   function ensure(height) {
