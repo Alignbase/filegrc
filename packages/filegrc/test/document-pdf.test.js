@@ -86,7 +86,7 @@ test("governed PDF export keeps committed approval, checks live revision, and sh
   assert.match(bytes.toString("latin1"), /\/FT \/Tx \/T \(customer-name\)/);
   assert.doesNotMatch(bytes.toString("latin1"), /\/FT \/Sig/);
   const text = pdfPageText(bytes);
-  assert.match(text, /Approved content \| Unsigned template/);
+  assert.doesNotMatch(text, /Approved content|Unsigned template/);
   assert.match(text, /Service Agreement Template/);
   assert.match(text, /This agreement template describes the responsibilities/);
   assert.match(text, /Page 1 of 1/);
@@ -120,9 +120,11 @@ test("governed PDF export keeps committed approval, checks live revision, and sh
   const noLongerApproved = JSON.parse((await captureCli(runCli, workingArgs)).stdout);
   assert.equal(noLongerApproved.status, "Unapproved content");
   assert.notEqual(noLongerApproved.path, working.path);
-  assert.match(pdfPageText(await readFile(noLongerApproved.path)), /Unapproved content \| Unsigned template/);
+  assert.deepEqual(await readFile(noLongerApproved.path), bytes);
   await writeJson(recordPath, { ...record, status: "draft" });
-  assert.match(pdfPageText((await exportDocumentPdf(root, "document", id)).bytes), /Draft \| Unsigned template/);
+  const draft = await exportDocumentPdf(root, "document", id);
+  assert.equal(draft.status, "Draft");
+  assert.deepEqual(draft.bytes, bytes);
   await writeJson(approverPath, approver);
   await writeJson(recordPath, { ...record, approvedOn: "9999-01-01" });
   assert.equal((await exportDocumentPdf(root, "document", id)).status, "Unapproved content");

@@ -89,10 +89,9 @@ export async function exportDocumentPdf(input, type, id, options = {}) {
   if (["superseded", "retired"].includes(record.status)) status += ` | ${record.status === "retired" ? "Retired" : "Superseded"}`;
 
   const markdownDigest = revisionDigest("content", item.revision);
-  const template = type === "document" && record.template === true;
   let bytes;
   try {
-    bytes = renderDocument({ title: record.title, source: item.source, status, template });
+    bytes = renderDocument({ title: record.title, source: item.source });
   } catch (error) {
     throw exportError(error.message, 422);
   }
@@ -102,7 +101,7 @@ export async function exportDocumentPdf(input, type, id, options = {}) {
     ? `${type}${titleSlug ? `-${titleSlug}` : ""}` : titleSlug;
   const filename = `${stem}.pdf`;
   const storageKey = createHash("sha256")
-    .update(JSON.stringify([type, id, slot.name, commit ?? recordRevision, item.revision]))
+    .update(JSON.stringify([type, id, slot.name, commit ?? recordRevision, item.revision, status]))
     .update(bytes).digest("hex");
   return { root, filename, bytes, storageKey,
     commit: commit ?? null, markdownDigest, recordRevision, slot: slot.name, status };
