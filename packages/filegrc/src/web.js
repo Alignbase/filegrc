@@ -4113,7 +4113,7 @@ async function downloadDocumentPdf(entry, button) {
     const url = URL.createObjectURL(await response.blob());
     const link = document.createElement("a");
     link.href = url;
-    link.download = /filename="([^"]+)"/.exec(response.headers.get("content-disposition") || "")?.[1] || "filegrc-export.pdf";
+    link.download = /filename="([^"]+)"/.exec(response.headers.get("content-disposition") || "")?.[1] || "document.pdf";
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   } catch (error) {
